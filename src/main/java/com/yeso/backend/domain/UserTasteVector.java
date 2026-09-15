@@ -19,6 +19,10 @@ import java.time.LocalDateTime;
  *
  * embedding은 Ollama가 만든 float 배열을 직렬화한 BLOB.
  * SQLite에는 벡터 인덱스가 없으므로 검색은 애플리케이션 레벨 코사인 유사도로 처리한다(§3.2).
+ *
+ * modelVersion뿐 아니라 templateVersion도 저장한다 — profileText를 합성하는 규칙(§3.1)이
+ * 바뀌면 관광지 임베딩만 재배치해선 안 되고 이미 만들어진 사용자 벡터도 같은 텍스트 공간이
+ * 아니게 되므로, 이 값으로 재계산 대상 사용자를 식별한다({@link AttractionEmbedding}과 동일한 목적).
  */
 @Entity
 @Table(name = "user_taste_vectors")
@@ -48,14 +52,18 @@ public class UserTasteVector {
     @Column(name = "model_version", nullable = false)
     private String modelVersion;
 
+    @Column(name = "template_version", nullable = false)
+    private int templateVersion;
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    public UserTasteVector(User user, byte[] embedding, String profileText, String modelVersion) {
+    public UserTasteVector(User user, byte[] embedding, String profileText, String modelVersion, int templateVersion) {
         this.user = user;
         this.userId = user.getId();
         this.embedding = embedding;
         this.profileText = profileText;
         this.modelVersion = modelVersion;
+        this.templateVersion = templateVersion;
     }
 }

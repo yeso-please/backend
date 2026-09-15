@@ -27,6 +27,11 @@ import java.time.LocalDateTime;
  *
  * situation은 이 여행 1회에만 적용되는 휘발성 컨텍스트(동행유형/기간 등, §5.1)를
  * JSON 문자열로 스냅샷 저장 — 나중에 취향과 구분해서 "그때 왜 이 코스가 나왔는지" 재현 가능하게.
+ *
+ * status는 기본값을 두지 않고 생성 시 반드시 명시한다 — v1의 유일한 생성 경로인
+ * "코스 확정"(POST /api/courses)은 이 row를 만드는 순간 바로 CONFIRMED여야 하며,
+ * DRAFT는 v1에 없는 미래 흐름(확정 전 서버 임시저장) 전용으로 예약해둔 상태다.
+ * 필드에 기본값을 주면 실수로 DRAFT인 채 방치되는 확정 코스가 생길 수 있어 의도적으로 막는다.
  */
 @Entity
 @Table(name = "trip_plans")
@@ -62,7 +67,7 @@ public class TripPlan {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private TripPlanStatus status = TripPlanStatus.DRAFT;
+    private TripPlanStatus status;
 
     @Column(name = "start_date")
     private LocalDate startDate;
@@ -72,4 +77,11 @@ public class TripPlan {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    public TripPlan(User ownerUser, Region region, Transport transport, TripPlanStatus status) {
+        this.ownerUser = ownerUser;
+        this.region = region;
+        this.transport = transport;
+        this.status = status;
+    }
 }

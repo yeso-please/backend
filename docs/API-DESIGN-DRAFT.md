@@ -51,7 +51,8 @@ users                        social_accounts
 │ embedding    BLOB   │        onboarding_responses
 │ profile_text  TEXT  │        ┌───────────────────────┐
 │ model_version       │        │ id                PK   │
-│ updated_at          │        │ user_id           FK   │
+│ template_version    │        │ user_id           FK   │
+│ updated_at          │        │ submission_id (UUID)   │
 └────────────────────┘        │ question_key            │
                                │ answer_value  (JSONB)   │
                                │ created_at              │
@@ -62,11 +63,12 @@ attractions                   attraction_embeddings
 │ id             PK   │◀───┐  │ attraction_id   PK,FK │
 │ name                │    └──┤ embedding      BLOB    │
 │ category            │       │ model_version          │
-│ region              │       │ updated_at             │
-│ description   TEXT   │       └───────────────────────┘
-│ tags        TEXT[]   │
-│ lat / lng            │       user_interactions (선택, 추후)
-│ source_content_id    │       ┌───────────────────────┐
+│ region              │       │ template_version       │
+│ description   TEXT   │       │ updated_at             │
+│ tags        TEXT[]   │       └───────────────────────┘
+│ lat / lng            │
+│ source_content_id    │       user_interactions (선택, 추후)
+│  UNIQUE(nullable)     │       ┌───────────────────────┐
 │ embedding_status     │       │ id                PK   │
 │  (PENDING/DONE/FAILED)│       │ user_id           FK   │
 │ created_at           │       │ attraction_id     FK   │
@@ -78,8 +80,10 @@ attractions                   attraction_embeddings
 **설계 포인트**
 - `users.password_hash`, `email` 모두 nullable → 소셜 전용 가입 허용 (데모의 실수를 미리 회피).
 - `social_accounts`를 별도 테이블로 분리 → 한 계정에 카카오+구글 동시 연결(계정 통합) 가능.
-- `user_taste_vectors` / `attraction_embeddings`를 users/attractions와 분리 → 임베딩 모델 교체 시 `model_version`만 바꿔 재생성, 원본 테이블 스키마 안정적으로 유지.
+- `user_taste_vectors` / `attraction_embeddings`를 users/attractions와 분리 → 임베딩 모델·텍스트 합성 규칙 교체 시 `model_version`/`template_version`만 바꿔 재생성, 원본 테이블 스키마 안정적으로 유지. `user_taste_vectors`도 `template_version`을 함께 저장 — 온보딩 프로필 텍스트도 §3.1 규칙으로 합성되므로 관광지 쪽만 버전 관리하면 서로 다른 텍스트 규칙으로 만들어진 벡터끼리 비교하게 되는 문제가 생긴다.
 - `embedding`은 `BLOB`에 float 배열을 직렬화해서 저장(예: `float[]` → `ByteBuffer`). SQLite엔 벡터 인덱스가 없으므로 검색 시 서버 기동 시 `attraction_embeddings`를 메모리에 캐싱해두고 애플리케이션에서 코사인 유사도를 브루트포스로 계산(§3). 수천 건 규모면 전체 스캔도 수 ms~수십 ms 수준이라 인덱스 없이도 충분.
+- `attractions.source_content_id`는 nullable이지만 unique 제약을 건다 — TourAPI 동기화가 재시도/중복 실행돼도 같은 콘텐츠 ID로 관광지가 중복 생성되지 않게(수동 등록 건처럼 이 값이 없는 행은 NULL 여러 개 허용, 표준 DB 동작).
+- `onboarding_responses.submission_id`(UUID)로 "한 번에 제출한 응답 묶음"의 경계를 표시 — 재응답(취향 재검사) 시 일부 문항을 건너뛴 걸 미답변(중립)으로 볼지 이전 제출 값을 이어받은 걸로 볼지 구분하기 위함.
 
 ## 3. 추천 로직: 콘텐츠 기반 임베딩 추천
 
@@ -197,6 +201,12 @@ attractions                   attraction_embeddings
 | POST | `/api/onboarding/responses` | 응답 제출. 로그인 시 `onboarding_responses`/`user_taste_vectors`에 저장, 게스트는 저장 없이 `{ tasteVector }`(base64, opaque)를 응답으로 돌려줌 — 클라이언트가 localStorage에 들고 있다가 아래 `tasteVector` 파라미터로 재사용 |
 | GET  | `/api/users/me/taste` | 내 취향 벡터 메타(요약 태그 등, 원본 벡터는 비노출) — 로그인 필수 |
 
+**`/api/onboarding/responses`는 인증 없이도 Ollama 임베딩을 트리거하므로 반드시 다음 제한을 함께 구현한다**
+(비로그인 남용으로 Ollama/CPU를 독점해 다른 사용자의 온보딩을 막는 걸 방지):
+- 응답 1건 최대 길이(자유서술 문항 기준 예: 500자), 전체 payload 상한(예: 10KB)
+- IP 또는 기기 식별자(쿠키 등) 기준 rate limit(예: 분당 5회) — 로그인 사용자는 user_id 기준으로 별도 완화 가능
+- 위 두 제한 모두 컨트롤러 진입 전(필터/인터셉터)에서 걸어 임베딩 계산 전에 차단
+
 ### 추천 · 지역 추첨 · 코스 생성 공통: `tasteVector` 파라미터
 아래 엔드포인트들은 모두 **인증 선택**이다. `Authorization` 헤더가 있으면 서버가 user_id로 저장된 취향 벡터를 찾아 쓰고,
 없으면 요청 바디의 `tasteVector`(게스트가 온보딩 응답으로 받은 값)를 그대로 사용한다. 요청에 취향 벡터가 아예 없으면(헤더도 없고
@@ -205,7 +215,7 @@ attractions                   attraction_embeddings
 ### 추천
 | Method | Path | 설명 |
 |---|---|---|
-| GET  | `/api/recommend?limit=10&region=` | 콘텐츠 기반 추천 (코사인 유사도), `tasteVector` 선택 파라미터 |
+| POST | `/api/recommend` | `{ limit, region, tasteVector? }` → 콘텐츠 기반 추천 (코사인 유사도). **GET이 아니라 POST** — `tasteVector`(base64 임베딩)를 쿼리스트링에 실으면 URL 길이 제한에 걸리거나 access log·브라우저 히스토리·Referrer에 취향 벡터가 그대로 남는다(§공통 파라미터 참고) |
 | POST | `/api/recommend/feedback` | `{ attractionId, action }` — 좋아요/저장 시 취향 벡터 갱신 큐잉. **로그인 필수**(게스트는 벡터를 서버에 안 두므로 갱신 대상이 없음 — 세션 대신 클라이언트가 들고 있는 모델이라 즉시 갱신 큐잉이 성립 안 함) |
 
 ### 관리자 — 관광지 임베딩 배치 (§3.1)
@@ -292,18 +302,21 @@ trip_plans                    trip_stops
 friendships                   │ joined_at                │
 ┌────────────────────┐        └───────────────────────┘
 │ id             PK   │
-│ user_id        FK   │        trip_invitations
-│ friend_id      FK   │        ┌───────────────────────┐
-│ status (PENDING/    │        │ id                PK   │
-│  ACCEPTED)           │        │ trip_plan_id      FK   │
-│ created_at            │       │ invite_token   UNIQUE  │
-└────────────────────┘        │ invited_by_user_id FK  │
-                               │ expires_at              │
-                               │ created_at              │
+│ user_low_id    FK   │        trip_invitations
+│ user_high_id   FK   │        ┌───────────────────────┐
+│  UNIQUE(low,high)   │        │ id                PK   │
+│ requested_by_user_id │       │ trip_plan_id      FK   │
+│  FK                  │       │ token_hash     UNIQUE  │
+│ status (PENDING/    │        │ invited_by_user_id FK  │
+│  ACCEPTED)           │        │ expires_at              │
+│ created_at            │       │ revoked                 │
+└────────────────────┘        │ created_at              │
                                └───────────────────────┘
 ```
 
-- `trip_plans.status='DRAFT'`는 §5.3의 stateless 초안과는 별개로, "확정은 했지만 날짜는 아직 안 정함" 같은 중간 상태를 위해 남겨둠(초안 자체를 서버에 저장하고 싶어지면 이 상태를 씀 — 지금은 선택 사항).
+- `trip_plans.status`는 기본값 없이 생성 시 명시한다. v1의 유일한 생성 경로(`POST /api/courses` "확정")는 row를 만드는 즉시 `CONFIRMED`를 넣는다 — `DRAFT`는 v1에 없는 미래 흐름(확정 전 서버측 임시저장) 전용으로 예약된 상태이며, 필드에 기본값을 두면 실수로 `DRAFT`인 채 방치되는 "확정" 코스가 생길 수 있어 의도적으로 막았다.
+- `friendships`는 `(user_id, friend_id)` 방향이 있는 row 대신 두 사용자를 id 오름차순으로 정규화한 `user_low_id`/`user_high_id`에 저장하고 그 쌍에 unique 제약을 건다 — A→B, B→A가 동시에 요청돼도 물리적으로 한 row만 존재할 수 있다(누가 먼저 요청했는지는 `requested_by_user_id`로 별도 기록).
+- `trip_invitations.token_hash`는 refresh_tokens와 같은 원칙으로 원문 대신 해시만 저장(DB 노출 시 베어러 크리덴셜 재사용 방지). `revoked`로 OWNER의 명시적 무효화를 표현 — `expires_at`만으로는 재발급해도 기존 링크가 만료 전까지 계속 유효해 "재발급하면 이전 링크는 못 쓴다"를 구현할 수 없다.
 - `trip_stops.order_index`가 곧 동선 순서. 이동수단·거주지(origin) 기반 정렬은 저장 시점에 1회 계산해서 순서를 고정(데모의 "경로는 저장 시점 1회 계산" 원칙과 동일 — 매번 재계산하면 카카오모빌리티 API 한도를 태움, §7 남은 결정 참고).
 - `friendships`는 단방향 row 2개로 양방향 친구 관계 표현(요청자→대상, 수락 시 대상→요청자도 생성) 또는 status 컬럼으로 요청/수락 상태만 추적 — 세부 방식은 구현 시 결정.
 
@@ -322,6 +335,15 @@ friendships                   │ joined_at                │
 | PATCH | `/api/courses/draft/stops` | 개수 변경/수동 추가·삭제 |
 | POST | `/api/courses` | **인증 필수.** 초안 확정 저장 → `trip_plans`/`trip_stops` 생성. 게스트가 만든 슬롯도 로그인 직후 이 API에 그대로 실어 보내면 저장됨(별도 마이그레이션 엔드포인트 없음, FEATURE-SPEC §5.1) |
 | GET  | `/api/courses/{id}` | 확정된 코스 조회 |
+
+**`POST /api/courses`는 클라이언트가 보낸 `stops`를 그대로 믿지 않는다.** 게스트~코스 슬롯 단계 전체가
+stateless라 클라이언트 상태는 임의로 조작될 수 있으므로, 저장 직전에 서버가 각 `attractionId`를 재조회해서
+다음을 검증한다 — 위반 시 400:
+- 모든 `attractionId`가 요청의 `regionId`에 실제로 속하는지
+- 모든 `attractionId`가 `embedding_status='DONE'`이거나 최소한 실재하는 관광지인지(삭제/비활성 관광지 거부)
+- `attractionId` 중복이 없는지
+- 개수가 허용 범위(예: 1~10) 안인지
+- `order_index`는 클라이언트 값을 신뢰하지 않고 서버가 배열 순서 기준으로 재부여
 
 ### 캘린더
 | Method | Path | 설명 |

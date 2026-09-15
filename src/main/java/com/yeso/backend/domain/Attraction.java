@@ -20,6 +20,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 관광지. description은 TourAPI 원천 특성상 상당수 비어 있다
@@ -28,11 +29,15 @@ import java.util.List;
  *
  * embeddingStatus는 신규 등록·description 갱신 시 PENDING으로 리셋되고,
  * 배치가 attraction_embeddings를 채우면 DONE으로 바뀐다(§3.1).
+ *
+ * name/category/region/tags/description은 임베딩 텍스트를 구성하는 필드라
+ * Lombok의 무조건적 setter를 안 쓰고 {@link #updateEmbeddableContent}로만 바꾼다 —
+ * 일반 setter로 값을 바꾸면 embeddingStatus가 DONE으로 남아있는데 실제 텍스트는
+ * 달라진 상태(재추천에 옛 임베딩이 계속 쓰임)가 될 수 있기 때문이다.
  */
 @Entity
 @Table(name = "attractions")
 @Getter
-@Setter
 @NoArgsConstructor
 public class Attraction {
 
@@ -56,20 +61,46 @@ public class Attraction {
     /** 쉼표로 이어 붙인 태그 (데모의 AppUser.experienceTags와 같은 방식) */
     private String tags;
 
+    @Setter
     private Double lat;
 
+    @Setter
     private Double lng;
 
-    /** TourAPI 등 외부 소스의 원본 콘텐츠 ID. 동기화 재실행 시 중복 방지용 */
-    @Column(name = "source_content_id")
+    /**
+     * TourAPI 등 외부 소스의 원본 콘텐츠 ID. 동기화 재실행 시 중복 방지용 —
+     * unique 제약으로 강제한다(nullable이라 수동 등록 건은 여러 개의 null 허용, DB 표준 동작).
+     */
+    @Column(name = "source_content_id", unique = true)
     private String sourceContentId;
 
+    @Setter
     @Enumerated(EnumType.STRING)
     @Column(name = "embedding_status", nullable = false, length = 20)
     private EmbeddingStatus embeddingStatus = EmbeddingStatus.PENDING;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    /**
+     * 임베딩 텍스트에 들어가는 필드를 한 번에 갱신. 실제로 값이 하나라도 바뀌면
+     * embeddingStatus를 PENDING으로 리셋해 배치가 재임베딩하도록 한다.
+     */
+    public void updateEmbeddableContent(String name, String category, Region region, String tags, String description) {
+        boolean changed = !Objects.equals(this.name, name)
+                || !Objects.equals(this.category, category)
+                || !Objects.equals(this.region, region)
+                || !Objects.equals(this.tags, tags)
+                || !Objects.equals(this.description, description);
+        this.name = name;
+        this.category = category;
+        this.region = region;
+        this.tags = tags;
+        this.description = description;
+        if (changed) {
+            this.embeddingStatus = EmbeddingStatus.PENDING;
+        }
+    }
 
     public List<String> tagList() {
         if (tags == null || tags.isBlank()) {

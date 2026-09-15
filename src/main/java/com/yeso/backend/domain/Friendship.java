@@ -20,13 +20,17 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 친구 요청/수락. user가 요청자, friend가 대상 — 방향이 있는 1개 row로 관계를 표현하고,
- * 상태(PENDING/ACCEPTED)로 진행 단계를 추적한다.
+ * 친구 관계. 방향이 있는 (user_id, friend_id) 1개 row로 표현하면 A→B, B→A가
+ * 동시에 만들어져 나중에 한쪽만 수락돼도 중복 관계가 남을 수 있다.
+ *
+ * 그래서 두 사용자 쌍을 id 오름차순으로 정규화해 userLow/userHigh에 저장하고
+ * (user_low_id, user_high_id)에 unique 제약을 건다 — 누가 먼저 요청했는지와 무관하게
+ * 같은 쌍은 물리적으로 한 row만 존재할 수 있다. 실제 요청자는 requestedByUser로 별도 기록.
  */
 @Entity
 @Table(
         name = "friendships",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "friend_id"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_low_id", "user_high_id"})
 )
 @Getter
 @Setter
@@ -38,12 +42,16 @@ public class Friendship {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "user_low_id", nullable = false)
+    private User userLow;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "friend_id", nullable = false)
-    private User friend;
+    @JoinColumn(name = "user_high_id", nullable = false)
+    private User userHigh;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requested_by_user_id", nullable = false)
+    private User requestedByUser;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -52,8 +60,15 @@ public class Friendship {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    public Friendship(User user, User friend) {
-        this.user = user;
-        this.friend = friend;
+    /** a, b는 순서 무관 — 생성자가 id 기준으로 정규화해 userLow/userHigh에 배치한다 */
+    public Friendship(User a, User b, User requestedByUser) {
+        if (a.getId() < b.getId()) {
+            this.userLow = a;
+            this.userHigh = b;
+        } else {
+            this.userLow = b;
+            this.userHigh = a;
+        }
+        this.requestedByUser = requestedByUser;
     }
 }
