@@ -11,13 +11,13 @@
 │  (SPA)     │◀─────│  (Spring Boot)    │◀─────│  users / attractions │
 └────────────┘      └──────┬────────────┘      │  embedding = BLOB    │
                             │                   └─────────────────────┘
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-        ┌──────────┐  ┌──────────────┐  ┌────────────┐
-        │ Kakao/    │  │ Ollama        │  │  (기존 demo │
-        │ Google    │  │ (로컬 임베딩,  │  │  TourAPI    │
-        │ OAuth2    │  │  bge-m3, 무료)│  │  동기화 로직 │
-        └──────────┘  └──────────────┘  └────────────┘
+              ┌─────────────┼─────────────┬─────────────┐
+              ▼             ▼             ▼             ▼
+        ┌──────────┐  ┌──────────────┐  ┌────────────┐ ┌───────────────┐
+        │ Kakao/    │  │ Ollama        │  │  (기존 demo │ │ 카카오모빌리티  │
+        │ Google    │  │ (로컬 임베딩,  │  │  TourAPI    │ │ 자동차 길찾기   │
+        │ OAuth2    │  │  bge-m3, 무료)│  │  동기화 로직 │ │ API(동선 계산) │
+        └──────────┘  └──────────────┘  └────────────┘ └───────────────┘
 ```
 
 - 세션 대신 **JWT(access+refresh)** — 프론트/백엔드 분리 구조이므로.
@@ -193,30 +193,31 @@ attractions                   attraction_embeddings
 | GET  | `/api/users/me` | 내 정보 조회 |
 
 ### 온보딩 / 취향
-**인증 선택(Optional Auth)** — `Authorization` 헤더가 있으면 로그인 사용자로, 없으면 게스트로 처리(FEATURE-SPEC §v1 구현 범위 참고).
+**인증 필수**(2026-09-17 팀 논의로 변경 — 게스트 온보딩 폐지, FEATURE-SPEC §v1 구현 범위 참고). 기존에 있던
+Optional Auth 분기와 게스트용 opaque `tasteVector` 응답은 제거한다.
 
 | Method | Path | 설명 |
 |---|---|---|
-| GET  | `/api/onboarding/questions` | 온보딩 질문 목록 |
-| POST | `/api/onboarding/responses` | 응답 제출. 로그인 시 `onboarding_responses`/`user_taste_vectors`에 저장, 게스트는 저장 없이 `{ tasteVector }`(base64, opaque)를 응답으로 돌려줌 — 클라이언트가 localStorage에 들고 있다가 아래 `tasteVector` 파라미터로 재사용 |
-| GET  | `/api/users/me/taste` | 내 취향 벡터 메타(요약 태그 등, 원본 벡터는 비노출) — 로그인 필수 |
+| GET  | `/api/onboarding/questions` | 온보딩 질문 목록(인증 불필요 — 질문 자체는 정적 콘텐츠) |
+| POST | `/api/onboarding/responses` | 응답 제출. `onboarding_responses`/`user_taste_vectors`에 저장 |
+| GET  | `/api/users/me/taste` | 내 취향 벡터 메타(요약 태그 등, 원본 벡터는 비노출) |
 
-**`/api/onboarding/responses`는 인증 없이도 Ollama 임베딩을 트리거하므로 반드시 다음 제한을 함께 구현한다**
-(비로그인 남용으로 Ollama/CPU를 독점해 다른 사용자의 온보딩을 막는 걸 방지):
+**`/api/onboarding/responses`는 로그인 사용자만 호출 가능하지만, 그래도 다음 제한을 함께 구현한다**
+(계정당 과도한 재검사 남발로 Ollama/CPU를 독점하는 걸 방지):
 - 응답 1건 최대 길이(자유서술 문항 기준 예: 500자), 전체 payload 상한(예: 10KB)
-- IP 또는 기기 식별자(쿠키 등) 기준 rate limit(예: 분당 5회) — 로그인 사용자는 user_id 기준으로 별도 완화 가능
-- 위 두 제한 모두 컨트롤러 진입 전(필터/인터셉터)에서 걸어 임베딩 계산 전에 차단
+- user_id 기준 rate limit(예: 분당 5회)
+- 위 제한은 컨트롤러 진입 전(필터/인터셉터)에서 걸어 임베딩 계산 전에 차단
 
-### 추천 · 지역 추첨 · 코스 생성 공통: `tasteVector` 파라미터
-아래 엔드포인트들은 모두 **인증 선택**이다. `Authorization` 헤더가 있으면 서버가 user_id로 저장된 취향 벡터를 찾아 쓰고,
-없으면 요청 바디의 `tasteVector`(게스트가 온보딩 응답으로 받은 값)를 그대로 사용한다. 요청에 취향 벡터가 아예 없으면(헤더도 없고
-`tasteVector`도 없으면) `FULL_RANDOM`/취향 미반영 동작으로 폴백한다(FEATURE-SPEC §3 예외 규칙).
+### 추천 · 지역 추첨 · 코스 생성 공통
+아래 엔드포인트들은 모두 **인증 필수**다. 서버는 항상 요청자의 user_id로 저장된 취향 벡터(`user_taste_vectors`)를
+조회해서 쓴다 — 이전에 있던 게스트용 `tasteVector` 바디 파라미터는 v1에서 제거한다(§v1 구현 범위 참고). 아직
+온보딩을 완료하지 않아 벡터가 없는 사용자는 `FULL_RANDOM`/취향 미반영 동작으로 폴백한다(FEATURE-SPEC §3 예외 규칙).
 
 ### 추천
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/recommend` | `{ limit, region, tasteVector? }` → 콘텐츠 기반 추천 (코사인 유사도). **GET이 아니라 POST** — `tasteVector`(base64 임베딩)를 쿼리스트링에 실으면 URL 길이 제한에 걸리거나 access log·브라우저 히스토리·Referrer에 취향 벡터가 그대로 남는다(§공통 파라미터 참고) |
-| POST | `/api/recommend/feedback` | `{ attractionId, action }` — 좋아요/저장 시 취향 벡터 갱신 큐잉. **로그인 필수**(게스트는 벡터를 서버에 안 두므로 갱신 대상이 없음 — 세션 대신 클라이언트가 들고 있는 모델이라 즉시 갱신 큐잉이 성립 안 함) |
+| POST | `/api/recommend` | `{ limit, region }` → 콘텐츠 기반 추천 (코사인 유사도, 서버가 user_id로 벡터 조회) |
+| POST | `/api/recommend/feedback` | `{ attractionId, action }` — 좋아요/저장 시 취향 벡터 갱신 큐잉 |
 
 ### 관리자 — 관광지 임베딩 배치 (§3.1)
 | Method | Path | 설명 |
@@ -225,20 +226,25 @@ attractions                   attraction_embeddings
 | GET  | `/api/admin/attractions/embeddings/status` | 진행 상황 조회: 전체/PENDING/DONE/FAILED 건수 |
 | POST | `/api/admin/attractions/{id}/embedding` | 특정 관광지 임베딩 단건 재생성 |
 
-## 5. 전체 사용자 플로우 (지역 추첨 → 코스 슬롯 → 확정)
+## 5. 전체 사용자 플로우 (로그인 → 캘린더 → 지역 추첨 → 코스 슬롯 → 확정)
+
+> 2026-09-17 팀 논의로 순서 변경 — 캘린더 날짜 지정이 지역 추첨보다 **앞**으로 이동했다(FEATURE-SPEC §v1 구현 범위).
 
 ```
-1. 로그인/회원가입 (§1)
+1. 로그인/회원가입 (§1) — 필수
         │
         ▼
-2. 취향 온보딩 (§3.2) — 자연 선호도, MBTI류 성향 등 1회 저장
+2. 취향 온보딩 (§3.2) — 최초 설문 미완료 시에만, 자연 선호도·MBTI류 성향 등 1회 저장
         │
         ▼
-3. [추천] 버튼 → 지역 추첨 (2단계 슬롯머신: 도 → 시/군)
-        │   완전랜덤 모드 / 취향반영랜덤 모드 중 선택
+3. 캘린더 — 여행 시작·종료일 선택 (§5.2)
+        │   기존 CONFIRMED 여행과 겹치면 선택 불가
+        ▼
+4. [추천] 버튼 → 지역 추첨 (2단계 슬롯머신: 도 → 시/군)
+        │   완전랜덤 모드 / 취향반영랜덤 모드 — 프로필 기본값 + 체크박스로 즉시 변경(§5.2)
         │   + 이번 여행의 "상황"(동행유형/기간/예산 등, §5.1) 매 요청마다 별도 입력
         ▼
-4. [코스] 버튼 → 코스 슬롯 초안 생성 (관광지 N곳, 이동수단·거주지 기반 동선 정렬)
+5. [코스] 버튼 → 코스 슬롯 초안 생성 (관광지 N곳, 카카오모빌리티 자동차 API 기반 동선 정렬, §3)
         │
         ├─▶ 슬롯별로 좋아요(잠금) / 별로(리롤 대상) 표시
         │        │
@@ -248,11 +254,9 @@ attractions                   attraction_embeddings
         └────────┘
         │  (개수 조정·수동 추가/삭제도 이 단계에서)
         ▼
-5. 코스 확정 저장
+6. 코스 확정 저장 — 이후 날짜별 장소·순서 변경은 가능, 시작·종료일 변경은 불가
         │
-        ├──▶ 6. 캘린더에 날짜 지정 (중복 방지, §5.3 — 방식 미확정)
-        │
-        └──▶ 7. 친구 초대(링크) → 같이 코스 보기
+        └──▶ 7. (v2) 친구 초대(링크) → 같이 코스 보기, 비회원도 열람 가능
 ```
 
 ### 5.1 "사용자 상황(situation)"은 취향과 분리된 별도 입력
@@ -272,7 +276,13 @@ attractions                   attraction_embeddings
 - `FULL_RANDOM`: 250개 시군구 중 균등 확률로 추첨 (데모의 기존 방식, 취향 무시)
 - `PREFERENCE_WEIGHTED`: 지역별 "취향 적합도"(그 지역 관광지들과 사용자 벡터의 평균/최대 유사도)를 가중치로 삼아 추첨 — 완전 결정론적 top-1이 아니라 **가중 확률 추첨**이라 매번 같은 지역이 나오진 않음(발견의 재미 유지 + 취향 반영 균형).
 
-사용자가 매 추첨 시 모드를 고를 수도 있고, 프로필에 기본값을 저장해도 됨(추가 결정 필요, §9).
+**기본값 정책(팀 논의로 확정, §9)**: 사용자가 프로필에 기본 모드를 저장해두면 추첨 화면은 그 값을 기본 선택 상태로 띄우고, 화면의 체크박스로 그 자리에서 즉시 바꿀 수 있게 한다 — 매번 처음부터 고르는 부담 없이도 그때그때 바꿀 여지를 남긴다.
+
+### 5.2b 동선(경로) 계산: 카카오모빌리티 자동차 길찾기 API (팀 논의로 확정, §9)
+
+- **채택 이유**: self-serve REST API 키로 바로 발급 가능하고, 응답의 `data.routes[0].sections[].roads.vertexes`(좌표 배열)로 지도 위에 실제 경로 폴리라인을 그릴 수 있음 — "화살표로 동선을 보여주자"는 요구를 실제로 만족.
+- **요금**: 일 10,000건 무료, 초과 시 100만 건까지 건당 8원 — MVP 트래픽 규모에서는 사실상 무료. 확정(저장) 시점에 **1회만** 호출하는 기존 원칙(§9 남은 결정 사항 참고)과 함께 쓰면 한도 초과 걱정이 거의 없음.
+- **주의(리스크)**: 이 API는 **자동차** 경로만 제공한다. 도보/자전거 길찾기는 별도 `/affiliate/` 제휴 신청·심사가 필요해 승인 여부·소요기간이 불확실하다. 관광지 간 이동이 도보 위주인 코스에서는 자동차 API 결과를 근사치로 쓰거나(도로망 기준 순서만 참고), 도보 구간은 당분간 단순 거리 근사를 병행한다. 도보 API 제휴가 승인되면 해당 구간만 교체.
 
 ### 5.3 코스 슬롯: 잠금/리롤은 상태를 서버에 저장하지 않는 stateless 설계
 
@@ -317,46 +327,49 @@ friendships                   │ joined_at                │
 - `trip_plans.status`는 기본값 없이 생성 시 명시한다. v1의 유일한 생성 경로(`POST /api/courses` "확정")는 row를 만드는 즉시 `CONFIRMED`를 넣는다 — `DRAFT`는 v1에 없는 미래 흐름(확정 전 서버측 임시저장) 전용으로 예약된 상태이며, 필드에 기본값을 두면 실수로 `DRAFT`인 채 방치되는 "확정" 코스가 생길 수 있어 의도적으로 막았다.
 - `friendships`는 `(user_id, friend_id)` 방향이 있는 row 대신 두 사용자를 id 오름차순으로 정규화한 `user_low_id`/`user_high_id`에 저장하고 그 쌍에 unique 제약을 건다 — A→B, B→A가 동시에 요청돼도 물리적으로 한 row만 존재할 수 있다(누가 먼저 요청했는지는 `requested_by_user_id`로 별도 기록).
 - `trip_invitations.token_hash`는 refresh_tokens와 같은 원칙으로 원문 대신 해시만 저장(DB 노출 시 베어러 크리덴셜 재사용 방지). `revoked`로 OWNER의 명시적 무효화를 표현 — `expires_at`만으로는 재발급해도 기존 링크가 만료 전까지 계속 유효해 "재발급하면 이전 링크는 못 쓴다"를 구현할 수 없다.
-- `trip_stops.order_index`가 곧 동선 순서. 이동수단·거주지(origin) 기반 정렬은 저장 시점에 1회 계산해서 순서를 고정(데모의 "경로는 저장 시점 1회 계산" 원칙과 동일 — 매번 재계산하면 카카오모빌리티 API 한도를 태움, §7 남은 결정 참고).
+- `trip_stops.order_index`가 곧 동선 순서. 이동수단·거주지(origin) 기반 정렬은 저장 시점에 1회 계산해서 순서를 고정(데모의 "경로는 저장 시점 1회 계산" 원칙과 동일 — 매번 재계산하면 카카오모빌리티 API 한도를 태움, §9 남은 결정 사항 참고).
 - `friendships`는 단방향 row 2개로 양방향 친구 관계 표현(요청자→대상, 수락 시 대상→요청자도 생성) 또는 status 컬럼으로 요청/수락 상태만 추적 — 세부 방식은 구현 시 결정.
 
 ## 7. API 엔드포인트 추가분
 
-### 지역 추첨 (인증 선택)
+### 캘린더 — 여행 시작·종료일 (인증 필수, §5.2)
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/discovery/draw` | `{ mode: FULL_RANDOM\|PREFERENCE_WEIGHTED, situation, tasteVector? }` → `{ regionId, province, city }`. `tasteVector`는 게스트일 때만 사용(§4) |
+| POST | `/api/trips/dates/check` | `{ startDate, endDate }` → 기존 `CONFIRMED` 여행과 겹치는지 검사(겹치면 409). 지역 추첨·코스 생성 전에 먼저 호출 |
 
-### 코스 슬롯 (stateless, §5.3, 인증 선택)
+### 지역 추첨 (인증 필수)
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/courses/draft` | `{ regionId, transport, origin, situation, stopCount, tasteVector? }` → 슬롯 초안 생성 |
-| POST | `/api/courses/draft/reroll` | `{ regionId, transport, origin, situation, stops:[{attractionId, locked}], tasteVector? }` → 잠긴 슬롯 유지, 나머지만 재추천 |
+| POST | `/api/discovery/draw` | `{ mode: FULL_RANDOM\|PREFERENCE_WEIGHTED, situation }` → `{ regionId, province, city }`. `mode`를 안 보내면 사용자 프로필의 기본값을 사용(§3) |
+
+### 코스 슬롯 (stateless, §5.3, 인증 필수)
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/courses/draft` | `{ regionId, transport, origin, situation, stopCount }` → 슬롯 초안 생성 |
+| POST | `/api/courses/draft/reroll` | `{ regionId, transport, origin, situation, stops:[{attractionId, locked}] }` → 잠긴 슬롯 유지, 나머지만 재추천 |
 | PATCH | `/api/courses/draft/stops` | 개수 변경/수동 추가·삭제 |
-| POST | `/api/courses` | **인증 필수.** 초안 확정 저장 → `trip_plans`/`trip_stops` 생성. 게스트가 만든 슬롯도 로그인 직후 이 API에 그대로 실어 보내면 저장됨(별도 마이그레이션 엔드포인트 없음, FEATURE-SPEC §5.1) |
+| POST | `/api/courses` | 초안 확정 저장 → `trip_plans`/`trip_stops` 생성(FEATURE-SPEC §5.1) |
+| PATCH | `/api/courses/{id}/stops` | 확정된 코스의 날짜별 장소 순서 변경·삭제(시작·종료일은 변경 불가, FEATURE-SPEC §5.1) |
 | GET  | `/api/courses/{id}` | 확정된 코스 조회 |
 
-**`POST /api/courses`는 클라이언트가 보낸 `stops`를 그대로 믿지 않는다.** 게스트~코스 슬롯 단계 전체가
-stateless라 클라이언트 상태는 임의로 조작될 수 있으므로, 저장 직전에 서버가 각 `attractionId`를 재조회해서
-다음을 검증한다 — 위반 시 400:
+**`POST /api/courses`는 클라이언트가 보낸 `stops`를 그대로 믿지 않는다.** 코스 슬롯 단계 전체가 stateless라
+클라이언트 상태는 임의로 조작될 수 있으므로, 저장 직전에 서버가 각 `attractionId`를 재조회해서 다음을
+검증한다 — 위반 시 400:
 - 모든 `attractionId`가 요청의 `regionId`에 실제로 속하는지
 - 모든 `attractionId`가 `embedding_status='DONE'`이거나 최소한 실재하는 관광지인지(삭제/비활성 관광지 거부)
 - `attractionId` 중복이 없는지
 - 개수가 허용 범위(예: 1~10) 안인지
 - `order_index`는 클라이언트 값을 신뢰하지 않고 서버가 배열 순서 기준으로 재부여
+- **`startDate`/`endDate`가 요청자의 기존 `CONFIRMED` 여행과 겹치지 않는지**(겹치면 409 — §5.2 캘린더 규칙이 여기서도 최종 재검증됨, 클라이언트가 미리 `/api/trips/dates/check`를 통과했어도 저장 시점에 다시 확인)
 
-### 캘린더
-| Method | Path | 설명 |
-|---|---|---|
-| POST | `/api/courses/{id}/schedule` | `{ startDate, endDate }` → 날짜 지정, 기존 확정 코스와 겹치면 경고/차단(방식 미확정, §9) |
-
-### 친구 · 초대
+### 친구 · 초대 (v2, §6)
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/api/friends/requests` | `{ targetUserId }` 친구 요청 |
 | POST | `/api/friends/requests/{id}/accept` | 친구 요청 수락 |
 | POST | `/api/courses/{id}/invitations` | 초대 링크 발급 → `{ inviteUrl }` |
-| POST | `/api/invitations/{token}/accept` | 초대 수락 → `trip_members`에 추가 |
+| GET  | `/api/invitations/{token}` | **인증 불필요** — 비회원도 초대 링크로 여행 계획 열람 가능(when2meet 방식, §6) |
+| POST | `/api/invitations/{token}/accept` | 초대 수락(로그인 필요) → 참여자의 기존 `CONFIRMED` 여행과 날짜가 겹치면 409, 통과 시 `trip_members`에 추가 |
 
 ## 8. 데모 레포에서 참고할 것
 
@@ -368,7 +381,10 @@ stateless라 클라이언트 상태는 임의로 조작될 수 있으므로, 저
 1. 카카오 외 구글도 필수인지, 애플 로그인 필요 여부
 2. Spring Boot 유지 여부 (데모와 스택 통일 시 이점 있음, JDBC 드라이버만 SQLite용으로 교체)
 3. Ollama를 어디서 구동할지 (로컬 개발 PC vs 배포 서버) — 배포 서버 스펙에 따라 `bge-m3`(파라미터 큼, 정확도↑) 대신 더 가벼운 모델(`nomic-embed-text` 등)로 낮출 수도 있음
-4. **캘린더 연동 방식**: (a) 자체 내부 캘린더(trip_plans.start_date/end_date만으로 겹침 검사) vs (b) 구글 캘린더 실제 연동(추가 OAuth 스코프, 이벤트 생성 API 호출 필요) — 사용자도 아직 고민 중이라고 밝힘, 우선 (a)로 MVP 가고 (b)는 후속으로 미루는 걸 제안
-5. **완전랜덤/취향반영랜덤 기본값**: 사용자가 매번 선택하게 할지, 프로필에 기본 모드를 저장해서 원클릭으로 갈지
-6. **이동수단·거주지(origin) 기반 동선 계산**: 카카오모빌리티 API(데모에서 이미 사용 중, 하루 300회 한도)로 실제 경로 최적화를 할지, 아니면 단순 거리 기반 근사 정렬로 갈지 — 한도 고려 시 저장(확정) 시점 1회만 호출하는 데모 원칙을 따르는 게 안전
-7. **친구 초대 링크의 인증 요구 수준**: 링크만 있으면 누구나 들어올 수 있게 할지, 초대받은 사람도 가입/로그인 필수로 할지
+
+**아래는 2026-09-17 팀 논의(PR #1, lbeul372·Suuunz 코멘트)로 결정됨:**
+
+4. ~~캘린더 연동 방식~~ → **결정**: 자체 내부 캘린더(trip_plans.start_date/end_date 겹침 검사, 겹치면 차단)를 v1에 포함. 구글 캘린더 실연동은 후속(v2)이며, 거기서는 경고만 하고 차단하지 않는다(§5.2)
+5. ~~완전랜덤/취향반영랜덤 기본값~~ → **결정**: 프로필에 기본 모드를 저장해두고, 화면에서는 체크박스로 즉시 바꿀 수 있게 한다(§5.2)
+6. ~~이동수단·거주지 기반 동선 계산~~ → **결정**: 카카오모빌리티 **자동차 길찾기 API** 채택(self-serve, 일 10,000건 무료·초과 시 건당 8원). 단 도보 길찾기는 별도 제휴 심사가 필요해 리스크로 남아있음 — 도보 구간은 당분간 근사치로 대체(§5.2b)
+7. ~~친구 초대 링크의 인증 요구 수준~~ → **결정**: 링크 열람(조회)은 비회원도 가능(when2meet 방식), 실제 참여(코스 수정 권한)는 로그인 필요(§6, §7)
