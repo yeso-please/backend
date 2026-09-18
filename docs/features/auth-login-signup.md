@@ -28,6 +28,8 @@
 
 - 소셜 로그인(카카오/구글 인가코드 교환) — `POST /api/auth/social/{provider}` (API-DESIGN-DRAFT §1 설계는 되어 있으나 미구현)
 - 로그인된 상태에서 소셜 계정 추가 연결(API-DESIGN-DRAFT §1.4, MVP 포함 아님이 이미 문서에 명시됨)
+- 비밀번호 재설정(찾기) — API-DESIGN-DRAFT.md/FEATURE-SPEC.md 어디에도 설계돼 있지 않음. 메일 발송 인프라,
+  1회용 재설정 토큰 테이블, rate limit 정책을 새로 설계해야 하는 별도 작업(작업 명세 미작성)
 - 온보딩/추천 등 인증이 필요한 다른 도메인 API — 이번 작업은 인증 모듈 자체만 다룸
 
 ## 사용자 흐름
