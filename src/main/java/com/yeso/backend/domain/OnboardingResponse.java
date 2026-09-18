@@ -1,5 +1,6 @@
 package com.yeso.backend.domain;
 
+import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

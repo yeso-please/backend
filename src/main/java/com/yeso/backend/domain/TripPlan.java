@@ -1,5 +1,6 @@
 package com.yeso.backend.domain;
 
+import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.domain.enums.Transport;
 import com.yeso.backend.domain.enums.TripPlanStatus;
 import jakarta.persistence.Column;
