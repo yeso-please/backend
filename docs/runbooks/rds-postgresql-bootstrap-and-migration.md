@@ -4,6 +4,112 @@
 
 > **현재 상태:** WORK-00 구현으로 PostgreSQL/Flyway V1과 `ddl-auto=validate`가 준비됐다. 브랜치의 CI가 통과하고 팀 리뷰로 V1을 승인한 다음 로컬 이관 리허설을 시작한다. JPA가 임의로 만든 테이블을 기준 스키마로 삼지 않는다.
 
+> **중요한 현실 확인:** 2026-09-20 현재 이 저장소에는 WORK-09 이관 실행기와 migration 전용 Gradle task가 아직 없다. `./gradlew flywayMigrate`는 현재 실행할 수 없는 명령이다. 지금 바로 가능한 것은 PostgreSQL/Flyway V1 검증과 Spring Boot 기동 시 migration 적용까지다. H2 이관은 이 문서의 **Phase C 구현 계약**을 먼저 코드로 완성한 뒤 실행한다.
+
+## 0. 이 문서를 사용하는 방법
+
+이 작업은 세 덩어리다. 순서를 섞지 않는다.
+
+| 단계 | 누가 하는가 | 결과 |
+|---|---|---|
+| WORK-09A | 백엔드 개발자/에이전트 | H2를 읽어 로컬 PostgreSQL에 멱등 이관하는 실행기와 품질 리포트 |
+| WORK-09B | 인프라 담당 개발자 | 개발 RDS, 역할 분리, TLS, snapshot, 최초 schema/data 적재 |
+| WORK-09C | 백엔드 개발자 | 이후 Flyway 변경을 CI에서 검증하고 dev 배포 시 자동 반영하는 경로 |
+
+완료 순서는 아래 하나뿐이다.
+
+```text
+09A 코드 구현
+→ 로컬 PostgreSQL dry-run/apply/validate/apply 재실행
+→ 팀이 품질 리포트 승인
+→ 09B 개발 RDS 생성
+→ 최초 Flyway 적용
+→ 동일 원본으로 데이터 이관
+→ snapshot과 검증 리포트
+→ 09C dev 자동 migration 연결
+→ TourAPI 보강
+```
+
+절대 먼저 하지 않는 일:
+
+- RDS를 먼저 만들고 거기서 이관 코드를 디버깅하지 않는다.
+- H2 dump SQL을 PostgreSQL에 직접 실행하지 않는다.
+- 엔티티만 바꾸고 `ddl-auto=update`로 RDS를 맞추지 않는다.
+- PR CI가 개발/운영 RDS에 접속하게 하지 않는다.
+- V1처럼 이미 공유 DB에 적용된 migration을 수정하지 않는다.
+- 운영 RDS에 WORK-09 명령을 실행하지 않는다.
+
+### 0.1 사람과 에이전트의 작업 경계
+
+이 프로젝트에서는 사람이 AWS 계정과 비용·접근 권한을 책임지고, 데이터 이관은 에이전트가 끝까지 수행한다.
+
+사람이 직접 하는 일은 여섯 개뿐이다.
+
+1. AWS Budget과 결제 알림을 만든다.
+2. Phase E대로 `tripin-dev-postgres` RDS와 보안 그룹을 만든다.
+3. 현재 개발 PC의 공인 IP `/32`만 5432 inbound에 등록한다.
+4. `tripin_admin`, `tripin_migrator`, `tripin_app` 비밀번호를 팀 비밀번호 관리자에 보관한다.
+5. Git에 포함되지 않는 `config/application-secret.yaml` 또는 현재 shell 환경변수에 접속값을 넣는다.
+6. 에이전트에게 아래 handoff prompt를 전달한다.
+
+그 뒤 에이전트가 맡는 일:
+
+- 데모 서버 중지 여부와 H2 backup/checksum 확인
+- WORK-09A 이관 실행기 구현과 테스트
+- 로컬 PostgreSQL dry-run/apply/validate/reapply
+- 품질 리포트 분석
+- 개발 RDS endpoint/database/TLS/Flyway 상태의 read-only 사전 검사
+- before snapshot 존재 확인
+- 개발 RDS Flyway 적용과 데이터 이관
+- RDS validate/reapply, 행 수·checksum·품질 대조
+- after snapshot과 논리 dump 안내/생성 가능한 범위 수행
+- secret 제거 확인과 최종 보고
+
+에이전트에게 AWS master password, application password, API key를 채팅으로 보내지 않는다. 로컬 secret 파일이나 환경변수를 준비한 뒤 “준비됐다”고만 알린다. 에이전트는 secret 값을 출력하거나 `git diff`에 노출하지 않아야 한다.
+
+### 0.2 RDS 설정 후 그대로 전달할 에이전트 prompt
+
+아래에서 `<H2_BACKUP_ABSOLUTE_PATH>`만 실제 경로로 바꾼다. 비밀번호나 API key는 넣지 않는다.
+
+```text
+TARGET_WORK=WORK-09A+09B
+
+AGENTS.md와 docs/runbooks/rds-postgresql-bootstrap-and-migration.md 전체,
+docs/mvp/implementation-workpack.md의 WORK-09,
+.agents/skills/flyway-rds-sync/SKILL.md를 먼저 읽고 그대로 수행해라.
+
+개발 RDS와 local secret 설정은 준비되어 있다. 운영 RDS는 범위 밖이다.
+원본 H2 backup은 <H2_BACKUP_ABSOLUTE_PATH>다.
+
+1. git status와 현재 PostgreSQL/Flyway 구성을 검사하고 사용자 변경을 보존해라.
+2. 원본 H2를 절대 수정하지 말고 SHA-256과 read-only open을 확인해라.
+3. 문서 계약의 demoMigration dry-run/apply/resume/validate 실행기,
+   품질 리포트, quarantine, Testcontainers 테스트를 구현해라.
+4. RDS에 접속하기 전 로컬 PostgreSQL에서 dry-run→apply→validate→같은 apply를
+   다시 실행하고 inserted=0, unexpected updated=0을 증명해라.
+5. source count, 개인정보 제외, region/FK/좌표/설명/이미지/course stop 품질을
+   리포트하고 치명적 오류가 있으면 RDS를 변경하지 말고 중단해라.
+6. DB_URL의 host/database가 개발 RDS와 tripin_dev인지, TLS verify-full인지,
+   Flyway history와 before snapshot 준비 여부를 확인해라. secret 값은 출력하지 마라.
+7. 검증한 동일 git SHA와 source checksum으로 개발 RDS에 Flyway를 적용하고,
+   dry-run UUID를 확인한 다음 데이터 이관을 실행해라.
+8. RDS에서 validate와 reapply를 실행하고 table count, 중복, FK, 좌표,
+   추천 가능 후보 수를 로컬 결과와 대조해라.
+9. after snapshot/논리 dump를 만들 수 있으면 만들고, 콘솔 동작이 필요하면
+   정확히 한 단계만 나에게 요청해라.
+10. compileJava test와 PostgreSQL integration test를 실행하고 결과를 보고해라.
+
+금지: 운영 host 접속, 0.0.0.0/0 개방, H2 raw dump 실행, ddl-auto update,
+기적용 Flyway 수정/repair/clean, 개인정보 이관, secret 로그/커밋,
+품질 오류를 임의 데이터로 채우기.
+
+완료 보고에는 source SHA-256, git SHA, Flyway versions, run IDs,
+테이블별 source/insert/update/skip/quarantine, 두 번째 apply 결과,
+추천 가능 지역/관광지 수, snapshot 이름, 남은 품질 issue를 포함해라.
+```
+
+에이전트가 AWS 콘솔을 직접 조작할 수 없는 환경이면 snapshot 생성처럼 콘솔에서만 가능한 한 단계만 사용자에게 요청한다. 나머지 구현·명령·검증은 계속 수행해야 한다.
+
 ## 1. 이번 작업의 완료 상태
 
 아래 네 결과가 모두 있어야 완료다.
@@ -98,73 +204,149 @@ Get-FileHash -Algorithm SHA256 -LiteralPath $backup
 | `course_point` | `official_course_stops` | 원래 순서와 content ID 보존 |
 | `api_call_usage` | 없음 | 새 `ingestion_runs`가 대체하므로 과거 일일 카운터는 이관하지 않음 |
 | 계정·후기·일정·세션 | 없음 | 개인정보/데모 사용자 데이터이므로 제외 |
-| 음식점·착한가격업소·특산물 | MVP core 아님 | 이번 1차 이관에서 제외하고 별도 결정 후 추가 |
+| 데모 음식점·착한가격업소·특산물 | `restaurants`, `restaurant_sources`, `region_food_themes` | 원천·갱신일·지역 연결을 검증할 수 있는 행만 DRAFT/후보로 이관; 승인·추천 상태로 자동 승격 금지 |
 
 필드 매핑의 최종 기준은 Java 엔티티가 아니라 **병합된 Flyway SQL**이다.
 
-## 6. Phase C — WORK-00을 먼저 구현
+## 6. Phase C — WORK-09A 이관 실행기 구현
 
-backend에서 다음이 생기기 전에는 Phase D 이후로 넘어가지 않는다.
+WORK-00의 PostgreSQL/Flyway 기반은 이미 구현됐다. 이제 RDS를 만들기 전에 이관 실행기를 완성한다. 구현 에이전트에는 이 문서 전체와 `TARGET_WORK=WORK-09A`를 전달한다.
 
-- PostgreSQL JDBC driver
-- Flyway core와 PostgreSQL 지원 모듈
-- 로컬 PostgreSQL Docker Compose
-- `src/main/resources/db/migration/V1__baseline.sql`
-- local/test/dev-rds profile 분리
-- 모든 환경의 `spring.jpa.hibernate.ddl-auto=validate`
-- Testcontainers PostgreSQL 통합 테스트
-- H2를 읽고 새 스키마로 변환하는 재시작 가능 이관 도구
+### 6.1 생성해야 하는 공개 실행 명령
 
-에이전트에는 다음 프롬프트를 그대로 전달할 수 있다.
+Gradle task 이름은 아래로 고정한다. 팀원이 구현체 내부 클래스를 몰라도 실행할 수 있어야 한다.
 
-```text
-docs/mvp/README.md, decisions.md, data-and-recommendation.md,
-implementation-workpack.md의 WORK-00/09와
-.agents/skills/flyway-rds-sync/SKILL.md를 먼저 읽어라.
+```powershell
+# 원본과 mapping만 검사한다. 대상 DB를 변경하지 않는다.
+.\gradlew.bat demoMigration --args="--mode=dry-run --source=C:/absolute/path/sumeun.mv.db"
 
-현재 backend의 SQLite + ddl-auto=update를 PostgreSQL/Flyway 기반으로 바꿔라.
-로컬 Docker Compose, Flyway V1, ddl-auto=validate, Testcontainers를 포함하라.
-docs/mvp의 전체 핵심 테이블을 V1에 만들고 엔티티와 일치시켜라.
+# PostgreSQL에 batch 단위로 적재한다.
+.\gradlew.bat demoMigration --args="--mode=apply --source=C:/absolute/path/sumeun.mv.db"
 
-그다음 데모 H2 파일을 읽어 지역/관광지/관광지 이미지/공식 코스/코스 stop만
-대상 PostgreSQL로 옮기는 one-off migration runner를 구현하라.
-source_system + source_content_id를 멱등 키로 사용하고 dry-run/apply/resume,
-batch transaction, 실패 행 quarantine, 실행 manifest와 품질 리포트를 지원하라.
-사용자·후기·일정·세션·비밀번호는 절대 이관하지 마라.
+# 특정 실패 실행을 이어서 처리한다.
+.\gradlew.bat demoMigration --args="--mode=apply --source=C:/absolute/path/sumeun.mv.db --resume-run-id=<UUID>"
 
-첫 검증 대상은 로컬 PostgreSQL이다. RDS에 접속하거나 외부 API를 호출하지 마라.
-두 번 apply했을 때 행 수와 내용 checksum이 동일한 통합 테스트를 추가하라.
-완료 시 정확한 실행 명령, 환경 변수, 생성 파일, 롤백 방법을 문서화하라.
+# 적재 결과와 품질을 읽기 전용으로 검증한다.
+.\gradlew.bat demoMigration --args="--mode=validate --run-id=<UUID>"
 ```
 
-### WORK-00 통과 확인
+`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`는 환경변수로 받는다. 명령 인자에 비밀번호를 넣지 않는다. source는 절대 경로만 허용하고 `.mv.db` 이외 파일은 거부한다.
 
-아래가 모두 참이어야 한다.
+### 6.2 구현 구조
 
-- 새 clone에서 한 명령으로 PostgreSQL 기동과 Flyway migration이 된다.
-- 빈 DB와 기존 V1 적용 DB 모두 테스트가 통과한다.
-- Hibernate가 테이블을 생성/변경하지 않는다.
-- 이관 도구의 `--dry-run`은 원천을 바꾸지 않고 예상 행 수만 출력한다.
-- 이관 도구를 로컬 DB에 두 번 실행해도 중복 행이 없다.
+```text
+tools/demo-migration
+├─ command       인자 파싱, mode 분기, exit code
+├─ source/h2     read-only H2 조회와 source DTO
+├─ mapping       명시적 field 변환과 검증
+├─ target/pg     PostgreSQL upsert repository
+├─ quality       대조·품질 검사와 JSON/Markdown report
+└─ run           batch/cursor/ingestion_runs 상태 관리
+```
+
+H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전용 source set/configuration에만 둔다. source connection은 `ACCESS_MODE_DATA=r` 또는 동등한 read-only 설정을 사용한다. 이관 실행기에서 JPA entity를 source schema처럼 사용하지 말고 원본 컬럼을 source DTO로 명시한다.
+
+### 6.3 고정 이관 순서와 key
+
+외래키 때문에 아래 순서를 지킨다.
+
+1. `region → regions`
+2. `attraction → attractions`
+3. 관광지 대표/상세 이미지 → `attraction_images`
+4. `travel_course → official_courses`
+5. `course_point → official_course_stops`
+
+멱등 key:
+
+- region: `sig_cd`
+- attraction: `(source_system='TOUR_API', source_content_id)`
+- official course: `(source_system='TOUR_API', source_content_id)`
+- image: `(attraction_id, image_url)`
+- stop: `(official_course_id, stop_order)`
+
+성공적으로 적재된 nonblank 값을 이후 빈 source 값으로 덮어쓰지 않는다. source key가 없거나 region을 찾지 못하는 행은 억지로 insert하지 않고 `data_quality_issues`와 quarantine report에 남긴다.
+
+### 6.4 batch, 재시작, exit code
+
+- 기본 batch는 200행이며 한 batch가 한 transaction이다.
+- commit 후에만 `ingestion_runs.cursor_value`를 갱신한다.
+- 한 행의 mapping 오류는 quarantine하고 다음 행을 진행한다.
+- DB 연결, schema 불일치, checksum 불일치는 즉시 중단한다.
+- 동일 `--resume-run-id`는 source checksum과 application version이 같을 때만 허용한다.
+- dry-run은 대상 DB에 `ingestion_runs`조차 쓰지 않는다.
+
+| Exit code | 의미 |
+|---:|---|
+| 0 | 요청한 mode 성공 |
+| 2 | CLI 인자/환경변수 오류 |
+| 3 | source 파일/checksum/schema 오류 |
+| 4 | target 연결/Flyway version 오류 |
+| 5 | 일부 행 quarantine으로 PARTIAL |
+| 6 | 실행 실패, 안전하게 재개 가능 |
+
+### 6.5 리포트 계약
+
+`build/reports/demo-migration/<run-id>/`에 다음을 만든다.
+
+- `manifest.json`: source SHA-256, git SHA, 시작/종료, mode, batch size
+- `counts.json`: source/insert/update/skip/quarantine 수
+- `quality.json`: 설명·좌표·VALID 이미지 교집합과 지역별 후보 수
+- `quarantine.csv`: entity type, source key, error code. 자유서술 전문과 개인정보는 넣지 않음
+- `summary.md`: 사람이 리뷰하는 요약
+
+수량식은 각 entity마다 `source = inserted + updated + skipped + quarantined`여야 한다. apply를 같은 원본으로 다시 실행했을 때 `inserted=0`, 내용 변화가 없으면 `updated=0`이어야 한다.
+
+### 6.6 구현 필수 테스트
+
+- 실제 구조를 축소한 H2 fixture → PostgreSQL 17 Testcontainers 전체 이관
+- dry-run 전후 target checksum 동일
+- 두 번째 apply 결과 불변
+- batch 중간 실패 후 resume
+- 알 수 없는 region, 중복 source ID, 빈 key quarantine
+- 성공 description/image를 빈 source가 덮어쓰지 않음
+- 사용자·비밀번호·refresh/session/review/trip 데이터가 target에 들어오지 않음
+- production처럼 보이는 host 또는 `tripin_prod` DB는 명시적 allowlist가 없으면 거부
+
+### 6.7 WORK-09A 완료 gate
+
+- [ ] 위 네 Gradle 명령이 `--help`와 함께 동작한다.
+- [ ] 로컬 PostgreSQL에서 dry-run/apply/validate/reapply를 완료했다.
+- [ ] 모든 수량식이 맞고 quarantine 사유를 설명할 수 있다.
+- [ ] PostgreSQL 17 Testcontainers 테스트가 CI에서 통과한다.
+- [ ] RDS endpoint를 한 번도 사용하지 않고 09A를 완료했다.
 
 ## 7. Phase D — 로컬 PostgreSQL 리허설
 
-실제 명령 이름은 WORK-00 PR에 작성된 실행 문서를 따른다. 일반적인 실행 흐름은 다음과 같다.
+Docker Desktop을 켜고 PowerShell에서 실행한다. 현재 Flyway는 Spring Boot가 기동되면서 먼저 적용되고, 그다음 Hibernate가 `validate`한다.
 
 ```powershell
 Set-Location 'C:\Users\ysj18\Downloads\hidden-travel\backend'
 docker compose up -d postgres
-.\gradlew.bat flywayMigrate
-.\gradlew.bat test
+.\gradlew.bat compileJava test --no-daemon
+.\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
+
+로그에서 Flyway V1 성공과 `Started BackendApplication`을 확인한 후 `Ctrl+C`로 서버를 멈춘다. 별도의 `flywayMigrate` task는 WORK-09C가 만들기 전까지 사용하지 않는다.
 
 그 후 고정한 H2 백업을 source로 이관 도구를 실행한다.
 
-```text
-1차: dry-run → source count와 매핑/제외/실패 수 확인
-2차: apply → 로컬 PostgreSQL 적재
-3차: validate/report → 테이블별 수량과 품질 리포트 생성
-4차: 같은 apply 재실행 → inserted=0, unexpected updated=0 확인
+```powershell
+$env:DB_URL='jdbc:postgresql://localhost:5432/tripin_local?currentSchema=app'
+$env:DB_USERNAME='tripin_local'
+$env:DB_PASSWORD='tripin_local_dev_only'
+$source='C:/absolute/path/migration-backups/sumeun-YYYYMMDD-HHMMSS.mv.db'
+
+.\gradlew.bat demoMigration --args="--mode=dry-run --source=$source"
+.\gradlew.bat demoMigration --args="--mode=apply --source=$source"
+# 위 출력의 runId를 복사한다.
+.\gradlew.bat demoMigration --args="--mode=validate --run-id=<RUN_ID>"
+.\gradlew.bat demoMigration --args="--mode=apply --source=$source"
+```
+
+마지막 실행이 `inserted=0, updated=0`인지 확인한다. 확인 후 현재 PowerShell의 비밀값을 지운다.
+
+```powershell
+Remove-Item Env:DB_URL,Env:DB_USERNAME,Env:DB_PASSWORD -ErrorAction SilentlyContinue
 ```
 
 다음을 반드시 리포트한다.
@@ -349,13 +531,35 @@ Windows 경로는 `/`를 사용하거나 URL encoding한다. `application-secret
 
 ### 10.3 schema migration
 
-1. `flywayInfo`로 대상 endpoint와 pending migration을 확인한다.
-2. `flywayValidate`가 성공해야 한다.
-3. `flywayMigrate`를 한 번 실행한다.
-4. `flywayInfo`에서 모든 migration이 `Success`인지 확인한다.
-5. `flyway_schema_history`를 직접 수정하지 않는다.
+최초 1회는 현재 구현된 Spring Boot Flyway 경로를 사용한다. 별도 migration task가 구현되기 전에는 존재하지 않는 `flywayMigrate`를 실행하지 않는다.
 
-정확한 Gradle task 이름은 WORK-00이 정한 명령을 사용한다. 실행 로그에는 URL의 host/database와 migration version만 남기고 사용자명/비밀번호는 남기지 않는다.
+```powershell
+Set-Location 'C:\Users\ysj18\Downloads\hidden-travel\backend'
+$env:SPRING_PROFILES_ACTIVE='dev-rds'
+$env:DB_URL='jdbc:postgresql://<RDS_ENDPOINT>:5432/tripin_dev?currentSchema=app&sslmode=verify-full&sslrootcert=C:/Users/<YOU>/.aws/rds/global-bundle.pem'
+$env:DB_USERNAME='tripin_app'
+$env:DB_PASSWORD='<APP_PASSWORD>'
+$env:FLYWAY_USER='tripin_migrator'
+$env:FLYWAY_PASSWORD='<MIGRATOR_PASSWORD>'
+$env:JWT_SECRET='<AT_LEAST_32_RANDOM_BYTES>'
+.\gradlew.bat bootRun
+```
+
+Flyway 성공, Hibernate validate 성공, `Started BackendApplication`을 확인한 뒤 `Ctrl+C`로 종료한다. 이어서 `psql`에서 확인한다.
+
+```sql
+SELECT installed_rank, version, description, type, success, installed_on
+FROM app.flyway_schema_history
+ORDER BY installed_rank;
+```
+
+V1이 `success=true`여야 한다. 같은 서버를 다시 기동했을 때 새 migration 없이 Flyway가 아무 SQL도 적용하지 않아야 한다. `flyway_schema_history`를 직접 수정하지 않는다.
+
+현재 shell의 secret은 작업 후 제거한다.
+
+```powershell
+Remove-Item Env:SPRING_PROFILES_ACTIVE,Env:DB_URL,Env:DB_USERNAME,Env:DB_PASSWORD,Env:FLYWAY_USER,Env:FLYWAY_PASSWORD,Env:JWT_SECRET -ErrorAction SilentlyContinue
+```
 
 ### 10.4 데이터 이관
 
@@ -370,9 +574,181 @@ Windows 경로는 `/`를 사용하거나 URL encoding한다. `application-secret
 
 RDS에 H2 dump SQL을 직접 실행하거나 JPA `ddl-auto=update`로 구조를 맞추지 않는다. H2와 PostgreSQL의 타입, identity, 예약어, boolean 문법이 달라 안전하지 않다.
 
-## 11. Phase H — 검증과 롤백
+### 10.5 RDS 이관 실행의 안전장치
 
-### 11.1 최소 SQL 검증
+이관 실행기는 아래 값이 모두 일치할 때만 RDS apply를 허용한다.
+
+```text
+MIGRATION_TARGET_ENV=dev
+MIGRATION_ALLOWED_DB=tripin_dev
+MIGRATION_CONFIRM_RUN_ID=<dry-run에서 받은 UUID>
+현재 DB 이름 = tripin_dev
+현재 host suffix = .rds.amazonaws.com
+현재 Flyway schema가 최신 성공 상태
+source checksum = 승인된 로컬 리허설 checksum
+```
+
+하나라도 다르면 exit code 4로 종료한다. `prod`, `production`, `tripin_prod`가 host/database/profile에 포함되면 우회 flag 없이 무조건 거부한다.
+
+## 11. Phase H — 이후 schema 변경을 dev RDS에 자동 반영
+
+### 11.1 자동화의 정확한 의미
+
+엔티티를 저장하면 RDS가 자동으로 바뀌는 구조가 아니다. 개발자가 **새 Flyway SQL을 작성하고 PR을 병합하면**, 검증된 backend가 dev 환경에 배포될 때 Spring Boot가 pending migration만 적용한다.
+
+```text
+Entity/Repository 변경
+        ↓
+V{N}__description.sql 추가
+        ↓
+PR: PostgreSQL 17 Testcontainers에서 V1→VN + JPA validate
+        ↓ merge
+dev backend 배포/재시작
+        ↓
+Flyway가 tripin_migrator로 pending migration 적용
+        ↓
+Hikari/JPA는 tripin_app으로 연결하고 ddl-auto=validate
+        ↓
+health check 성공 후 dev 배포 완료
+```
+
+PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이 아니며 별도 승인·snapshot·migration job이 필요하다.
+
+### 11.2 WORK-09C에서 구현할 migration 전용 명령
+
+애플리케이션 전체를 띄우지 않고 `info → validate → migrate → info`를 수행하는 `rdsMigrate` Gradle task를 추가한다. Flyway Gradle plugin 또는 전용 JavaExec 중 하나로 구현하되 공개 인터페이스는 아래로 고정한다.
+
+```powershell
+.\gradlew.bat rdsMigrationInfo
+.\gradlew.bat rdsMigrationValidate
+.\gradlew.bat rdsMigrate
+```
+
+필수 환경변수:
+
+| 변수 | 예시/의미 |
+|---|---|
+| `MIGRATION_TARGET_ENV` | `dev`; 그 외 기본 거부 |
+| `DB_URL` | `tripin_dev`와 `sslmode=verify-full` 포함 |
+| `FLYWAY_USER` | `tripin_migrator` |
+| `FLYWAY_PASSWORD` | secret store에서 주입 |
+| `RDS_CA_PATH` | AWS RDS CA bundle 절대 경로 |
+
+명령은 시작할 때 secret을 제외한 target host/database, 현재 version, pending version을 보여주고, 끝날 때 적용 version과 소요시간을 출력한다. `clean`, `repair`, `baselineOnMigrate=true`, out-of-order 적용은 제공하지 않는다.
+
+### 11.3 migration 파일 작성 규칙
+
+1. main 최신 상태에서 현재 최대 version을 확인한다.
+
+   ```powershell
+   Get-ChildItem src/main/resources/db/migration | Sort-Object Name
+   ```
+
+2. 팀 채널/PR에서 다음 번호를 예약한다. 동시에 같은 번호를 만들지 않는다.
+3. `V2__add_refresh_rotation.sql`처럼 ASCII snake_case 이름으로 새 파일을 만든다.
+4. 이전 migration은 수정·삭제·재번호화하지 않는다.
+5. entity 변경과 SQL을 같은 PR에 넣는다.
+6. 큰 table 변경은 nullable column 추가 → backfill → constraint 강화의 여러 migration으로 나눈다.
+7. data backfill은 결정적이고 재현 가능해야 하며 외부 API를 migration 안에서 호출하지 않는다.
+8. PostgreSQL transaction에서 실행할 수 없는 DDL은 별도 migration과 runbook을 작성한다.
+
+예시:
+
+```sql
+-- V2__add_refresh_rotation.sql
+ALTER TABLE app.refresh_tokens
+    ADD COLUMN family_id UUID,
+    ADD COLUMN revoked_at TIMESTAMP WITHOUT TIME ZONE,
+    ADD COLUMN replaced_by_token_id BIGINT;
+
+UPDATE app.refresh_tokens
+SET family_id = gen_random_uuid()
+WHERE family_id IS NULL;
+
+ALTER TABLE app.refresh_tokens
+    ALTER COLUMN family_id SET NOT NULL,
+    ADD CONSTRAINT fk_refresh_replaced_by
+        FOREIGN KEY (replaced_by_token_id)
+        REFERENCES app.refresh_tokens(id)
+        ON DELETE SET NULL;
+
+CREATE INDEX idx_refresh_tokens_family_active
+    ON app.refresh_tokens(family_id)
+    WHERE revoked_at IS NULL;
+```
+
+실제 적용 전 extension 사용 가능 여부와 기존 데이터 호환성을 확인한다. 예시 SQL을 그대로 복사하는 것이 아니라 WORK별 확정 schema에 맞춘다.
+
+### 11.4 PR에서 자동 검증할 항목
+
+`.github/workflows/ci.yml`은 RDS 대신 PostgreSQL 17 Testcontainers에서 다음을 검증한다.
+
+- 빈 DB에 V1부터 최신까지 migration
+- 직전 release schema에서 최신까지 upgrade
+- migration naming/checksum validation
+- 두 번째 migrate가 no-op
+- Hibernate `ddl-auto=validate`
+- 새 NOT NULL/UNIQUE/FK/CHECK/index의 성공·실패 경계
+- 이미 적용된 migration 파일 변경 탐지
+
+PR에 migration이 있는데 entity/test/docs가 없거나, entity schema가 바뀌었는데 migration이 없으면 CI를 실패시킨다. GitHub branch protection에서 이 job을 required check로 지정한다.
+
+### 11.5 dev 자동 적용 방식
+
+MVP에서는 **backend dev 배포 시 Spring Boot Flyway 자동 적용**을 사용한다. `application.yml`의 `spring.flyway.enabled=true`, `ddl-auto=validate`, `application-dev-rds.yml`의 별도 `FLYWAY_USER`가 이미 이 모델의 기반이다.
+
+배포 환경에는 아래를 secret으로 주입한다.
+
+```text
+SPRING_PROFILES_ACTIVE=dev-rds
+DB_URL=jdbc:postgresql://.../tripin_dev?currentSchema=app&sslmode=verify-full&sslrootcert=...
+DB_USERNAME=tripin_app
+DB_PASSWORD=...
+FLYWAY_USER=tripin_migrator
+FLYWAY_PASSWORD=...
+JWT_SECRET=...
+```
+
+애플리케이션 시작 순서는 Flyway migrate → Hibernate validate → HTTP ready다. migration 또는 validate가 실패하면 새 instance를 ready 상태로 만들지 않는다. 배포 플랫폼 health check가 실패해야 하며 기존 정상 instance는 유지한다.
+
+dev RDS가 public인 동안에도 GitHub-hosted runner가 RDS에 직접 접속하도록 `0.0.0.0/0`를 열지 않는다. backend가 AWS에 배포되면 RDS는 private으로 바꾸고 backend security group만 5432 source로 허용한다. 별도 migration job이 필요해지면 RDS와 같은 VPC의 CodeBuild/ECS task를 사용한다.
+
+### 11.6 첫 자동 migration 리허설
+
+1. dev RDS 수동 snapshot을 만든다.
+2. 무해한 테스트 migration이 아니라 다음 실제 기능 migration을 로컬/Testcontainers에서 검증한다.
+3. dev 배포를 한 번 실행한다.
+4. 배포 로그에서 적용 version을 확인한다.
+5. `app.flyway_schema_history`와 새 column/index/constraint를 조회한다.
+6. 서버를 다시 배포해 migration이 no-op인지 확인한다.
+7. `tripin_app`으로 DDL이 거부되는지 재확인한다.
+
+### 11.7 실패와 복구
+
+| 실패 | 조치 |
+|---|---|
+| migration 시작 전 연결 실패 | 보안 그룹, TLS, secret을 고치고 재배포 |
+| transactional migration 실패 | Flyway가 rollback했는지 확인하고 새 수정 migration을 작성 |
+| migration 성공 후 JPA validate 실패 | 앱 배포를 중단하고 entity/SQL 불일치를 새 PR로 수정 |
+| migration 성공 후 기능 장애 | 앱 코드만 이전 버전으로 rollback. schema는 forward-compatible하게 유지 |
+| 대량 data 변경 오류 | 배치를 중지하고 snapshot을 새 instance로 복원해 대조 |
+| checksum mismatch | 적용된 파일을 고치지 말고 원본 복원 후 새 version으로 보정 |
+
+일반 배포 rollback이 schema downgrade를 뜻하지 않는다. 따라서 column/table 삭제와 rename은 최소 두 번의 배포로 나눈다. 먼저 신·구 코드가 같이 동작하도록 추가하고, 모든 instance 전환 뒤 별도 migration에서 오래된 구조를 제거한다.
+
+### 11.8 자동화 완료 gate
+
+- [ ] migration 없는 entity schema 변경을 CI가 잡는다.
+- [ ] 모든 PR은 PostgreSQL 17에서 clean/upgrade/no-op을 검증한다.
+- [ ] merge 후 dev 배포에서 pending migration이 한 번만 적용된다.
+- [ ] migration 실패 시 새 instance가 ready가 되지 않는다.
+- [ ] `tripin_app`은 DDL 권한이 없다.
+- [ ] GitHub runner를 위해 RDS port를 전 세계에 열지 않았다.
+- [ ] production은 자동 migration 대상이 아니다.
+
+## 12. Phase I — 검증과 롤백
+
+### 12.1 최소 SQL 검증
 
 실제 테이블/컬럼명은 병합된 V1을 기준으로 조정한다.
 
@@ -400,7 +776,7 @@ WHERE latitude NOT BETWEEN 33 AND 39
 
 마지막 두 쿼리는 0행/0건이어야 한다. 지역 250건은 원천 실측과 일치해야 한다. 관광지와 코스 수는 필터·격리 때문에 원천보다 작을 수 있으나 차이는 모두 리포트 사유 합계와 맞아야 한다.
 
-### 11.2 애플리케이션 검증
+### 12.2 애플리케이션 검증
 
 - `tripin_app` 계정으로 서버가 기동된다.
 - `ddl-auto=validate`가 성공한다.
@@ -408,7 +784,7 @@ WHERE latitude NOT BETWEEN 33 AND 39
 - 지역/관광지 read API가 샘플 데이터를 반환한다.
 - 빈 설명/이미지/좌표 관광지는 추천 후보에서 빠진다.
 
-### 11.3 완료 스냅샷과 논리 백업
+### 12.3 완료 스냅샷과 논리 백업
 
 RDS 수동 스냅샷을 만든다.
 
@@ -428,18 +804,18 @@ pg_dump `
 
 dump에는 데이터가 들어 있으므로 Git에 올리지 않고 접근 제한 저장소에 보관한다.
 
-### 11.4 실패 시 롤백 기준
+### 12.4 실패 시 롤백 기준
 
 - Flyway가 빈 DB에서 실패: 데이터를 넣지 말고 V migration을 수정한다. 아직 공유 적용 전인 V1만 수정 가능하다.
 - 일부 데이터 batch 실패: 스키마를 되돌리지 말고 실패 행을 격리한 뒤 cursor부터 재개한다.
 - 잘못된 대량 update/delete: 즉시 배치를 중지하고 before-import snapshot으로 **새 RDS 인스턴스**를 복원해 대조한다.
 - 공유된 Flyway migration 오류: 적용된 migration 파일을 고치지 않고 다음 version의 보정 migration을 추가한다.
 
-## 12. Phase I — TourAPI 상세·이미지 보강
+## 13. Phase J — TourAPI 상세·이미지 보강
 
 기본 이관과 스냅샷이 끝난 다음 `.agents/skills/tourapi-detail-backfill/SKILL.md`를 사용한다.
 
-### 12.1 원칙
+### 13.1 원칙
 
 - 이관된 description/image/detail을 먼저 재사용한다.
 - `source_content_id`가 있고 필요한 필드가 비어 있는 행만 호출한다.
@@ -449,12 +825,15 @@ dump에는 데이터가 들어 있으므로 Git에 올리지 않고 접근 제�
 - 원천 응답이 빈 값이면 `SOURCE_EMPTY`로 기록하고 반복 호출하지 않는다.
 - 성공 필드를 빈 응답으로 덮어쓰지 않는다.
 
-### 12.2 보강 순서
+### 13.2 보강 순서
 
 ```text
 detailCommon: overview/homepage/대표 이미지 확인
   → contentType별 detailIntro: 이용시간/휴무/주차/안내
   → 필요 시 detailImage: 검증 가능한 이미지 후보
+  → 음식점 contentTypeId=39: 대표메뉴/취급메뉴/영업시간/주차/이미지
+  → 농가맛집·모범/향토음식점·착한가격업소 source adapter
+  → 지역 음식·특산물 DRAFT와 근거 출처 생성
   → URL 검증
   → 추천 가능 상태 재계산
   → ingestion_runs/data_quality_issues 리포트
@@ -462,7 +841,7 @@ detailCommon: overview/homepage/대표 이미지 확인
 
 이미지가 없거나 설명·좌표가 없으면 MVP 추천 대상에서는 제외하되 원천 행은 삭제하지 않는다. 나중에 데이터가 보강되면 자동으로 다시 적격 판정을 받을 수 있어야 한다.
 
-### 12.3 지역 소개 콘텐츠
+### 13.3 지역 소개 콘텐츠
 
 TourAPI에는 시군구 단위 감성 소개문이 없다. 관광지 보강 후 다음 별도 배치를 수행한다.
 
@@ -474,7 +853,7 @@ TourAPI에는 시군구 단위 감성 소개문이 없다. 관광지 보강 후 
 
 AI 초안을 곧바로 `APPROVED`로 넣지 않는다.
 
-## 13. 운영 체크리스트
+## 14. 운영 체크리스트
 
 ### 생성 전
 
@@ -509,7 +888,7 @@ AI 초안을 곧바로 `APPROVED`로 넣지 않는다.
 - [ ] 이미지 검증 후 추천 가능 상태를 재계산한다.
 - [ ] 지역 소개는 DRAFT→사람 승인 절차를 거친다.
 
-## 14. 자주 막히는 문제
+## 15. 자주 막히는 문제
 
 ### `connection timed out`
 
@@ -543,7 +922,7 @@ RDS PostgreSQL 15+는 기본적으로 TLS를 요구한다. JDBC/psql에 `sslmode
 
 정상이다. raw dump를 넣는 방식이 아니라 이관 도구가 명시적으로 읽고 변환해야 한다. identity, boolean, CLOB/TEXT, 예약어와 제약이 DB마다 다르다.
 
-## 15. AWS 공식 참고
+## 16. 공식 참고
 
 - [RDS DB instance 생성](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CreateDBInstance.html)
 - [Public/private access 선택](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-public-private.html)
@@ -553,6 +932,8 @@ RDS PostgreSQL 15+는 기본적으로 TLS를 요구한다. JDBC/psql에 `sslmode
 - [DB instance class 사양](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.DBInstanceClass.Summary.html)
 - [RDS storage](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html)
 - [자동 백업 보존 기간](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.BackupRetention.html)
+- [CodeBuild의 VPC 접근](https://docs.aws.amazon.com/codebuild/latest/userguide/enabling-vpc-access-in-projects.html)
+- [GitHub Actions의 AWS OIDC 인증](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
 
 ## Related
 
