@@ -1,88 +1,96 @@
-# MVP 구현 작업서 — 팀 리뷰 후 실행
+# MVP 에이전트 구현 작업서
 
-상태: **proposed / 미구현**. [흐름](flow.md)·[API 계약](api.md)·[데이터/코스](data-and-recommendation.md)의 구현 순서다. 오늘의 목표는 코드 복제가 아니라 팀이 승인 가능한 계약과 독립 PR 경계를 만드는 것이다. API·테이블·수치는 승인 전 제안으로 취급한다.
+각 작업은 독립 PR이다. 에이전트에게 아래 공통 프롬프트와 해당 작업 블록만 전달한다. 한 PR에서 다른 작업까지 확장하지 않는다.
 
-## 데모에서 가져올 것과 버릴 것
-
-| 데모 근거 | 가져올 개념/데이터 | 그대로 복사하지 않을 것 | 새 저장소의 구현 위치 |
-|---|---|---|---|
-| `RegionSeeder`, `Region`, `SigGeometryService` | 5자리 `SIG_CD`, 250 지역 목록/경계 매핑 | 서버 렌더링 지도 화면 | `Region` + 지역 조회/추첨 API; 지도 애니메이션은 프론트 |
-| `TourSyncService`, `AttractionDetailBackfillService`, `AttractionDetailService` | TourAPI 원천 ID, 이미 확보한 설명·이미지·좌표, 재시작 가능한 상세 보강 | 화면 요청 때 대량 원천 호출 | 이관 배치 + 품질 상태 + 별도 수집 작업 |
-| `RegionIntroService` | 지역 데이터 기반 소개 폴백과 랜드마크 선택 | 관광지 이름을 공식 지역 설명처럼 단정 | 검수된 지역 소개 콘텐츠, 출처, 폴백 카드 |
-| `PersonalizedTripService`, `TravelerProfileService` | 취향·거리·설명 가능한 점수 요소 | 구형 3후보 조건 폼, 점수만으로 여행 완성 | 지역 가중 추첨 + 관광지 후보 점수 |
-| `DayPlanService`, `CourseRouteService` | 중복 방지, 동선/이동 추정과 실제 경로의 구분 | 하루 4슬롯 고정, 근거 없는 식당 자동 지정 | 여러 날의 시간 예산·식사 슬롯·제약 조립 |
-| `TripDiscoveryController`, `SharedTripService` | 발견 후 행동으로 이어지는 사용자 흐름 | 공유방·후기·다이어리·서버 HTML | 로그인→추첨→코스 확정 REST 흐름 |
-
-데모 DB와 코드는 `../hidden-travel`에 있는 로컬 참조이며 backend Git에는 복제하지 않는다. 경로가 없는 팀원은 데모 저장소 접근 여부를 먼저 확인한다. 데이터 수치와 원천 필드는 이관 직전 재실측한다.
-
-## PR 0 — 계약 승인 (세 명 함께, 구현 전)
-
-1. [리뷰 체크리스트](review-checklist.md)의 P0 항목을 승인하고 미결정은 담당자/기한을 적는다.
-2. 프론트와 `api.md`의 인증·추첨·코스 예시 JSON, 실패 형식, `SIG_CD` 문자열, 시간/타임존을 합의한다.
-3. `docs/FEATURE-SPEC.md`, `docs/API-DESIGN-DRAFT.md`, `docs/BUTTON-SPEC.md`의 구형 이메일/구글/게스트/SQLite/Ollama 직접 연결 설명을 새 계약과 대조한다. 승인 뒤 해당 문서에 superseded 표기를 하거나 업데이트해 기준 문서가 둘이 되지 않게 한다.
-4. 합의 결과는 `docs/adr/`에 짧은 ADR로 기록한다. 아직 합의 전인 제안을 코드에 박지 않는다.
-
-완료: 프론트·백엔드가 동일한 happy path와 409/422 실패 예시를 승인했다는 리뷰 기록이 있다.
-
-## PR 1 — 내가 깔아둘 기반 (다른 두 명 착수 전)
-
-1. Java 21/Gradle 테스트가 새 클론에서 실행되는지 확인한다. 로컬 PostgreSQL Compose와 `application-local`, `application-test`, `application-prod`를 분리한다. 비밀값은 환경 변수/비공개 설정으로만 공급한다.
-2. Flyway V1을 기존 엔티티와 MVP 필수 필드에 맞춰 만든다. `ddl-auto=validate`로 변경하고 SQLite 드라이버/방언은 전환 후 제거한다. 운영 RDS 연결은 아직 필요 없다.
-3. 공통 API 오류 구조, `@Valid`, 인증 사용자 주입, 서비스/저장소 패키지 경계, OpenAPI 뼈대, Testcontainers PostgreSQL 통합 테스트와 CI를 추가한다.
-4. `users`/`social_accounts`의 카카오 식별자 유니크 제약, refresh 토큰 폐기/회전, `regions.sig_cd`, `attractions.source_content_id`, 여행 날짜·방문일·이미지/출처/품질·벡터 버전 필드를 migration에 명시한다. 기존 엔티티와 다르면 migration과 코드 변경을 같은 PR에 넣는다.
-5. 2~3개 지역의 작은 비개인정보 seed로 카카오 로그인(fake provider 테스트) → 온보딩 → 날짜 확인 → 지역 선택 → 규칙 기반 초안 → 확정/재조회가 이어지는 통합 테스트를 만든다. 외부 카카오/TourAPI/Python/길찾기는 테스트에서 stub한다.
-
-완료: 새 클론에서 DB 기동→migration→테스트가 통과하고, 비밀값 없이 테스트가 재현된다. **추천 품질 완성·전국 데이터 적재는 PR 1 완료 조건이 아니다.**
-
-## PR 2A — 팀원 A: 카카오·온보딩·추첨·지역 카드
-
-선행: PR 0 계약, PR 1의 사용자/지역 스키마·인증 테스트 fixture. 같은 파일을 PR 2B와 동시에 수정하지 않는다.
-
-1. 카카오 인가 코드 교환·프로필 조회를 `KakaoClient` 어댑터로 캡슐화한다. 허용된 redirect URI만 사용하고 provider ID로 계정을 찾는다. 이메일이 같아도 기존 계정에 자동 병합하지 않는다. 콜백 에러/중복 인가 코드/제공자 장애를 테스트한다.
-2. 온보딩 질문 버전, 필수/선택 답변 형식, 최신 `submissionId`, 원본 답변 저장을 구현한다. 임베딩 실패는 `PENDING/FAILED`로 남기고 최초 이용 흐름은 계속된다. 최초 완료 이후 자동 재제출하지 않는다.
-3. 날짜 확인은 양끝 포함 충돌식을 사용한다. 추첨에서도 다시 검사한다. `FULL_RANDOM`은 적격 지역에서 균등, 조건 기반은 거리/취향/동행 조건에 따라 가중 추첨한다. 위치·벡터가 없으면 해당 요소만 제거한다. 리롤 제외가 전부를 소진하면 완화 여부를 응답에 적는다.
-4. 지역 목록은 250개를 돌려주되 `drawEligible`을 별도 계산한다. 카드에는 검수된 소개문 또는 사실 기반 폴백, 이미지 확인된 랜드마크, 출처를 돌려준다. `RegionIntroService`는 폴백 참고이지 공식 소개 콘텐츠가 아니다.
-
-완료: 첫 가입/재로그인, 빈 온보딩, 위치 거부, 벡터 실패, 날짜 409, 후보 0/1개, 리롤 제외 완화, 카드 설명/이미지 없음 케이스를 통합 테스트한다. [API 계약](api.md)의 인증·온보딩·추첨·카드 결과가 동일하다.
-
-## PR 2B — 팀원 B: 관광지 품질·임베딩·코스
-
-선행: PR 0 계약, PR 1의 관광지/여행 스키마와 작은 seed. A의 API 구현을 기다리지 않도록 테스트 fixture로 사용자·지역 맥락을 만든다.
-
-1. 관광지 품질 판정은 지역/좌표/검증된 이미지/벡터 버전을 분리한다. 설명이 없어도 이름·카테고리·태그로 임베딩할 수 있으나 추천 이유에 없는 사실을 쓰지 않는다. `AttractionEmbedding`과 `UserTasteVector`의 모델/템플릿/차원이 일치할 때만 코사인을 계산한다.
-2. Python 쪽 계약은 `embed(text, modelVersion, templateVersion)`과 배치 입력/결과 형식을 먼저 정의한다. Python은 벡터만 생성하고 Spring은 DB upsert·후보 점수·코스 조립을 담당한다. 온라인 리롤에서 Python을 호출하지 않는다.
-3. 후보 조회 → 취향/조건 점수 → 날짜별 시간창 → 식사/휴식 선점 → 유형별 체류시간 → 이동시간 → 운영정보 검증 순으로 구현한다. 직선거리 기반 값은 근사로 표시한다. 식당은 자동 배치하지 않고 `MEAL` 슬롯의 `restaurantId`는 null로 둔다.
-4. 리롤은 잠긴 슬롯과 이미 본 관광지를 유지/제외하며 전체 코스 중복·일자 범위·운영시간을 다시 검사한다. 후보 부족 시 빈 슬롯과 이유를 반환한다. 확정은 요청 전체를 불신하고 이미지/지역/좌표/날짜/중복을 재검증한다.
-5. 확정 시 같은 사용자의 확정 여행 날짜 충돌을 **트랜잭션 안에서 동시성 제어 후** 다시 검사한다. 두 병렬 요청 중 하나만 성공하는 통합 테스트를 만든다. 확정된 방문지는 `visit_date`와 `order_index`로 저장한다.
-
-완료: 1/2/3일, 늦은 첫날 도착/이른 마지막 날 출발, 휴무/미상 운영정보, 외부 길찾기 실패, 식사 침범, 리롤 잠금, 후보 부족, 중복 확정, 타인 코스 조회 403을 테스트한다. [코스 규칙](data-and-recommendation.md)과 API 응답이 맞는다.
-
-## PR 3 — 데이터 이관 (초기 세팅 담당 + B 리뷰)
-
-1. 서버를 멈추고 데모 H2 파일의 백업/해시를 남긴다. 사용자·후기·여행 같은 개인정보는 제외한다.
-2. 지역과 관광지, 원천 콘텐츠 ID, 설명, 이미지 URL/출처, 좌표, 수집 시각을 추출한다. 매핑 표와 변환 스크립트를 저장소에 남기되 실제 덤프·키·개인정보는 커밋하지 않는다.
-3. PostgreSQL staging에서 검증한 뒤 `source_content_id`로 upsert한다. 중단 후 재실행해도 중복이 생기지 않게 한다. 이미지 URL 존재와 실제 유효/사용 허락은 별도 상태로 구분한다.
-4. 이관 전후 총계·지역별 수·이미지/좌표/설명 교집합·추천 가능 지역 수를 리포트로 대조한다. 모델 버전이 정해진 후 Python 배치로 임베딩한다.
-5. 로컬 PostgreSQL에서 성공한 스크립트로 개발용 RDS에 적재하고 재대조한다. 운영 RDS는 출시 리허설 후 별도 실행한다.
-
-완료: 2회 실행 결과의 행 수가 같고, 누락/중복 원천 ID가 격리 보고되며, 추천 불가 지역 목록을 볼 수 있다.
-
-## 에이전트에게 복사할 작업 지시
+## 공통 프롬프트
 
 ```text
-docs/mvp/README.md, implementation-workpack.md, flow.md, api.md,
-data-and-recommendation.md와 docs/conventions/을 먼저 읽어라.
-이번 작업은 PR [번호/담당]의 범위만 구현한다. 관련 데모 코드는 참고하되
-백엔드의 미구현 API를 이미 존재한다고 가정하지 마라.
-시작 전에 현재 코드·문서 충돌과 필요한 migration/API 결정을 짧게 보고한다.
-승인된 계약에 맞춰 코드, migration, 통합 테스트, docs/api/ 계약을 같은 PR에 넣는다.
-다른 담당 영역/구형 문서 전체를 임의로 고치지 말고 충돌을 보고한다.
-끝에 실행 명령과 결과, 실패 경로, 데이터 변경, 남은 미결정을 적는다.
+먼저 docs/mvp/README.md, decisions.md, flow.md, api.md,
+data-and-recommendation.md와 docs/conventions/을 읽어라.
+docs/mvp가 구형 FEATURE-SPEC/API-DESIGN-DRAFT/BUTTON-SPEC보다 우선한다.
+지정된 WORK 항목만 구현하라. 시작 전에 현재 코드와 계약의 차이,
+필요한 Flyway migration, 수정할 파일과 테스트 목록을 보고하라.
+코드+migration+통합 테스트+docs/features+docs/api를 같은 PR에 넣어라.
+외부 API는 adapter 뒤에 두고 테스트에서는 stub하라. 비밀값을 커밋하거나 로그에 남기지 마라.
+완료 시 실행한 명령/결과, 실패 경로, DB 변경, 남은 위험을 보고하라.
 ```
 
-## 팀 운영 규칙
+## WORK-00 PostgreSQL 기반
 
-- PR 0 승인 전에는 PR 1의 비파괴 환경 정리만 진행한다. PR 2A/2B는 서로 다른 기능 경계로 병행하되 migration 충돌은 계약 PR로 먼저 푼다.
-- 기능 PR은 `docs/features/{domain}-{verb}.md`와 `docs/api/{domain}.md`를 완성한다. 이 문서는 작업 지도이며 구현된 상세 계약을 대신하지 않는다.
-- 각 PR의 리뷰자는 자기 담당 아닌 팀원 1명 이상. API 변경은 프론트에도 예시 JSON으로 알린다. 승인 전 미결정은 `TODO`와 담당자를 남긴다.
-- 정의된 완료는 코드 존재가 아니라 통합 테스트·실패 경로·실제 PostgreSQL 재현·문서 일치를 포함한다.
+범위: PostgreSQL Compose, 환경별 설정, Flyway V1, `ddl-auto=validate`, Testcontainers, CI, 공통 오류와 인증 사용자 주입.
+
+필수 스키마: users/refresh, onboarding history, regions/contents, attractions/images/embeddings, official courses, trips/participants/stops/meals, invites/share links, ingestion/quality. 기존 엔티티와 migration을 맞춘다.
+
+완료 기준: 새 clone에서 DB 기동→migration→테스트가 한 명령으로 통과한다. SQLite/Ollama 직접 설정을 제거하거나 legacy profile로 격리한다. 운영 RDS는 변경하지 않는다.
+
+## WORK-01 로컬 인증
+
+범위: signup/login/refresh/logout/me, BCrypt, JWT access, HttpOnly refresh cookie, token hash·rotation·revocation.
+
+테스트: 이메일 중복, 동일 인증 오류, 만료, 폐기 token 재사용, refresh rotation 경쟁, cookie 속성.
+
+## WORK-02 온보딩·프로필 재검사
+
+범위: 데모 12문항/채점/태그/제외 조건/좋았던 여행지의 버전된 API, immutable submission, 최신 포인터, 프로필 재검사, 임베딩 작업 상태.
+
+데모 참고: `TravelMbtiService`, `ExperienceTags`, `TravelPreferenceService`, `VisitOnboardingController`. 비로그인 세션 저장은 복사하지 않는다. 손님 온보딩은 WORK-04가 같은 application service를 호출할 수 있게 한다.
+
+테스트: 12문항 누락/중복, 태그 5개, 여행지 30개, 재검사 이력, Python timeout에도 완료 유지.
+
+## WORK-03 여행 맥락·중복 경고
+
+범위: 시작일+nights 검증, endDate 계산, 0~6박, 확정 여행 overlap 조회. 차단하지 않고 경고를 반환하며 확정 시 acknowledgement를 요구한다.
+
+테스트: 경계 날짜 하루 겹침, 완전 포함, 취소 여행 제외, acknowledgement false 409/true 저장, 동시 멱등성.
+
+## WORK-04 초대 손님·공유 권한
+
+범위: invite/share token hash, VIEW/EDIT, 만료/폐기, 손님 표시 이름·온보딩·READY, 참여자 성향 조회, 공개 상세 접근.
+
+프론트 카카오톡 공유가 사용할 URL만 백엔드가 발급한다. 카카오 메시지 API 호출은 구현하지 않는다.
+
+테스트: 원문 token DB/로그 미노출, VIEW 수정 403, EDIT 범위, 만료 410, 여행 간 token 재사용 거부.
+
+## WORK-05 지역·추첨·카드
+
+범위: 250 지역 목록, 여행 일수별 품질 게이트, FULL_RANDOM, 체크형 CONDITIONAL, 동일 지역 재등장 허용, 승인 지역 콘텐츠 카드.
+
+테스트: 완전 랜덤 균등성, 각 조건 on/off, 위치/사용자/동행 벡터 없음, 조건 0개 400, 카드 미승인/이미지 실패/후보 부족 422.
+
+## WORK-06 관광지 후보·코스 조립
+
+범위: Spring 후보 점수, 참여자 평균, 공식 코스/규칙 폴백, 날짜별 4곳 상한, 단순 체류 슬롯, 식사 슬롯, 이동 근사, LLM 제목 adapter.
+
+테스트: 0~6박, 당일 12~15시, 휴무·중복·식사 침범, Python/LLM 장애, 공식 코스 매핑 부족, 후보 부족.
+
+## WORK-07 편집·식당 검색
+
+범위: 유형별 대체 관광지, 교체/삭제/순서 재검증, Kakao Local FD6 프록시, 직전 관광지 기준 검색, 식당 스냅샷 추가/교체/제거.
+
+대표 메뉴는 자동 추론하지 않는다. REST key는 서버 비밀 설정만 사용한다.
+
+테스트: 현재 코스 제외, 다른 지역 거부, 기준점 폴백, Kakao timeout/429, 메뉴 null, EDIT token 권한.
+
+## WORK-08 확정·조회
+
+범위: 전체 초안 재검증, Idempotency-Key, overlap acknowledgement, 날짜별 stop/meal 저장, owner/share 조회·수정.
+
+테스트: 같은 key 같은 body 동일 결과, 다른 body 409, 두 동시 확정, tampered attraction/region/date 거부, 권한 매트릭스.
+
+## WORK-09 데이터 이관·보강
+
+범위: 데모 비개인정보 추출/upsert/검증 리포트, 개발 RDS 적용, TourAPI 상세 보강.
+
+반드시 `.agents/skills/tourapi-detail-backfill/SKILL.md`와 `.agents/skills/flyway-rds-sync/SKILL.md`를 사용한다. 첫 실행은 로컬 PostgreSQL, 다음은 개발 RDS다. 운영 RDS는 별도 승인 없이는 대상이 아니다.
+
+## PR 완료 템플릿
+
+```text
+Contract: 참조한 docs/mvp 항목
+Implemented: 코드/API/migration
+Tests: 실행 명령과 결과
+Data: 생성·변경 테이블/행 및 롤백 방법
+External failures: 검증한 timeout/limit/fallback
+Docs: 갱신한 docs/features와 docs/api
+Remaining: 계약 미충족 또는 후속 사항
+```

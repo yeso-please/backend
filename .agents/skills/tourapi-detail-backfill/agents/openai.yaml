@@ -1,0 +1,4 @@
+interface:
+  display_name: "TourAPI 상세 보강"
+  short_description: "누락 관광지 상세를 재시작 가능한 배치로 보강합니다"
+  default_prompt: "TourAPI 누락 관광지 상세 보강을 dry-run하고, 승인된 환경에서 실행한 뒤 품질 리포트를 작성하세요."

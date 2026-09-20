@@ -13,7 +13,7 @@ TriPin 백엔드의 요구사항, API 계약, 설계 결정, 개발 규칙을 �
 
 ## 문서 영역
 
-- [MVP 상세 설계·구현 작업서](mvp/README.md): 데모 코드와 기존 초안을 대조한 팀 리뷰용 흐름·API·데이터·PR별 작업 순서
+- [MVP 구현 기준](mvp/README.md): 확정 제품 결정, 기능·API·데이터·PR별 작업 순서
 - [REST API](api/README.md): 구현된 API 계약
 - [기능 명세](features/README.md): 작업 목표와 완료 기준
 - [ADR](adr/README.md): 중요한 설계 결정과 trade-off

@@ -1,4 +1,6 @@
-# 버튼 단위 인터랙션 명세 (v0.1)
+# 버튼 단위 인터랙션 명세 (v0.1, legacy)
+
+> **구현 기준 아님:** 현재 MVP 흐름은 [docs/mvp/flow.md](mvp/flow.md), API는 [docs/mvp/api.md](mvp/api.md)를 따른다.
 
 > "무슨 버튼을 누르면 무슨 일이 일어나는가"만 다룬다. 기능 규칙은 [FEATURE-SPEC.md](FEATURE-SPEC.md),
 > API 세부는 [API-DESIGN-DRAFT.md](API-DESIGN-DRAFT.md) 참고. v1 플로우(로그인은 선택, 저장 시점에만 필수)만 다룬다.
