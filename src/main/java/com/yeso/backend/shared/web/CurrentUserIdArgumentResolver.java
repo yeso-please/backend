@@ -27,10 +27,15 @@ public class CurrentUserIdArgumentResolver implements HandlerMethodArgumentResol
             WebDataBinderFactory binderFactory
     ) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()
-                || !(authentication.getPrincipal() instanceof AuthenticatedUserPrincipal principal)) {
+        if (authentication == null || !authentication.isAuthenticated()) {
             throw new UnauthenticatedUserException();
         }
-        return principal.userId();
+        if (authentication.getPrincipal() instanceof CustomUserDetails principal) {
+            return principal.userId();
+        }
+        if (authentication.getPrincipal() instanceof AuthenticatedUserPrincipal principal) {
+            return principal.userId();
+        }
+        throw new UnauthenticatedUserException();
     }
 }

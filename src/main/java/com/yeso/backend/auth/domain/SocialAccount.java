@@ -1,6 +1,5 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.auth.domain;
 
-import com.yeso.backend.domain.enums.SocialProvider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

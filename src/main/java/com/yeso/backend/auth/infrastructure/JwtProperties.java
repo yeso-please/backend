@@ -1,4 +1,4 @@
-package com.yeso.backend.config;
+package com.yeso.backend.auth.infrastructure;
 
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
