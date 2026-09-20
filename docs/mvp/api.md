@@ -33,19 +33,22 @@
 {
   "questionVersion": "demo-mbti-v1",
   "answers": [{"questionNo":1,"choice":2}],
+  "scheduleDensity": "RELAXED",
   "experienceTags": ["자연","산책"],
   "excludeTags": ["오래 걷기"],
   "likedTrips": [{"sigCd":"47130","note":"유적과 야경이 좋았어요","tags":["역사"]}]
 }
 ```
 
-12문항이 모두 한 번씩 있어야 한다. 성공 응답은 `{submissionId,mbtiCode,profileText,tasteStatus:"PENDING|READY|FAILED",onboardingCompleted:true}`다.
+12문항이 모두 한 번씩 있어야 하고 `scheduleDensity`는 `RELAXED|PACKED`다. 성공 응답은 `{submissionId,mbtiCode,scheduleDensity,profileText,tasteStatus:"PENDING|READY|FAILED",onboardingCompleted:true}`다.
 
-## 여행 맥락·중복 경고·초대
+## 여행 맥락·날짜 중복 차단·초대
 
 | Method | Path | Auth | 핵심 계약 |
 |---|---|---|---|
-| POST | `/trips/context/check` | user | `{startDate,nights}` → 계산된 날짜·겹침 경고 |
+| GET | `/trips/unavailable-dates?from=&to=` | user | 확정 여행 때문에 선택 불가능한 날짜 구간 |
+| POST | `/trips/context/check` | user | `{startDate,nights}` → 계산 날짜·`available`·충돌 목록 |
+| POST | `/trips` | user | 중복 없는 context로 DRAFT 생성; 중복은 409 |
 | POST | `/trips/{tripId}/invites` | owner | `{permission:"VIEW|EDIT",expiresInDays:7}` → 201 초대 URL/token 1회 반환 |
 | PATCH | `/trips/{tripId}/invites/{inviteId}` | owner | 권한·만료 변경 또는 폐기 |
 | GET | `/invites/{token}` | public | 여행 요약·참여 상태·만료 확인 |
@@ -54,30 +57,27 @@
 중복 확인 응답 예시:
 
 ```json
-{"startDate":"2026-10-10","endDate":"2026-10-12","nights":2,"days":3,"warnings":[{"code":"TRIP_DATE_OVERLAP","tripId":8,"title":"제주 여행","startDate":"2026-10-11","endDate":"2026-10-13"}]}
+{"startDate":"2026-10-10","endDate":"2026-10-12","nights":2,"days":3,"available":false,"conflicts":[{"code":"TRIP_DATE_OVERLAP","tripId":8,"title":"제주 여행","startDate":"2026-10-11","endDate":"2026-10-13"}]}
 ```
 
 ## 지역·추첨·카드
 
 | Method | Path | Auth | 핵심 계약 |
 |---|---|---|---|
-| GET | `/regions?days=3` | user | 250개 지역과 `drawEligible`, 제외 사유 |
+| GET | `/regions?days=3&scheduleDensity=RELAXED` | user | 250개 지역과 `drawEligible`, 제외 사유 |
 | POST | `/discovery/draw` | user | 아래 요청 → 추첨 결과·경고 |
 | GET | `/regions/{sigCd}/card?days=3` | user/share | 지역 소개·대표 이미지·랜드마크·출처 |
 
 ```json
 {
-  "startDate":"2026-10-10",
-  "nights":2,
+  "tripId":42,
   "mode":"CONDITIONAL",
   "conditions":["DISTANCE","MY_TASTE","COMPANION_TASTE"],
-  "origin":{"lat":37.5665,"lng":126.9780},
-  "transport":"CAR",
-  "participantIds":[21,22]
+  "scheduleDensity":"RELAXED"
 }
 ```
 
-응답은 `{regionId,province,city,startDate,endDate,modeApplied,appliedConditions,ignoredConditions,warnings}`다. `FULL_RANDOM`에서는 `conditions`를 생략한다. 리롤 전용 API나 제외 지역 필드는 없다.
+날짜·출발 위치·이동수단·참여자는 `tripId`의 서버 상태에서 읽는다. 응답은 `{tripId,regionId,province,city,startDate,endDate,scheduleDensity,modeApplied,appliedConditions,ignoredConditions,warnings}`다. `FULL_RANDOM`에서는 `conditions`를 생략한다. 리롤 전용 API나 제외 지역 필드는 없다.
 
 지역 카드에는 `introduction`, `introductionStatus:"APPROVED"`, `heroImage`, `characteristics`, `historyHighlights`, `landmarks`, `sources`, `updatedAt`을 포함한다. 준비되지 않은 지역은 422 `REGION_CONTENT_NOT_READY`다.
 
@@ -85,16 +85,18 @@
 
 | Method | Path | Auth | 핵심 계약 |
 |---|---|---|---|
-| POST | `/courses/draft` | user | 여행 맥락·지역·도착/출발·식사시간 → `CourseDraft` |
+| POST | `/courses/draft` | owner user | tripId·밀도 override·도착/출발·식사시간 → `CourseDraft` |
 | POST | `/courses/draft/rebalance` | user/share EDIT | 수정한 초안 검증·재배치 |
 | POST | `/courses/alternatives` | user/share EDIT | 현재 코스 제외, 유형별 개인화 후보 |
+| GET | `/regions/{sigCd}/attractions?bbox=&category=&cursor=&limit=` | user/share | 지도 핀용 관광지 목록 |
+| GET | `/attractions/{id}` | user/share | 상세·이미지·이용정보·예상 체류시간·출처 |
 
 ```json
 {
-  "regionId":"47130","startDate":"2026-10-10","nights":2,
+  "tripId":42,
+  "scheduleDensity":"RELAXED",
   "regionArrivalTime":null,"regionDepartureTime":null,
-  "mealPreferences":{"lunchStart":"12:00","dinnerStart":"18:00","durationMinutes":60},
-  "transport":"CAR","participantIds":[21,22]
+  "mealPreferences":{"lunchStart":"12:00","dinnerStart":"18:00","durationMinutes":60}
 }
 ```
 
@@ -107,40 +109,43 @@
 ]
 ```
 
-대체 후보 요청은 `{draft,currentAttractionId,category?,limit:10}`이며 같은 지역·현재 코스에 없는 추천 가능 관광지만 반환한다.
+대체 후보 요청은 `{draft,currentAttractionId,category?,limit:10}`이며 같은 지역·현재 코스에 없는 추천 가능 관광지만 반환한다. 재배치 operation은 `ADD|REPLACE|REMOVE|MOVE`이며 ADD도 전체 시간·식사·이동·밀도 상한을 다시 검사한다.
+
+지도 목록 item은 `{attractionId,name,thumbnailUrl,category,lat,lng,recommendable}`이다. 상세 응답에 `description,images,useTime,restDate,estimatedDurationMinutes,sources`를 포함한다. 추천 불가 장소는 지도 탐색에 표시할 수 있지만 `코스에 추가`는 비활성화하며 서버도 거부한다.
 
 ## 식당 검색·선택
 
 | Method | Path | Auth | 핵심 계약 |
 |---|---|---|---|
-| GET | `/places/restaurants?lat=&lng=&query=&radius=5000&page=1` | user/share EDIT | 카카오 Local 프록시, FD6, 거리순 |
+| GET | `/places/restaurants/recommendations?tripId=&dayIndex=&meal=&radius=5000` | user/share | TourAPI 39 우선, 공공 지정 식당 보완 |
+| GET | `/places/restaurants/search?tripId=&dayIndex=&meal=&query=&radius=5000&page=1` | user/share EDIT | 카카오 Local FD6 거리순 fallback |
 | POST | `/courses/draft/restaurant` | user/share EDIT | meal slot에 선택 결과 추가/교체 |
-| DELETE | `/courses/draft/restaurant` | user/share EDIT | 선택 제거 |
+| POST | `/courses/draft/restaurant/remove` | user/share EDIT | 선택 제거 |
 
-검색 응답은 `{provider:"KAKAO",items:[{externalId,name,category,address,roadAddress,lat,lng,distanceMeters,phone,placeUrl}]}`다. `representativeMenu`는 검색 응답에 없으며 저장 요청에서 선택 입력이다.
+추천 응답은 `{regionFoodThemes,sections:[{source,label,items}]}`다. item은 `provider,externalId,name,category,address,roadAddress,lat,lng,distanceMeters,phone,placeUrl,imageUrl?,representativeMenu?,evidenceLabels,sources`를 가진다. `representativeMenu`는 해당 원천이 제공한 경우에만 채운다. 카카오 검색 응답은 메뉴·평점·인기를 포함하지 않는다.
 
 ## 확정·조회·수정·공유
 
 | Method | Path | Auth | Success/Failure |
 |---|---|---|---|
-| POST | `/courses` | user + `Idempotency-Key` | 201 확정; 미확인 중복은 409 |
+| POST | `/courses` | user + `Idempotency-Key` | 201 확정; 날짜 중복은 409로 차단 |
 | GET | `/courses/{id}` | owner/share | 권한별 상세 |
 | PATCH | `/courses/{id}/schedule` | owner/share EDIT | 장소·순서·식당 변경 |
 | POST | `/courses/{id}/share-links` | owner | `{permission,expiresInDays}` → token 1회 반환 |
 | PATCH | `/courses/{id}/share-links/{linkId}` | owner | 권한 변경·폐기 |
 | GET | `/shared/courses/{token}` | public | VIEW 또는 EDIT 권한 포함 상세 |
 
-확정 요청은 `{draft,overlapAcknowledged}`다. 중복이 있으면서 false이면 409 `TRIP_DATE_OVERLAP_ACK_REQUIRED`와 warnings를 반환한다. 서버는 모든 장소·날짜·품질·중복·권한을 재검증한다.
+확정 요청은 `{tripId,draft}`다. 중복이 생겼으면 409 `TRIP_DATE_OVERLAP`과 conflicts를 반환하고 우회를 허용하지 않는다. 서버는 모든 장소·날짜·품질·중복·권한을 재검증한다.
 
 ## 대표 오류 코드
 
 | HTTP | Code | 의미 |
 |---|---|---|
-| 400 | `INVALID_REQUEST`, `INVALID_QUESTION_VERSION`, `NO_CONDITION_SELECTED` | 형식/규칙 위반 |
+| 400 | `INVALID_REQUEST`, `INVALID_QUESTION_VERSION`, `INVALID_SCHEDULE_DENSITY`, `NO_CONDITION_SELECTED`, `MAP_BOUNDS_INVALID` | 형식/규칙 위반 |
 | 401 | `AUTHENTICATION_REQUIRED`, `TOKEN_EXPIRED` | 인증 실패 |
 | 403 | `INSUFFICIENT_SHARE_PERMISSION` | VIEW 토큰 수정 시도 |
 | 404 | `REGION_NOT_FOUND`, `COURSE_NOT_FOUND` | 리소스 없음 |
-| 409 | `EMAIL_ALREADY_EXISTS`, `TRIP_DATE_OVERLAP_ACK_REQUIRED`, `IDEMPOTENCY_CONFLICT` | 충돌/확인 필요 |
+| 409 | `EMAIL_ALREADY_EXISTS`, `TRIP_DATE_OVERLAP`, `IDEMPOTENCY_CONFLICT` | 충돌/날짜 차단 |
 | 410 | `INVITE_EXPIRED`, `SHARE_LINK_REVOKED` | 링크 만료/폐기 |
 | 422 | `NO_ELIGIBLE_REGION`, `REGION_CONTENT_NOT_READY`, `INSUFFICIENT_COURSE_CANDIDATES` | 데이터 품질 부족 |
 | 502 | `KAKAO_LOCAL_UNAVAILABLE`, `EMBEDDING_UNAVAILABLE`, `TITLE_GENERATION_UNAVAILABLE` | 외부 장애. 코스는 가능한 폴백 적용 |
