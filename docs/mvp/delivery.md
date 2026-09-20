@@ -18,7 +18,7 @@
 |---|---|---|---|
 | 초기 세팅 담당 | WORK-00, 01, 03, 공통 통합·리뷰 | 제품 문서 | 새 clone에서 전체 흐름 테스트 가능 |
 | 백엔드 A | WORK-02, 04, 05 | 인증·공통 schema | 온보딩/손님/추첨/카드 실패 경로 포함 |
-| 백엔드 B | WORK-06, 07, 08, 09 공동 | 관광지·여행 schema | 코스·식당·권한·데이터 리포트 포함 |
+| 백엔드 B | WORK-06, 07, 08, 09 공동 | 관광지·여행 schema | 밀도별 코스·지도 ADD·TourAPI 우선 식당·권한·데이터 리포트 포함 |
 
 WORK-02와 WORK-04는 온보딩 application service 계약을 먼저 작은 PR로 합의한다. WORK-03과 WORK-08은 overlap 및 멱등성 repository를 함께 설계한다. migration 번호는 작업 시작 전에 예약해 충돌을 막는다.
 
@@ -29,9 +29,9 @@ WORK-02와 WORK-04는 온보딩 application service 계약을 먼저 작은 PR�
 | G0 계약 | docs/mvp와 프론트 JSON 승인, 외부 길찾기만 미결정 표시 |
 | G1 기반 | PostgreSQL/Flyway/Testcontainers/CI/인증 통과 |
 | G2 핵심 흐름 | 로컬 seed로 로그인→온보딩→추첨→코스→저장 |
-| G3 협업 | 손님 온보딩, VIEW/EDIT 링크, 참여자 성향 반영 |
+| G3 협업 | 회원만 최초 일정 생성, 손님 온보딩, 기본 VIEW/선택 EDIT 링크, 참여자 성향 반영 |
 | G4 데이터 | 이관 2회 멱등, 품질 리포트, 기간별 적격 지역 산출 |
-| G5 외부 연동 | Kakao Local/TourAPI/Python/LLM 장애·쿼터 폴백 |
+| G5 외부 연동 | TourAPI 39/공공 식당/Kakao Local/Python/LLM 장애·쿼터 폴백 |
 | G6 dev RDS | snapshot, migration info, 데이터 대조, 복구 리허설 |
 
 ## 브랜치와 리뷰
