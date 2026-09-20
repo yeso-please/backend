@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME:tripin_app}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: 1
+      connection-timeout: 10000
+  flyway:
+    user: ${FLYWAY_USER:tripin_migrator}
+    password: ${FLYWAY_PASSWORD}
+
+server:
+  forward-headers-strategy: framework

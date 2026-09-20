@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
@@ -36,9 +35,11 @@ public class AttractionEmbedding {
     @JoinColumn(name = "attraction_id")
     private Attraction attraction;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "bytea")
     private byte[] embedding;
+
+    @Column(nullable = false)
+    private int dimension;
 
     @Column(name = "model_version", nullable = false)
     private String modelVersion;
@@ -49,10 +50,17 @@ public class AttractionEmbedding {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    public AttractionEmbedding(Attraction attraction, byte[] embedding, String modelVersion, int templateVersion) {
+    public AttractionEmbedding(
+            Attraction attraction,
+            byte[] embedding,
+            int dimension,
+            String modelVersion,
+            int templateVersion
+    ) {
         this.attraction = attraction;
         this.attractionId = attraction.getId();
         this.embedding = embedding;
+        this.dimension = dimension;
         this.modelVersion = modelVersion;
         this.templateVersion = templateVersion;
     }

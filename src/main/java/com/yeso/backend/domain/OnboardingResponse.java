@@ -7,7 +7,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -48,8 +47,7 @@ public class OnboardingResponse {
     @Column(name = "question_key", nullable = false)
     private String questionKey;
 
-    @Lob
-    @Column(name = "answer_value", nullable = false)
+    @Column(name = "answer_value", nullable = false, columnDefinition = "text")
     private String answerValue;
 
     @Column(name = "created_at", nullable = false)
