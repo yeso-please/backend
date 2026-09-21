@@ -1,4 +1,4 @@
-# ADR-0001: PostgreSQL과 Flyway를 스키마의 단일 출처로 사용한다
+# 0002. PostgreSQL과 Flyway를 스키마의 단일 출처로 사용한다
 
 - 상태: accepted
 - 결정일: 2026-09-20
