@@ -14,8 +14,8 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -41,7 +41,7 @@ import java.util.Objects;
 )
 @Getter
 @NoArgsConstructor
-public class Attraction {
+public class Attraction extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -84,9 +84,6 @@ public class Attraction {
     @Enumerated(EnumType.STRING)
     @Column(name = "embedding_status", nullable = false, length = 20)
     private EmbeddingStatus embeddingStatus = EmbeddingStatus.PENDING;
-
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
 
     /**
      * 임베딩 텍스트에 들어가는 필드를 한 번에 갱신. 실제로 값이 하나라도 바뀌면

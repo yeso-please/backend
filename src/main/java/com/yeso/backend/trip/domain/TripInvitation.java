@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "trip_invitations")
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -52,8 +53,9 @@ public class TripInvitation {
     @Column(nullable = false)
     private boolean revoked = false;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @org.springframework.data.annotation.CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public TripInvitation(TripPlan tripPlan, String tokenHash, User invitedByUser, LocalDateTime expiresAt) {
         this.tripPlan = tripPlan;

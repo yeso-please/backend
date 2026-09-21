@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "user_interactions")
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -49,8 +50,9 @@ public class UserInteraction {
     @Column(nullable = false, length = 20)
     private InteractionAction action;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @org.springframework.data.annotation.CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public UserInteraction(User user, Attraction attraction, InteractionAction action) {
         this.user = user;
