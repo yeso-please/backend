@@ -4,6 +4,7 @@
 
 새 문서는 [ADR 컨벤션](../conventions/ADR.md)의 템플릿을 사용합니다.
 
-## 문서 목록
+## 결정 목록
 
+- [ADR-0001: PostgreSQL과 Flyway를 스키마의 단일 출처로 사용한다](0001-postgresql-flyway-schema-source.md)
 - [0001. Refresh 토큰: 서명된 JWT + 서버측 해시 대조로 rotate/revoke](0001-jwt-refresh-token-rotation.md) — accepted

@@ -3,21 +3,23 @@ spring:
     import: "optional:file:./config/application-secret.yaml"
   application:
     name: yeso-backend
-
-  # ----- DataSource (SQLite 파일 하나) -----
-  datasource:
-    url: jdbc:sqlite:./data/yeso.db
-    driver-class-name: org.sqlite.JDBC
-
-  # ----- JPA / Hibernate -----
   jpa:
-    database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: validate
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
+        default_schema: app
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: app
+    default-schema: app
+    validate-migration-naming: true
+    clean-disabled: true
 
 server:
   port: 8080
@@ -32,29 +34,3 @@ jwt:
   secret: ""
   access-token-ttl-minutes: 30
   refresh-token-ttl-days: 14
-
-# ----- 소셜 로그인 -----
-# 프론트가 인가코드를 백엔드로 전달하면, 백엔드가 토큰 교환 후 자체 JWT 발급 (API-DESIGN-DRAFT §1).
-# ⚠ redirect-uri는 "백엔드"가 아니라 "프론트엔드"의 콜백 라우트를 가리켜야 한다 —
-# 카카오/구글 인가 화면은 프론트가 직접 열고 코드를 받으므로, 각 provider 콘솔에도
-# 이 프론트 URL을 redirect URI로 등록해야 한다. 백엔드에는 /callback 같은 엔드포인트가
-# 없다(프론트가 code를 POST /api/auth/social/{provider} 로 전달하는 구조, §1 참고).
-# client-secret 은 커밋하지 않는다.
-oauth:
-  kakao:
-    client-id: ""
-    client-secret: ""
-    redirect-uri: "http://localhost:5173/oauth/kakao/callback"
-  google:
-    client-id: ""
-    client-secret: ""
-    redirect-uri: "http://localhost:5173/oauth/google/callback"
-
-# ----- 임베딩 (Ollama 로컬) -----
-# API-DESIGN-DRAFT §1/§3 — 외부 API 과금 없이 로컬에서 무료로 임베딩 생성.
-embedding:
-  ollama:
-    base-url: "http://localhost:11434"
-    model: "bge-m3"
-  # 텍스트 합성 규칙(§3.1) 버전 — 규칙 변경 시 올리면 전체 관광지 embedding_status 를 PENDING 으로 리셋한다.
-  template-version: 1

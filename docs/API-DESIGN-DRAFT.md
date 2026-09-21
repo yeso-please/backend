@@ -1,4 +1,6 @@
-# 백엔드 API 설계 초안 (v0.1)
+# 백엔드 API 설계 초안 (v0.1, legacy)
+
+> **구현 기준 아님:** 로컬 로그인·PostgreSQL·친구 초대·중복 경고를 반영한 현재 계약은 [docs/mvp/api.md](mvp/api.md)를 따른다.
 
 > demo 레포(`yeso-please/demo`) 분석 기반. 인증은 데모에 재사용할 코드가 없어 새로 설계,
 > 추천 로직은 데모의 `TravelerProfileService` 코사인 유사도 방식을 임베딩 기반으로 발전시킴.

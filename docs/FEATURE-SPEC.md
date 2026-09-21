@@ -1,4 +1,6 @@
-# 기능 명세서 (v0.1)
+# 기능 명세서 (v0.1, legacy)
+
+> **구현 기준 아님:** 2026-09-20 이후 MVP는 [docs/mvp/README.md](mvp/README.md)와 [확정 결정](mvp/decisions.md)을 따른다. 이 문서는 데모 분석 이력 보존용이다.
 
 > API/DB 세부 구현은 [API-DESIGN-DRAFT.md](API-DESIGN-DRAFT.md) 참고.
 > 이 문서는 "무엇을 하는 기능인지 · 어떤 규칙으로 동작하는지 · 어떤 예외를 처리하는지"에 집중한다.

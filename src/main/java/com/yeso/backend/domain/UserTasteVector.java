@@ -4,7 +4,6 @@ import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
@@ -41,13 +40,14 @@ public class UserTasteVector {
     @jakarta.persistence.JoinColumn(name = "user_id")
     private User user;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "bytea")
     private byte[] embedding;
 
+    @Column(nullable = false)
+    private int dimension;
+
     /** 온보딩 응답을 합성해 만든 원본 텍스트. 재임베딩 시 재사용/디버깅용으로 함께 보관 */
-    @Lob
-    @Column(name = "profile_text", nullable = false)
+    @Column(name = "profile_text", nullable = false, columnDefinition = "text")
     private String profileText;
 
     @Column(name = "model_version", nullable = false)
@@ -59,10 +59,18 @@ public class UserTasteVector {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    public UserTasteVector(User user, byte[] embedding, String profileText, String modelVersion, int templateVersion) {
+    public UserTasteVector(
+            User user,
+            byte[] embedding,
+            int dimension,
+            String profileText,
+            String modelVersion,
+            int templateVersion
+    ) {
         this.user = user;
         this.userId = user.getId();
         this.embedding = embedding;
+        this.dimension = dimension;
         this.profileText = profileText;
         this.modelVersion = modelVersion;
         this.templateVersion = templateVersion;

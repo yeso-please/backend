@@ -4,6 +4,7 @@
 
 새 문서는 [작업 명세 컨벤션](../conventions/작업-명세.md)의 템플릿을 사용합니다.
 
-## 문서 목록
+## 구현된 기능
 
+- [WORK-00 PostgreSQL 기반](work-00-postgresql-foundation.md)
 - [회원가입/로그인/인증 모듈](auth-login-signup.md) — done

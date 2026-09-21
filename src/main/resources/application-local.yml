@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tripin_local?currentSchema=app}
+    username: ${DB_USERNAME:tripin_local}
+    password: ${DB_PASSWORD:tripin_local_dev_only}
+  flyway:
+    user: ${FLYWAY_USER:${DB_USERNAME:tripin_local}}
+    password: ${FLYWAY_PASSWORD:${DB_PASSWORD:tripin_local_dev_only}}
+
+jwt:
+  secret: ${JWT_SECRET:local-only-jwt-secret-change-before-deployment-32chars}

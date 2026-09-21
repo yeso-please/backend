@@ -7,11 +7,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -20,14 +24,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 각 테스트는 @Transactional로 자동 롤백되어 공유 SQLite 파일(data/yeso.db)에
- * 데이터가 남지 않는다(docs/conventions/테스트.md).
+ * 각 테스트는 운영과 같은 PostgreSQL 스키마를 Testcontainers로 구성하고
+ * @Transactional로 자동 롤백한다.
  */
+@Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-@TestPropertySource(properties = "jwt.secret=test-only-secret-not-used-outside-automated-tests")
+@TestPropertySource(properties = {
+        "jwt.secret=test-only-secret-not-used-outside-automated-tests",
+        "spring.jpa.properties.hibernate.default_schema=app"
+})
 class AuthIntegrationTest {
+
+    @Container
+    @ServiceConnection
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
+            .withDatabaseName("tripin_auth_test")
+            .withUsername("tripin_test")
+            .withPassword("tripin_test");
 
     @Autowired
     private MockMvc mockMvc;

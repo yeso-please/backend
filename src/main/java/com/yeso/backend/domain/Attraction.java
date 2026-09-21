@@ -10,7 +10,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -36,7 +35,11 @@ import java.util.Objects;
  * 달라진 상태(재추천에 옛 임베딩이 계속 쓰임)가 될 수 있기 때문이다.
  */
 @Entity
-@Table(name = "attractions")
+@Table(
+        name = "attractions",
+        uniqueConstraints = @jakarta.persistence.UniqueConstraint(
+                columnNames = {"source_system", "source_content_id"})
+)
 @Getter
 @NoArgsConstructor
 public class Attraction {
@@ -55,7 +58,7 @@ public class Attraction {
     @JoinColumn(name = "region_id", nullable = false)
     private Region region;
 
-    @Lob
+    @Column(columnDefinition = "text")
     private String description;
 
     /** 쉼표로 이어 붙인 태그 (데모의 AppUser.experienceTags와 같은 방식) */
@@ -68,10 +71,14 @@ public class Attraction {
     private Double lng;
 
     /**
-     * TourAPI 등 외부 소스의 원본 콘텐츠 ID. 동기화 재실행 시 중복 방지용 —
-     * unique 제약으로 강제한다(nullable이라 수동 등록 건은 여러 개의 null 허용, DB 표준 동작).
+     * 외부 원천과 원본 콘텐츠 ID의 조합이 동기화 멱등 키다.
      */
-    @Column(name = "source_content_id", unique = true)
+    @Setter
+    @Column(name = "source_system", nullable = false, length = 30)
+    private String sourceSystem = "TOUR_API";
+
+    @Setter
+    @Column(name = "source_content_id", length = 100)
     private String sourceContentId;
 
     @Setter
