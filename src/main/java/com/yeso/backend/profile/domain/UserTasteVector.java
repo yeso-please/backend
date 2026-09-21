@@ -1,4 +1,4 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.profile.domain;
 
 import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;

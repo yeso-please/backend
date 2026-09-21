@@ -1,6 +1,5 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.attraction.domain;
 
-import com.yeso.backend.domain.enums.EmbeddingStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

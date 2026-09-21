@@ -1,4 +1,4 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.attraction.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

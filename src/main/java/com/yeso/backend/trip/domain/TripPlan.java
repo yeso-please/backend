@@ -1,8 +1,8 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.trip.domain;
+
+import com.yeso.backend.attraction.domain.Region;
 
 import com.yeso.backend.auth.domain.User;
-import com.yeso.backend.domain.enums.Transport;
-import com.yeso.backend.domain.enums.TripPlanStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

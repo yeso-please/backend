@@ -1,4 +1,4 @@
-package com.yeso.backend.domain.enums;
+package com.yeso.backend.attraction.domain;
 
 public enum EmbeddingStatus {
     PENDING,

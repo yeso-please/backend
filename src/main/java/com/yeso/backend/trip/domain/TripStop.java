@@ -1,6 +1,7 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.trip.domain;
 
-import com.yeso.backend.domain.enums.TripStopSource;
+import com.yeso.backend.attraction.domain.Attraction;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
