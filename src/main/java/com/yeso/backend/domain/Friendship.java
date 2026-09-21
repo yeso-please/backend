@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
         name = "friendships",
         uniqueConstraints = @UniqueConstraint(columnNames = {"user_low_id", "user_high_id"})
 )
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -58,8 +59,9 @@ public class Friendship {
     @Column(nullable = false, length = 20)
     private FriendshipStatus status = FriendshipStatus.PENDING;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @org.springframework.data.annotation.CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     /** a, b는 순서 무관 — 생성자가 id 기준으로 정규화해 userLow/userHigh에 배치한다 */
     public Friendship(User a, User b, User requestedByUser) {
