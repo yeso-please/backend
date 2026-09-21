@@ -8,3 +8,4 @@
 
 - [WORK-00 PostgreSQL 기반](work-00-postgresql-foundation.md)
 - [회원가입/로그인/인증 모듈](auth-login-signup.md) — done
+- [WORK-02 온보딩·재검사·임베딩 job](onboarding.md) — done
