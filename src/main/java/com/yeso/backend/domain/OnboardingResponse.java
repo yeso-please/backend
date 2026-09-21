@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "onboarding_responses")
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -51,8 +52,9 @@ public class OnboardingResponse {
     @Column(name = "answer_value", nullable = false, columnDefinition = "text")
     private String answerValue;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @org.springframework.data.annotation.CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public OnboardingResponse(User user, String submissionId, String questionKey, String answerValue) {
         this.user = user;

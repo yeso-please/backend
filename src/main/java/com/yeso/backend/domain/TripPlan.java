@@ -17,9 +17,9 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 /**
  * 확정된 코스. 슬롯 잠금/리롤 단계(§5.3)는 stateless라 여기 저장되지 않고,
@@ -38,7 +38,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TripPlan {
+public class TripPlan extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -65,9 +65,6 @@ public class TripPlan {
     @Column(columnDefinition = "text")
     private String situation;
 
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TripPlanStatus status;
@@ -77,9 +74,6 @@ public class TripPlan {
 
     @Column(name = "end_date")
     private LocalDate endDate;
-
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
 
     public TripPlan(User ownerUser, Region region, Transport transport, TripPlanStatus status) {
         this.ownerUser = ownerUser;
