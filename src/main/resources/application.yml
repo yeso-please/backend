@@ -34,3 +34,9 @@ jwt:
   secret: ""
   access-token-ttl-minutes: 30
   refresh-token-ttl-days: 14
+
+# refresh_token cookie의 Secure 속성 — HTTPS로 서빙되는 환경(운영/dev-rds)만 true다.
+# local profile은 HTTP이므로 application-local.yml에서 false로 override한다.
+app:
+  auth:
+    cookie-secure: true

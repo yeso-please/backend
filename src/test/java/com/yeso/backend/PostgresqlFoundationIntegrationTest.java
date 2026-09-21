@@ -66,6 +66,29 @@ class PostgresqlFoundationIntegrationTest {
     }
 
     @Test
+    @DisplayName("V2가 refresh_tokens에 family 회전용 컬럼을 추가하고 revoked 컬럼을 제거한다")
+    void migration_v2_addsRefreshTokenRotationColumns() {
+        Integer successfulV2 = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = true AND version = '2'",
+                Integer.class);
+        Integer rotationColumns = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens'
+                  AND column_name IN ('family_id', 'revoked_at', 'replaced_by_token_id')
+                """, Integer.class);
+        Integer legacyRevokedColumn = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens' AND column_name = 'revoked'
+                """, Integer.class);
+
+        assertThat(successfulV2).isEqualTo(1);
+        assertThat(rotationColumns).isEqualTo(3);
+        assertThat(legacyRevokedColumn).isZero();
+    }
+
+    @Test
     @Transactional
     @DisplayName("같은 원천 관광지 ID는 두 번 저장할 수 없다")
     void attraction_duplicateSource_isRejected() {
