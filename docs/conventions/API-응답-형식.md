@@ -18,11 +18,14 @@ return ResponseEntity.ok(tripService.getTrip(tripId));
 
 ```json
 {
+  "timestamp": "2026-09-21T00:00:00Z",
   "status": 404,
-  "message": "여행 계획을 찾을 수 없습니다."
+  "code": "TRIP_NOT_FOUND",
+  "message": "여행 계획을 찾을 수 없습니다.",
+  "path": "/api/trips/1"
 }
 ```
 
-메시지는 사용자에게 보여줄 수 있는 한국어로 작성합니다. SQL, 스택 트레이스, 내부 파일 경로는 응답에 포함하지 않습니다. 기계적으로 구분할 코드가 실제로 필요해질 때만 `code` 필드를 추가합니다.
+모든 실패는 `timestamp`, `status`, `code`, `message`, `path`를 반환합니다. 검증 실패에는 `fieldErrors` 배열도 반환합니다. 메시지는 사용자에게 보여줄 수 있는 한국어로 작성하며 SQL, 스택 트레이스, 내부 파일 경로는 응답에 포함하지 않습니다.
 
 Service는 `ResponseEntity`를 반환하지 않고 예외를 던집니다. HTTP 변환은 `GlobalExceptionHandler`가 담당합니다.
