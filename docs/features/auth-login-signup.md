@@ -65,8 +65,8 @@
 - 예외: `auth.domain.AuthException`(베이스) → `DuplicateEmailException`(409), `InvalidCredentialsException`(401),
   `InvalidRefreshTokenException`(401), `UserNotFoundException`(404)
 - 인프라: `JwtTokenProvider`(access/refresh 모두 JWT로 발급, refresh는 SHA-256 해시로 DB 대조),
-  `JwtAuthenticationFilter`, `SecurityConfig`, `JwtAuthenticationEntryPoint`, `JwtAccessDeniedHandler`
-- 마이그레이션: 없음(`ddl-auto: update`로 기존 스키마 그대로 사용, 테이블은 이미 API-DESIGN-DRAFT §2 설계대로 존재)
+  `JwtAuthenticationFilter`, `SecurityConfig`, `ApiAuthenticationEntryPoint`, `ApiAccessDeniedHandler`
+- 마이그레이션: 없음(Flyway V1 스키마를 사용하며 `ddl-auto: validate`로 검증한다)
 
 ## 결정과 미해결 사항
 

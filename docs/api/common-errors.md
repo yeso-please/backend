@@ -31,6 +31,8 @@ Controller, validation, Security 계층은 모두 같은 JSON 모양을 사용�
 | 403 | `AUTH_ACCESS_DENIED` | 인증됐지만 권한이 없음 |
 | 500 | `COMMON_INTERNAL_ERROR` | 예상하지 못한 서버 오류 |
 
+인증 도메인 오류는 `AUTH_DUPLICATE_EMAIL`(409), `AUTH_INVALID_CREDENTIALS`(401), `AUTH_INVALID_REFRESH_TOKEN`(401), `AUTH_USER_NOT_FOUND`(404)을 사용한다. 지원하지 않는 HTTP 메서드는 `COMMON_METHOD_NOT_ALLOWED`(405)을 사용한다.
+
 500 응답은 내부 exception 메시지와 stack trace를 노출하지 않는다. 전체 stack trace는 서버 로그에만 기록한다.
 
 ## 인증 사용자 주입

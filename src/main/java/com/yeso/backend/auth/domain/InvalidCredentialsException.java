@@ -1,6 +1,6 @@
 package com.yeso.backend.auth.domain;
 
-import org.springframework.http.HttpStatus;
+import com.yeso.backend.shared.exception.ErrorCode;
 
 /**
  * 이메일 미존재와 비밀번호 불일치를 구분하지 않고 같은 메시지로 응답한다
@@ -8,6 +8,6 @@ import org.springframework.http.HttpStatus;
  */
 public class InvalidCredentialsException extends AuthException {
     public InvalidCredentialsException() {
-        super(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다.");
+        super(ErrorCode.INVALID_CREDENTIALS, "이메일 또는 비밀번호가 올바르지 않습니다.");
     }
 }

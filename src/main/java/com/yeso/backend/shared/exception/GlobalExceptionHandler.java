@@ -1,7 +1,5 @@
 package com.yeso.backend.shared.exception;
 
-import com.yeso.backend.auth.domain.AuthException;
-import com.yeso.backend.shared.response.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,35 +11,37 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import jakarta.servlet.http.HttpServletRequest;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(AuthException.class)
-    public ResponseEntity<ErrorResponse> handleAuthException(AuthException exception) {
-        log.warn("Auth exception: {}", exception.getMessage());
-        return ResponseEntity.status(exception.getStatus())
-                .body(new ErrorResponse(exception.getStatus().value(), exception.getMessage()));
-    }
-
     @ExceptionHandler(DomainException.class)
-    public ResponseEntity<ErrorResponse> handleDomainException(DomainException exception) {
+    public ResponseEntity<ApiErrorResponse> handleDomainException(
+            DomainException exception, HttpServletRequest request
+    ) {
         ErrorCode errorCode = exception.getErrorCode();
         log.warn("Domain exception code={}: {}", errorCode.code(), exception.getMessage());
         return ResponseEntity.status(errorCode.status())
-                .body(new ErrorResponse(errorCode.status().value(), exception.getMessage()));
+                .body(ApiErrorResponse.of(errorCode, exception.getMessage(), request.getRequestURI()));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
-    public ResponseEntity<ErrorResponse> handleValidation(BindException exception) {
-        String message = exception.getBindingResult().getFieldErrors().stream()
-                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+    public ResponseEntity<ApiErrorResponse> handleValidation(BindException exception, HttpServletRequest request) {
+        List<ApiErrorResponse.FieldError> fieldErrors = exception.getBindingResult().getFieldErrors().stream()
+                .map(fieldError -> new ApiErrorResponse.FieldError(
+                        fieldError.getField(), fieldError.getDefaultMessage()))
+                .toList();
+        String message = fieldErrors.stream()
+                .map(fieldError -> fieldError.field() + ": " + fieldError.message())
                 .collect(Collectors.joining(", "));
         log.warn("Validation failed: {}", message);
-        return ResponseEntity.badRequest().body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), message));
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.validation(message, request.getRequestURI(), fieldErrors));
     }
 
     @ExceptionHandler({
@@ -49,23 +49,26 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
-    public ResponseEntity<ErrorResponse> handleInvalidRequest(Exception exception) {
+    public ResponseEntity<ApiErrorResponse> handleInvalidRequest(Exception exception, HttpServletRequest request) {
         log.warn("Invalid request: {}", exception.getMessage());
         return ResponseEntity.badRequest()
-                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "요청 형식이 올바르지 않습니다."));
+                .body(ApiErrorResponse.of(ErrorCode.INVALID_REQUEST, "요청 형식이 올바르지 않습니다.", request.getRequestURI()));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException exception) {
+    public ResponseEntity<ApiErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException exception, HttpServletRequest request
+    ) {
         log.warn("Method not supported: {}", exception.getMessage());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-                .body(new ErrorResponse(HttpStatus.METHOD_NOT_ALLOWED.value(), "지원하지 않는 HTTP 메서드입니다."));
+                .body(ApiErrorResponse.of(
+                        ErrorCode.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다.", request.getRequestURI()));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleUnexpected(Exception exception) {
+    public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception, HttpServletRequest request) {
         log.error("Unexpected exception", exception);
         return ResponseEntity.internalServerError()
-                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "서버 오류가 발생했습니다."));
+                .body(ApiErrorResponse.of(ErrorCode.INTERNAL_ERROR, "서버 오류가 발생했습니다.", request.getRequestURI()));
     }
 }

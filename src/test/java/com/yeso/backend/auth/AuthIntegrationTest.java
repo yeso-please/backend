@@ -80,7 +80,9 @@ class AuthIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(signupBody("dup@example.com", "password123", "second")))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.status").value(409));
+                    .andExpect(jsonPath("$.status").value(409))
+                    .andExpect(jsonPath("$.code").value("AUTH_DUPLICATE_EMAIL"))
+                    .andExpect(jsonPath("$.path").value("/api/auth/signup"));
         }
 
         @Test
@@ -90,7 +92,10 @@ class AuthIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(signupBody("shortpw@example.com", "short", "tester")))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.status").value(400));
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"))
+                    .andExpect(jsonPath("$.path").value("/api/auth/signup"))
+                    .andExpect(jsonPath("$.fieldErrors[0].field").value("password"));
         }
 
         @Test
@@ -175,14 +180,17 @@ class AuthIntegrationTest {
         @DisplayName("토큰이 없으면 401을 반환한다")
         void me_withoutToken() throws Exception {
             mockMvc.perform(get("/api/users/me"))
-                    .andExpect(status().isUnauthorized());
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("AUTH_UNAUTHENTICATED"))
+                    .andExpect(jsonPath("$.path").value("/api/users/me"));
         }
 
         @Test
         @DisplayName("위조된 토큰이면 401을 반환한다")
         void me_withTamperedToken() throws Exception {
             mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer not-a-real-jwt"))
-                    .andExpect(status().isUnauthorized());
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("AUTH_UNAUTHENTICATED"));
         }
     }
 
