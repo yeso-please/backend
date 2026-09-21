@@ -22,6 +22,41 @@
 
 WORK-02와 WORK-04는 온보딩 application service 계약을 먼저 작은 PR로 합의한다. WORK-03과 WORK-08은 overlap 및 멱등성 repository를 함께 설계한다. migration 번호는 작업 시작 전에 예약해 충돌을 막는다.
 
+## WORK별 구현 위치
+
+모듈 경계는 [모듈·의존성](../conventions/모듈-의존성.md), 라벨 기준은 [이슈 라벨](../conventions/issue-labels.md)을 따른다. 경로의 `…`는 `application`과 `presentation`이다.
+
+| WORK | 구현 위치 | 영역 라벨 | 담당 |
+|---|---|---|---|
+| 00 PostgreSQL 기반 | `shared` + 빌드·Flyway·CI 설정 | area: platform, area: shared | 초기 세팅 |
+| 01 로컬 인증·refresh 회전 | `auth` | area: auth | 초기 세팅 |
+| 02 온보딩·재검사·임베딩 | `profile` | area: profile | 백엔드 A |
+| 03 여행 context·날짜 중복 차단 | `trip/…/context` | area: trip | 초기 세팅 |
+| 04 비회원 초대·VIEW/EDIT 공유 | `trip/…/invite` | area: trip, area: auth | 백엔드 A |
+| 05 지역 품질·추첨·카드 | `attraction/…/region` | area: attraction, area: trip | 백엔드 A |
+| 06 코스 조립·폴백·제목 | `trip/…/course` | area: trip, area: attraction | 백엔드 B |
+| 07 지도 편집·식당 | `trip/…/course`, `attraction/…/region` | area: trip, area: attraction | 백엔드 B |
+| 08 확정·멱등성·조회·수정 | `trip/…/course` | area: trip | 백엔드 B |
+| 09 이관·품질·TourAPI·개발 RDS | `attraction/…/ingestion` | area: attraction, area: platform | 백엔드 B |
+
+WORK-04의 guest session 발급·검증은 `auth`, 초대 대상과 참여자 상태는 `trip`이다. WORK-05는 지역 적격성과 카드를 `attraction`에서 계산하고 추첨 결과만 `trip`의 DRAFT 여행에 저장한다. WORK-07의 식당 조회는 `attraction`, 초안 편집과 재계산은 `trip`이다.
+
+## 모듈별 소유 테이블
+
+테이블을 소유한 모듈만 그 스키마를 변경한다. 다른 모듈은 소유 모듈의 `application` 계층을 통해 읽는다.
+
+| 모듈 | 소유 테이블 |
+|---|---|
+| `auth` | `users`, `social_accounts`, `refresh_tokens` |
+| `profile` | `onboarding_submissions`, `onboarding_answers`, `user_taste_vectors`, `guest_taste_vectors` |
+| `attraction` | `regions`, `region_contents`, `attractions`, `attraction_images`, `attraction_embeddings`, `official_courses`, `official_course_stops`, `ingestion_runs`, `data_quality_issues` |
+| `trip` | `trip_plans`, `trip_members`, `trip_participants`, `trip_stops`, `meal_stops`, `trip_invitations`, `course_share_links` |
+| `shared` | 없음 |
+
+`onboarding_responses`는 WORK-02에서 제거할 전환용 테이블이다. `friendships`, `user_interactions`, `liked_trips`는 MVP 대응 기능이 없어 소유 모듈을 정하지 않는다.
+
+평면 `com.yeso.backend.domain`의 클래스는 위 모듈로 옮겼다. `OnboardingResponse`(WORK-02에서 제거), `Friendship`, `UserInteraction`(MVP 대응 기능 없음)만 남아 있다.
+
 ## 주차가 아니라 통과 게이트
 
 | Gate | 통과 조건 |
