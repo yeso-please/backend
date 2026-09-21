@@ -6,10 +6,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 import java.time.LocalDateTime;
 
@@ -29,11 +33,35 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class UserTasteVector {
+public class UserTasteVector implements Persistable<Long> {
 
     @Id
     @Column(name = "user_id")
     private Long userId;
+
+    /**
+     * user_id가 생성값이 아니라 미리 채워진 값(@MapsId)이라, Spring Data JPA가 이 값만 보고
+     * "이미 존재하는 row"로 오판해 save()에서 merge()를 시도하다 lazy user 참조 때문에 실패한다
+     * (Hibernate AssertionFailure: null identifier) — Persistable로 새 row 여부를 명시한다.
+     */
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public Long getId() {
+        return userId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
 
     @OneToOne
     @MapsId
