@@ -1,7 +1,6 @@
-package com.yeso.backend.domain;
+package com.yeso.backend.profile.domain;
 
 import com.yeso.backend.auth.domain.User;
-import com.yeso.backend.domain.enums.FriendshipStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
