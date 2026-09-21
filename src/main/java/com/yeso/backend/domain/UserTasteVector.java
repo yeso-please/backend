@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "user_taste_vectors")
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -56,8 +57,9 @@ public class UserTasteVector {
     @Column(name = "template_version", nullable = false)
     private int templateVersion;
 
+    @org.springframework.data.annotation.LastModifiedDate
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt;
 
     public UserTasteVector(
             User user,
