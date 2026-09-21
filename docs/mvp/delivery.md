@@ -1,4 +1,4 @@
-# 초기 세팅과 3인 팀 실행 순서
+ # 초기 세팅과 3인 팀 실행 순서
 
 ## 사용자가 먼저 구현할 범위
 
@@ -37,7 +37,7 @@ WORK-02와 WORK-04는 온보딩 application service 계약을 먼저 작은 PR�
 | 06 코스 조립·폴백·제목 | `trip/…/course` | area: trip, area: attraction | 백엔드 B |
 | 07 지도 편집·식당 | `trip/…/course`, `attraction/…/region` | area: trip, area: attraction | 백엔드 B |
 | 08 확정·멱등성·조회·수정 | `trip/…/course` | area: trip | 백엔드 B |
-| 09 이관·품질·TourAPI·개발 RDS | `attraction/…/ingestion` | area: attraction, area: platform | 백엔드 B |
+| 09 이관·품질·TourAPI·개발 RDS | `attraction/application/ingestion` (엔드포인트 없음) | area: attraction, area: platform | 백엔드 B |
 
 WORK-04의 guest session 발급·검증은 `auth`, 초대 대상과 참여자 상태는 `trip`이다. WORK-05는 지역 적격성과 카드를 `attraction`에서 계산하고 추첨 결과만 `trip`의 DRAFT 여행에 저장한다. WORK-07의 식당 조회는 `attraction`, 초안 편집과 재계산은 `trip`이다.
 
@@ -48,14 +48,14 @@ WORK-04의 guest session 발급·검증은 `auth`, 초대 대상과 참여자 �
 | 모듈 | 소유 테이블 |
 |---|---|
 | `auth` | `users`, `social_accounts`, `refresh_tokens` |
-| `profile` | `onboarding_submissions`, `onboarding_answers`, `user_taste_vectors`, `guest_taste_vectors` |
+| `profile` | `onboarding_submissions`, `onboarding_answers`, `liked_trips`, `user_taste_vectors`, `guest_taste_vectors` |
 | `attraction` | `regions`, `region_contents`, `attractions`, `attraction_images`, `attraction_embeddings`, `official_courses`, `official_course_stops`, `ingestion_runs`, `data_quality_issues` |
 | `trip` | `trip_plans`, `trip_members`, `trip_participants`, `trip_stops`, `meal_stops`, `trip_invitations`, `course_share_links` |
 | `shared` | 없음 |
 
-`onboarding_responses`는 WORK-02에서 제거할 전환용 테이블이다. `friendships`, `user_interactions`, `liked_trips`는 MVP 대응 기능이 없어 소유 모듈을 정하지 않는다.
+`onboarding_responses`는 WORK-02에서 제거할 전환용 테이블이다. `friendships`와 `user_interactions`는 MVP WORK가 아직 없다. 회의록 P1 방문 평가와 P2 친구 추가에서 쓰므로 `profile` 소유로 두고, 해당 WORK가 정해질 때 채운다.
 
-평면 `com.yeso.backend.domain`의 클래스는 위 모듈로 옮겼다. `OnboardingResponse`(WORK-02에서 제거), `Friendship`, `UserInteraction`(MVP 대응 기능 없음)만 남아 있다.
+평면 `com.yeso.backend.domain`의 클래스는 위 모듈로 옮겼다. `OnboardingResponse`(WORK-02에서 제거), `Friendship`, `UserInteraction`(P1·P2 기능이라 WORK 미정)만 남아 있다.
 
 ## 주차가 아니라 통과 게이트
 
