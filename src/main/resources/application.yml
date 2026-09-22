@@ -27,6 +27,17 @@ server:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
 
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
 # ----- JWT -----
 # secret 은 여기 값을 안 둔다 — 커밋된 기본값이 있으면 실제 배포에서 이 값이 누락됐을 때
 # "동작은 하되 누구나 위조 가능한 서명 키"로 조용히 fallback하는 게 가장 위험하다.

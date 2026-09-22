@@ -5,6 +5,7 @@
 ## 문서 목록
 
 - [공통 오류 응답과 인증 사용자 주입](common-errors.md)
+- [OpenAPI·Swagger](openapi.md)
 - [인증](auth.md)
 - 여행: 준비 중
 - 관광지: 준비 중
