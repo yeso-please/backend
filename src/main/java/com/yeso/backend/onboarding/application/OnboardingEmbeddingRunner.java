@@ -103,7 +103,7 @@ public class OnboardingEmbeddingRunner {
     private void retryOrFail(EmbeddingJob job, OnboardingSubmission submission, String errorCode) {
         LocalDateTime nextAttemptAt = LocalDateTime.now()
                 .plusSeconds((long) embeddingProperties.getRetryBackoffSeconds() * (job.getAttempts() + 1));
-        boolean willRetry = job.scheduleRetryOrFail(errorCode, nextAttemptAt);
+        boolean willRetry = job.scheduleRetryOrFail(errorCode, nextAttemptAt, embeddingProperties.getMaxAttempts());
         submission.setTasteStatus(willRetry ? TasteStatus.PENDING : TasteStatus.FAILED);
     }
 

@@ -251,6 +251,19 @@ class OnboardingIntegrationTest {
         }
 
         @Test
+        @DisplayName("경험 태그가 정확히 5개면 허용된다")
+        void submit_exactlyFiveExperienceTags_isAccepted() throws Exception {
+            String token = accessTokenFor("fivetags@example.com");
+            String tags = "[\"자연\",\"바다\",\"산\",\"산책\",\"골목\"]";
+
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(submissionBody("demo-mbti-v1", "RELAXED", Map.of(), tags, "[]")))
+                    .andExpect(status().isCreated());
+        }
+
+        @Test
         @DisplayName("경험 태그가 6개면 400 TOO_MANY_EXPERIENCE_TAGS를 반환한다")
         void submit_tooManyExperienceTags() throws Exception {
             String token = accessTokenFor("toomanytags@example.com");
@@ -319,6 +332,27 @@ class OnboardingIntegrationTest {
                             .content(submissionBody("demo-mbti-v1", "RELAXED", Map.of(), "[]", likedTrips)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("ONBOARDING_TOO_MANY_LIKED_REGIONS"));
+        }
+
+        @Test
+        @DisplayName("좋았던 여행지가 정확히 30개면 허용된다")
+        void submit_exactlyThirtyLikedRegions_isAccepted() throws Exception {
+            String token = accessTokenFor("thirtyregions@example.com");
+            for (int i = 0; i < 30; i++) {
+                String sigCd = "%05d".formatted(90000 + i);
+                if (regionRepository.findById(sigCd).isEmpty()) {
+                    regionRepository.save(new Region(sigCd, "테스트도", "테스트시" + i));
+                }
+            }
+            String likedTrips = IntStream.range(0, 30)
+                    .mapToObj(i -> "{\"sigCd\":\"%05d\"}".formatted(90000 + i))
+                    .collect(Collectors.joining(",", "[", "]"));
+
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(submissionBody("demo-mbti-v1", "RELAXED", Map.of(), "[]", likedTrips)))
+                    .andExpect(status().isCreated());
         }
 
         @Test

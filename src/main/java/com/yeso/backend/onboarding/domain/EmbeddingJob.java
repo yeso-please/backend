@@ -29,8 +29,6 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class EmbeddingJob {
 
-    private static final int MAX_ATTEMPTS = 5;
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -90,11 +88,11 @@ public class EmbeddingJob {
     }
 
     /** @return 재시도 여력이 남아있으면 true(여전히 PENDING), 소진됐으면 false(FAILED로 전환) */
-    public boolean scheduleRetryOrFail(String errorCode, LocalDateTime nextAttemptAt) {
+    public boolean scheduleRetryOrFail(String errorCode, LocalDateTime nextAttemptAt, int maxAttempts) {
         this.attempts += 1;
         this.lastErrorCode = errorCode;
         this.updatedAt = LocalDateTime.now();
-        if (this.attempts >= MAX_ATTEMPTS) {
+        if (this.attempts >= maxAttempts) {
             this.status = TasteStatus.FAILED;
             this.nextAttemptAt = null;
             return false;

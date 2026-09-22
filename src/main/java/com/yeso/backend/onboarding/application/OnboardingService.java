@@ -208,8 +208,7 @@ public class OnboardingService {
                     throw new UnknownTagException(tag);
                 }
             }
-            String note = request.note() == null ? null : request.note().trim();
-            prepared.add(new PreparedLikedTrip(region, note, request.tags()));
+            prepared.add(new PreparedLikedTrip(region, request.note(), request.tags()));
         }
         return prepared;
     }
