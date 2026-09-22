@@ -76,7 +76,7 @@
   포함), `TripNotFoundException`(404), `TripContextLockedException`(409), `TripVersionConflictException`(409)
 - 공통 계층 확장: `DomainException`/`ApiErrorResponse`에 `details`(구조화된 부가 정보) 필드를 추가했다 —
   기존 오류는 빈 map이라 `@JsonInclude(NON_EMPTY)`로 응답 모양이 그대로 유지된다.
-- 마이그레이션: `V2__trip_context.sql` — `trip_plans.region_id` nullable, `start_date`/`end_date` NOT NULL,
+- 마이그레이션: `V4__trip_context.sql` — `trip_plans.region_id` nullable, `start_date`/`end_date` NOT NULL,
   `version` 추가, `status` CHECK에 `CANCELLED` 추가, origin XOR/범위 CHECK 추가, 미사용 `trip_members` 제거,
   `trip_participants`에 OWNER 유일성 unique index 추가
 - 패키지 이동: 평면 `domain` 패키지의 `TripPlan`/`Transport`/`TripPlanStatus`를 `trip.domain`으로 옮겼다

@@ -11,17 +11,15 @@ import com.yeso.backend.auth.infrastructure.JwtTokenProvider;
 import com.yeso.backend.auth.infrastructure.RefreshTokenRepository;
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.auth.presentation.LoginRequest;
-import com.yeso.backend.auth.presentation.LogoutRequest;
-import com.yeso.backend.auth.presentation.RefreshRequest;
 import com.yeso.backend.auth.presentation.SignupRequest;
-import com.yeso.backend.auth.presentation.TokenResponse;
-import com.yeso.backend.auth.presentation.UserResponse;
+import com.yeso.backend.auth.presentation.UserMeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -34,53 +32,100 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
 
-    public TokenResponse signup(SignupRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
-            throw new DuplicateEmailException(request.email());
+    public IssuedTokens signup(SignupRequest request) {
+        String email = normalizeEmail(request.email());
+        String nickname = request.nickname().trim();
+        if (userRepository.existsByEmail(email)) {
+            throw new DuplicateEmailException(email);
         }
-        User user = new User(request.email(), passwordEncoder.encode(request.password()), request.nickname());
+        User user = new User(email, passwordEncoder.encode(request.password()), nickname);
         userRepository.save(user);
-        return issueTokens(user);
+        return issueNewFamily(user);
     }
 
-    public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email())
+    public IssuedTokens login(LoginRequest request) {
+        String email = normalizeEmail(request.email());
+        User user = userRepository.findByEmail(email)
                 .filter(u -> u.getPasswordHash() != null)
                 .orElseThrow(InvalidCredentialsException::new);
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new InvalidCredentialsException();
         }
-        return issueTokens(user);
+        return issueNewFamily(user);
     }
 
-    public TokenResponse refresh(RefreshRequest request) {
-        Long userIdFromToken = jwtTokenProvider.parseRefreshTokenUserId(request.refreshToken());
-        String tokenHash = jwtTokenProvider.hash(request.refreshToken());
-        RefreshToken stored = refreshTokenRepository.findByTokenHash(tokenHash)
-                .filter(rt -> !rt.isRevoked())
-                .filter(rt -> rt.getExpiresAt().isAfter(LocalDateTime.now()))
-                .filter(rt -> rt.getUser().getId().equals(userIdFromToken))
+    /**
+     * refresh row를 lock한 뒤 판정한다: 폐기된(이미 rotate된) 토큰이 다시 제시되면 탈취로 간주해
+     * 같은 family를 통째로 무효화하고, 동시에 들어온 나머지 요청은 이 잠금 때문에 순서대로만
+     * 처리돼 정확히 하나만 성공한다(WORK-01 계약).
+     */
+    // 재사용 탐지 시 family를 폐기한 뒤 401을 던지므로, 이 예외로는 롤백하지 않아야 폐기가 커밋된다.
+    @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
+    public IssuedTokens refresh(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new InvalidRefreshTokenException();
+        }
+        String tokenHash = jwtTokenProvider.hash(refreshToken);
+        RefreshToken stored = refreshTokenRepository.findByTokenHashForUpdate(tokenHash)
                 .orElseThrow(InvalidRefreshTokenException::new);
-        stored.setRevoked(true);
-        return issueTokens(stored.getUser());
+
+        LocalDateTime now = LocalDateTime.now();
+        if (stored.isRevoked()) {
+            refreshTokenRepository.revokeActiveByFamilyId(stored.getFamilyId(), now);
+            throw new InvalidRefreshTokenException();
+        }
+        if (stored.isExpired(now)) {
+            throw new InvalidRefreshTokenException();
+        }
+
+        User user = stored.getUser();
+        IssuedTokens issued = issueForFamily(user, stored.getFamilyId());
+        stored.revokeAsReplaced(now, issued.refreshTokenId());
+        return issued;
     }
 
-    public void logout(LogoutRequest request) {
-        String tokenHash = jwtTokenProvider.hash(request.refreshToken());
-        refreshTokenRepository.findByTokenHash(tokenHash).ifPresent(rt -> rt.setRevoked(true));
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+        String tokenHash = jwtTokenProvider.hash(refreshToken);
+        refreshTokenRepository.findByTokenHash(tokenHash)
+                .filter(rt -> !rt.isRevoked())
+                .ifPresent(rt -> rt.revoke(LocalDateTime.now()));
     }
 
     @Transactional(readOnly = true)
-    public UserResponse getMe(Long userId) {
+    public UserMeResponse getMe(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        return UserResponse.from(user);
+        // 온보딩 상태(WORK-02)는 아직 구현되지 않아 항상 false를 반환한다.
+        return UserMeResponse.of(user, false);
     }
 
-    private TokenResponse issueTokens(User user) {
+    private IssuedTokens issueNewFamily(User user) {
+        return issueForFamily(user, UUID.randomUUID());
+    }
+
+    private IssuedTokens issueForFamily(User user, UUID familyId) {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId(), user.getEmail());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
+        String refreshToken = jwtTokenProvider.generateOpaqueRefreshToken();
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtProperties.getRefreshTokenTtlDays());
-        refreshTokenRepository.save(new RefreshToken(user, jwtTokenProvider.hash(refreshToken), expiresAt));
-        return new TokenResponse(accessToken, refreshToken, "Bearer", jwtTokenProvider.accessTokenTtlSeconds());
+        RefreshToken saved = refreshTokenRepository.save(
+                new RefreshToken(user, jwtTokenProvider.hash(refreshToken), familyId, expiresAt));
+        // 온보딩 상태(WORK-02)는 아직 구현되지 않아 항상 false를 반환한다.
+        return new IssuedTokens(
+                user, saved.getId(), accessToken, refreshToken, jwtTokenProvider.accessTokenTtlSeconds(), false);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase();
+    }
+
+    public record IssuedTokens(
+            User user,
+            Long refreshTokenId,
+            String accessToken,
+            String refreshToken,
+            long expiresInSeconds,
+            boolean onboardingCompleted) {
     }
 }
