@@ -16,7 +16,7 @@ public class UserController {
     private final AuthService authService;
 
     @GetMapping("/me")
-    public UserResponse me(@CurrentUser CustomUserDetails user) {
+    public UserMeResponse me(@CurrentUser CustomUserDetails user) {
         return authService.getMe(user.userId());
     }
 }

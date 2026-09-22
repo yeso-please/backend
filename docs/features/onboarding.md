@@ -88,7 +88,7 @@
 - 인프라: `EmbeddingClient`(adapter 인터페이스) → `HttpEmbeddingClient`(실제 연동), `EmbeddingProperties`
   (`embedding.*`), `Utf8MaxByteSize`류와 마찬가지로 검증은 `presentation.validation` 대신 서비스 계층에서
   도메인 예외로 처리(스케줄 밀도·태그처럼 표준 Bean Validation로 표현하기 어려운 규칙이라)
-- 마이그레이션: `V2__onboarding_submissions.sql` — `onboarding_submissions`에 `mbti_code`(rename),
+- 마이그레이션: `V3__onboarding_submissions.sql` — `onboarding_submissions`에 `mbti_code`(rename),
   `status/taste_status/completed_at/schedule_density/experience_tags/exclude_tags` 추가, `liked_trips`에
   `note/tags` 추가 및 `display_name` 제거 + `(submission_id, region_id)` unique, `users`/`trip_participants`에
   `latest_onboarding_submission_id` 추가, `embedding_jobs` 신설, 전환용 `onboarding_responses` 제거
