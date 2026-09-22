@@ -43,6 +43,7 @@ WORK-09의 빌드·CI·개발 RDS 환경은 초기 세팅 담당이 협업한다
 | 07 지도 편집·식당 | `trip/…/course` 편집·여행별 식당 요청 조율, `attraction/…/region` 지도·상세·후보 조회 | area: trip, area: attraction | 백엔드 B |
 | 08 확정·멱등성·조회·수정 | `trip/…/course` | area: trip | 백엔드 B |
 | 09 이관·품질·TourAPI·개발 RDS | `attraction/application/ingestion` (엔드포인트 없음) | area: attraction, area: platform | 백엔드 B |
+| 10 여행기·사진 지도·친구 공개 | `profile` 친구 관계 + `trip` 여행기/공유 + `attraction` 지도 조회 계약 | area: profile, area: trip | 후속 배정 |
 
 WORK-04의 guest session 발급·검증은 `auth`, 초대 대상과 참여자 상태는 `trip`, 응답·성향·벡터 처리는 `profile`이다. 공유 URL이 `/courses/.../share-links`여도 링크 관리는 `trip/invite`가 맡고 일정 조회·변경은 `trip/course`가 맡는다.
 
