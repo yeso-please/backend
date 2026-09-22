@@ -10,8 +10,9 @@ ALTER TABLE trip_plans
 ALTER TABLE trip_plans DROP CONSTRAINT ck_trip_status;
 ALTER TABLE trip_plans ADD CONSTRAINT ck_trip_status CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED'));
 
+-- lat/lng는 둘 다 있거나 둘 다 없어야 한다(XOR이 아니라 동시 null 여부 일치 검사).
 ALTER TABLE trip_plans
-    ADD CONSTRAINT ck_trip_origin_xor CHECK ((origin_lat IS NULL) = (origin_lng IS NULL)),
+    ADD CONSTRAINT ck_trip_origin_both_or_neither CHECK ((origin_lat IS NULL) = (origin_lng IS NULL)),
     ADD CONSTRAINT ck_trip_origin_lat CHECK (origin_lat IS NULL OR origin_lat BETWEEN -90 AND 90),
     ADD CONSTRAINT ck_trip_origin_lng CHECK (origin_lng IS NULL OR origin_lng BETWEEN -180 AND 180);
 

@@ -559,5 +559,29 @@ class TripIntegrationTest {
                     .andExpect(jsonPath("$[0].startDate").value(base.toString()))
                     .andExpect(jsonPath("$[0].endDate").value(base.plusDays(3).toString()));
         }
+
+        @Test
+        @DisplayName("DRAFT/CANCELLED 여행은 선택 불가능한 날짜에서 제외된다")
+        void unavailableDates_excludesDraftAndCancelledTrips() throws Exception {
+            String token = freshToken();
+            LocalDate draftBase = LocalDate.now().plusDays(320);
+            LocalDate cancelledBase = LocalDate.now().plusDays(340);
+
+            // DRAFT: 확정하지 않고 그대로 둔다.
+            createTrip(token, draftBase, 2);
+
+            // CANCELLED: 확정 후 취소 상태로 되돌린다.
+            Long cancelledTripId = createConfirmedTrip(token, cancelledBase, 2);
+            TripPlan cancelledTrip = tripPlanRepository.findById(cancelledTripId).orElseThrow();
+            cancelledTrip.setStatus(TripPlanStatus.CANCELLED);
+            tripPlanRepository.save(cancelledTrip);
+
+            mockMvc.perform(get("/api/trips/unavailable-dates")
+                            .header("Authorization", "Bearer " + token)
+                            .param("from", draftBase.minusDays(5).toString())
+                            .param("to", cancelledBase.plusDays(10).toString()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+        }
     }
 }
