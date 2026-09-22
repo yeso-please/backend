@@ -26,7 +26,9 @@
 지도 핀 응답은 정확한 위치를 노출하지 않는 경우를 명시한다.
 
 ```json
-{"diaryId":31,"title":"비 오는 날의 경주","coverPhotoUrl":"...","visitedAt":"2026-10-12","lat":35.856,"lng":129.225,"locationPrecision":"CITY","visibility":"FRIENDS"}
+{"diaryId":31,"title":"비 오는 날의 경주","courseTitle":"신라의 시간을 걷는 2일","coverPhotoUrl":"...","visitedAt":"2026-10-12","lat":35.856,"lng":129.225,"locationPrecision":"CITY","visibility":"FRIENDS"}
 ```
+
+`courseTitle`과 `coverPhotoUrl`은 지도 핀의 썸네일에 함께 표시한다. 대표 사진이 아직 없으면 서비스 기본 이미지로 대체하며, 다른 사진의 URL이나 원본 EXIF는 목록 응답에 포함하지 않는다.
 
 대표 오류: `DIARY_NOT_FOUND` 404, `DIARY_ALREADY_EXISTS_FOR_COURSE` 409, `DIARY_NOT_PUBLISHABLE` 422, `PHOTO_LIMIT_EXCEEDED` 400, `PHOTO_INVALID` 400, `FRIENDSHIP_REQUIRED` 403, `DIARY_SHARE_LINK_EXPIRED|REVOKED` 410.
