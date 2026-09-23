@@ -3,7 +3,7 @@ package com.yeso.backend.onboarding.application;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
-import com.yeso.backend.domain.Region;
+import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.onboarding.domain.DuplicateLikedRegionException;
 import com.yeso.backend.onboarding.domain.DuplicateQuestionAnswerException;
 import com.yeso.backend.onboarding.domain.EmbeddingJob;

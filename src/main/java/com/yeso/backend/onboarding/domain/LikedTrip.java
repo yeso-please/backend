@@ -1,6 +1,6 @@
 package com.yeso.backend.onboarding.domain;
 
-import com.yeso.backend.domain.Region;
+import com.yeso.backend.attraction.domain.Region;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

@@ -11,4 +11,7 @@ public record LoginRequest(
         @NotBlank(message = "비밀번호를 입력해주세요.")
         String password
 ) {
+    public LoginRequest {
+        email = email == null ? null : email.trim().toLowerCase();
+    }
 }

@@ -1,7 +1,7 @@
 package com.yeso.backend.onboarding.application;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
-import com.yeso.backend.domain.UserTasteVector;
+import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.onboarding.domain.EmbeddingJob;
 import com.yeso.backend.onboarding.domain.EmbeddingOwnerType;
 import com.yeso.backend.onboarding.domain.OnboardingSubmission;

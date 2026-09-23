@@ -1,6 +1,6 @@
 package com.yeso.backend.onboarding.infrastructure;
 
-import com.yeso.backend.domain.Region;
+import com.yeso.backend.attraction.domain.Region;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**

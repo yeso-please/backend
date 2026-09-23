@@ -1,7 +1,7 @@
 package com.yeso.backend.onboarding;
 
 import com.jayway.jsonpath.JsonPath;
-import com.yeso.backend.domain.Region;
+import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.onboarding.infrastructure.EmbeddingClient;
 import com.yeso.backend.onboarding.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.onboarding.infrastructure.RegionRepository;
