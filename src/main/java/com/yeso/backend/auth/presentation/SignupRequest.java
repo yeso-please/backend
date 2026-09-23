@@ -20,4 +20,8 @@ public record SignupRequest(
         @Size(min = 1, max = 30, message = "닉네임은 1자 이상 30자 이하여야 합니다.")
         String nickname
 ) {
+    public SignupRequest {
+        email = email == null ? null : email.trim().toLowerCase();
+        nickname = nickname == null ? null : nickname.trim();
+    }
 }

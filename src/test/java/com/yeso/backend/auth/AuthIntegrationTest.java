@@ -115,7 +115,7 @@ class AuthIntegrationTest {
 
             mockMvc.perform(post("/api/auth/signup")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("  DUP@Example.com  ".trim(), "password123", "second")))
+                            .content(signupBody("  DUP@Example.com  ", "password123", "second")))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.status").value(409))
                     .andExpect(jsonPath("$.code").value("AUTH_DUPLICATE_EMAIL"))
