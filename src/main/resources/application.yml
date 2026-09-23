@@ -43,3 +43,16 @@ jwt:
 app:
   auth:
     cookie-secure: true
+
+# ----- 온보딩 임베딩(Python) -----
+# base-url이 비어 있으면 호출이 항상 실패해 job이 PENDING/FAILED로 남는다 — submission 자체는
+# 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
+embedding:
+  base-url: ${EMBEDDING_SERVICE_BASE_URL:}
+  model-version: demo-embedding-v1
+  template-version: 1
+  expected-dimension: 384
+  timeout-millis: 5000
+  max-attempts: 5
+  retry-backoff-seconds: 30
+  retry-sweep-interval-ms: 30000
