@@ -24,6 +24,9 @@ spring:
 server:
   port: 8080
 
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
 # ----- JWT -----
 # secret 은 여기 값을 안 둔다 — 커밋된 기본값이 있으면 실제 배포에서 이 값이 누락됐을 때
 # "동작은 하되 누구나 위조 가능한 서명 키"로 조용히 fallback하는 게 가장 위험하다.
@@ -40,3 +43,16 @@ jwt:
 app:
   auth:
     cookie-secure: true
+
+# ----- 온보딩 임베딩(Python) -----
+# base-url이 비어 있으면 호출이 항상 실패해 job이 PENDING/FAILED로 남는다 — submission 자체는
+# 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
+embedding:
+  base-url: ${EMBEDDING_SERVICE_BASE_URL:}
+  model-version: demo-embedding-v1
+  template-version: 1
+  expected-dimension: 384
+  timeout-millis: 5000
+  max-attempts: 5
+  retry-backoff-seconds: 30
+  retry-sweep-interval-ms: 30000

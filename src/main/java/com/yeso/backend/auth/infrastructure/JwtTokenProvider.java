@@ -25,7 +25,7 @@ import java.util.UUID;
  * access 토큰은 서명된 JWT(claim "type"="access")로 발급해 서명 검증만으로 매 요청을 처리한다.
  * refresh 토큰은 256 bit 이상 CSPRNG opaque 값이다 — 클레임 위조 우려가 없고, DB의
  * 해시 대조·family 회전·재사용 탐지(RefreshTokenRepository, AuthService)만으로 폐기를 완전히 제어한다
- * (docs/adr/0002-opaque-refresh-token-rotation.md).
+ * (docs/adr/0003-opaque-refresh-token-rotation.md).
  */
 @Component
 @RequiredArgsConstructor

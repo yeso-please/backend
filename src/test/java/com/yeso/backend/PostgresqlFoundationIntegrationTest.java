@@ -1,6 +1,7 @@
 package com.yeso.backend;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,6 +66,81 @@ class PostgresqlFoundationIntegrationTest {
     void migration_secondRun_isNoOp() {
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         flyway.validate();
+    }
+
+    @Test
+    @DisplayName("V2가 refresh_tokens에 family 회전용 컬럼을 추가하고 revoked 컬럼을 제거한다")
+    void migration_v2_addsRefreshTokenRotationColumns() {
+        Integer successfulV2 = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = true AND version = '2'",
+                Integer.class);
+        Integer rotationColumns = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens'
+                  AND column_name IN ('family_id', 'revoked_at', 'replaced_by_token_id')
+                """, Integer.class);
+        Integer legacyRevokedColumn = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens' AND column_name = 'revoked'
+                """, Integer.class);
+
+        assertThat(successfulV2).isEqualTo(1);
+        assertThat(rotationColumns).isEqualTo(3);
+        assertThat(legacyRevokedColumn).isZero();
+    }
+
+    @Test
+    @DisplayName("V1에서 V2로 업그레이드하면 기존 revoked 행은 revoked_at으로 백필되고 active 행은 보존된다")
+    void migration_v1ToV2Upgrade_backfillsRevokedRowsAndPreservesActiveRows() {
+        Flyway v1Only = Flyway.configure()
+                .dataSource(jdbcTemplate.getDataSource())
+                .locations("classpath:db/migration")
+                .schemas("app")
+                .defaultSchema("app")
+                .cleanDisabled(false)
+                .target(MigrationVersion.fromVersion("1"))
+                .load();
+        v1Only.clean();
+        v1Only.migrate();
+
+        jdbcTemplate.update("""
+                INSERT INTO app.users(email, password_hash, nickname)
+                VALUES ('upgrade-fixture@example.com', 'hash', 'upgrade-tester')
+                """);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM app.users WHERE email = 'upgrade-fixture@example.com'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO app.refresh_tokens(user_id, token_hash, expires_at, revoked)
+                VALUES (?, 'upgrade-revoked-hash', CURRENT_TIMESTAMP + INTERVAL '14 days', TRUE)
+                """, userId);
+        jdbcTemplate.update("""
+                INSERT INTO app.refresh_tokens(user_id, token_hash, expires_at, revoked)
+                VALUES (?, 'upgrade-active-hash', CURRENT_TIMESTAMP + INTERVAL '14 days', FALSE)
+                """, userId);
+
+        Flyway.configure()
+                .dataSource(jdbcTemplate.getDataSource())
+                .locations("classpath:db/migration")
+                .schemas("app")
+                .defaultSchema("app")
+                .load()
+                .migrate();
+
+        Integer preservedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM app.refresh_tokens WHERE token_hash IN ('upgrade-revoked-hash', 'upgrade-active-hash')",
+                Integer.class);
+        LocalDateTime revokedAt = jdbcTemplate.queryForObject(
+                "SELECT revoked_at FROM app.refresh_tokens WHERE token_hash = 'upgrade-revoked-hash'",
+                LocalDateTime.class);
+        LocalDateTime activeRevokedAt = jdbcTemplate.queryForObject(
+                "SELECT revoked_at FROM app.refresh_tokens WHERE token_hash = 'upgrade-active-hash'",
+                LocalDateTime.class);
+
+        assertThat(preservedRows).isEqualTo(2);
+        assertThat(revokedAt).isNotNull();
+        assertThat(activeRevokedAt).isNull();
     }
 
     @Test

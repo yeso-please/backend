@@ -6,11 +6,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * 서비스 사용자. 이메일/비밀번호 가입과 소셜 로그인({@link SocialAccount}) 둘 다 지원한다.
@@ -23,7 +24,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class User {
+public class User extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,11 +42,9 @@ public class User {
     @Column(name = "profile_image")
     private String profileImage;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    /** 온보딩(WORK-02) 재검사 시 이 pointer만 최신 submission으로 바꾼다 — 이전 제출은 immutable로 남는다. */
+    @Column(name = "latest_onboarding_submission_id")
+    private UUID latestOnboardingSubmissionId;
 
     public User(String email, String passwordHash, String nickname) {
         this.email = email;

@@ -33,18 +33,17 @@ public class AuthService {
     private final JwtProperties jwtProperties;
 
     public IssuedTokens signup(SignupRequest request) {
-        String email = normalizeEmail(request.email());
-        String nickname = request.nickname().trim();
+        String email = request.email();
         if (userRepository.existsByEmail(email)) {
             throw new DuplicateEmailException(email);
         }
-        User user = new User(email, passwordEncoder.encode(request.password()), nickname);
+        User user = new User(email, passwordEncoder.encode(request.password()), request.nickname());
         userRepository.save(user);
         return issueNewFamily(user);
     }
 
     public IssuedTokens login(LoginRequest request) {
-        String email = normalizeEmail(request.email());
+        String email = request.email();
         User user = userRepository.findByEmail(email)
                 .filter(u -> u.getPasswordHash() != null)
                 .orElseThrow(InvalidCredentialsException::new);
@@ -114,10 +113,6 @@ public class AuthService {
         // 온보딩 상태(WORK-02)는 아직 구현되지 않아 항상 false를 반환한다.
         return new IssuedTokens(
                 user, saved.getId(), accessToken, refreshToken, jwtTokenProvider.accessTokenTtlSeconds(), false);
-    }
-
-    private static String normalizeEmail(String email) {
-        return email.trim().toLowerCase();
     }
 
     public record IssuedTokens(

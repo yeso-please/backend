@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
         name = "social_accounts",
         uniqueConstraints = @UniqueConstraint(columnNames = {"provider", "provider_user_id"})
 )
+@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -47,8 +48,9 @@ public class SocialAccount {
     @Column(name = "provider_user_id", nullable = false)
     private String providerUserId;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    @org.springframework.data.annotation.CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public SocialAccount(User user, SocialProvider provider, String providerUserId) {
         this.user = user;
