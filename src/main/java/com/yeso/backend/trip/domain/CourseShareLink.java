@@ -19,17 +19,16 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 참여/온보딩 초대 링크. Share(확정 일정 권한)와는 별도 token 체계다(WORK-04).
- * 원문은 발급 응답에서 한 번만 반환하고 DB에는 SHA-256 해시만 저장한다.
- * 하나의 링크로 여러 손님이 각자 참여할 수 있어 participant와는 1:N이다.
- * {@code permission}은 이 링크로 들어온 손님이 확정 일정에 대해 갖는 기본 권한이다.
+ * 확정 일정 공유 링크. "course"라는 별도 엔티티는 아직 없어(WORK-06/07/08 이전) 확정된
+ * {@link TripPlan} 자체를 공유 대상으로 삼는다 — 표에 남은 컬럼명(`course_share_links`,
+ * `trip_plan_id`)이 이 사실을 그대로 보여준다.
  */
 @Entity
-@Table(name = "trip_invitations")
+@Table(name = "course_share_links")
 @Getter
 @Setter
 @NoArgsConstructor
-public class TripInvitation {
+public class CourseShareLink {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,39 +41,35 @@ public class TripInvitation {
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "invited_by_user_id", nullable = false)
-    private User invitedByUser;
-
-    @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private SharePermission permission;
 
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
     @Column(name = "revoked_at")
     private LocalDateTime revokedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_user_id", nullable = false)
+    private User createdByUser;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    public TripInvitation(
-            TripPlan tripPlan, String tokenHash, User invitedByUser,
-            SharePermission permission, LocalDateTime expiresAt) {
+    public CourseShareLink(
+            TripPlan tripPlan, String tokenHash, SharePermission permission,
+            LocalDateTime expiresAt, User createdByUser) {
         this.tripPlan = tripPlan;
         this.tokenHash = tokenHash;
-        this.invitedByUser = invitedByUser;
         this.permission = permission;
         this.expiresAt = expiresAt;
-    }
-
-    public void changePermission(SharePermission permission) {
-        this.permission = permission;
+        this.createdByUser = createdByUser;
     }
 
     public boolean isActive(LocalDateTime now) {
-        return revokedAt == null && expiresAt.isAfter(now);
+        return revokedAt == null && (expiresAt == null || expiresAt.isAfter(now));
     }
 
     public boolean isRevoked() {
@@ -83,5 +78,9 @@ public class TripInvitation {
 
     public void revoke() {
         this.revokedAt = LocalDateTime.now();
+    }
+
+    public void changePermission(SharePermission permission) {
+        this.permission = permission;
     }
 }

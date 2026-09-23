@@ -10,3 +10,4 @@
 - [회원가입/로그인/인증 모듈](auth-login-signup.md) — done
 - [WORK-02 온보딩·재검사·임베딩 job](onboarding.md) — done
 - [WORK-03 여행 context와 날짜 중복 차단](trip-context.md) — done
+- [WORK-04 비회원 초대와 VIEW·EDIT 공유](trip-invitation.md) — done
