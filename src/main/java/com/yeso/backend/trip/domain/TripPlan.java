@@ -1,7 +1,6 @@
 package com.yeso.backend.trip.domain;
 
 import com.yeso.backend.attraction.domain.Region;
-
 import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,31 +13,27 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import com.yeso.backend.shared.persistence.BaseTimeEntity;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
- * 확정된 코스. 슬롯 잠금/리롤 단계(§5.3)는 stateless라 여기 저장되지 않고,
- * 사용자가 "확정"을 눌렀을 때만 이 엔티티와 {@link TripStop}이 생긴다.
+ * 여행 방. 지역 추첨 전에는 region이 null인 DRAFT다(WORK-03). 확정(WORK-08) 이후에는
+ * CONFIRMED로 바뀌고 context(날짜/이동수단/출발지) 수정이 잠긴다({@link #isMutable()}).
  *
- * situation은 이 여행 1회에만 적용되는 휘발성 컨텍스트(동행유형/기간 등, §5.1)를
- * JSON 문자열로 스냅샷 저장 — 나중에 취향과 구분해서 "그때 왜 이 코스가 나왔는지" 재현 가능하게.
- *
- * status는 기본값을 두지 않고 생성 시 반드시 명시한다 — v1의 유일한 생성 경로인
- * "코스 확정"(POST /api/courses)은 이 row를 만드는 순간 바로 CONFIRMED여야 하며,
- * DRAFT는 v1에 없는 미래 흐름(확정 전 서버 임시저장) 전용으로 예약해둔 상태다.
- * 필드에 기본값을 주면 실수로 DRAFT인 채 방치되는 확정 코스가 생길 수 있어 의도적으로 막는다.
+ * {@code version}은 낙관적 잠금이다 — 동시에 두 PATCH가 들어오면 하나는
+ * {@code TRIP_VERSION_CONFLICT}로 거부돼야 하므로 JPA {@link Version}을 그대로 쓴다.
  */
 @Entity
 @Table(name = "trip_plans")
 @Getter
 @Setter
 @NoArgsConstructor
-public class TripPlan extends BaseTimeEntity {
+public class TripPlan {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,8 +44,11 @@ public class TripPlan extends BaseTimeEntity {
     private User ownerUser;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "region_id", nullable = false)
+    @JoinColumn(name = "region_id")
     private Region region;
+
+    @Column(length = 120)
+    private String title;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -62,23 +60,61 @@ public class TripPlan extends BaseTimeEntity {
     @Column(name = "origin_lng")
     private Double originLng;
 
-    @Column(columnDefinition = "text")
-    private String situation;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TripPlanStatus status;
 
-    @Column(name = "start_date")
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
-    @Column(name = "end_date")
+    @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
-    public TripPlan(User ownerUser, Region region, Transport transport, TripPlanStatus status) {
+    @Version
+    @Column(nullable = false)
+    private int version;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    public TripPlan(User ownerUser, LocalDate startDate, int nights, Transport transport, Double originLat, Double originLng) {
         this.ownerUser = ownerUser;
-        this.region = region;
         this.transport = transport;
-        this.status = status;
+        this.originLat = originLat;
+        this.originLng = originLng;
+        this.status = TripPlanStatus.DRAFT;
+        applyDates(startDate, nights);
+    }
+
+    public int getNights() {
+        return (int) java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate);
+    }
+
+    public boolean isMutable() {
+        return status == TripPlanStatus.DRAFT;
+    }
+
+    public boolean isOwnedBy(Long userId) {
+        return ownerUser.getId().equals(userId);
+    }
+
+    public void updateContext(LocalDate startDate, int nights, Transport transport, Double originLat, Double originLng) {
+        applyDates(startDate, nights);
+        this.transport = transport;
+        this.originLat = originLat;
+        this.originLng = originLng;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public boolean overlaps(LocalDate otherStart, LocalDate otherEnd) {
+        return !startDate.isAfter(otherEnd) && !endDate.isBefore(otherStart);
+    }
+
+    private void applyDates(LocalDate startDate, int nights) {
+        this.startDate = startDate;
+        this.endDate = startDate.plusDays(nights);
     }
 }

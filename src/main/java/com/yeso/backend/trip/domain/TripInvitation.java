@@ -1,6 +1,7 @@
 package com.yeso.backend.trip.domain;
 
 import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.trip.domain.TripPlan;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
