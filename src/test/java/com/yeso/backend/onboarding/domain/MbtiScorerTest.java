@@ -52,8 +52,8 @@ class MbtiScorerTest {
     }
 
     @Test
-    @DisplayName("EI축이 동점이면 뒤 글자 I를 채택한다")
-    void score_eiAxisTie_choosesI() {
+    @DisplayName("SN축이 동점이면 뒤 글자 N을 채택한다")
+    void score_snAxisTie_choosesN() {
         // EI 문항 10,11,12는 choice1->E, choice2->I. 3문항이라 동점(1.5:1.5)이 불가능하므로
         // 대신 명시적으로 1승1패 상태를 만들 수 없다 — 홀수 문항이라 동점 시나리오는 짝수 축에서만 검증한다.
         // SN축(5,6) 2문항으로 동점을 만든다: choice1->S, choice2->N.

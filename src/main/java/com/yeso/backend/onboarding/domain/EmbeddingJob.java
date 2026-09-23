@@ -78,6 +78,10 @@ public class EmbeddingJob {
         this.ownerId = ownerId;
         this.modelVersion = modelVersion;
         this.templateVersion = templateVersion;
+        // AFTER_COMMIT 리스너가 실행되기 전에 프로세스가 죽는 등의 이유로 첫 시도가 아예 발생하지
+        // 않으면, nextAttemptAt이 null인 채로 남아 EmbeddingRetrySweeper의
+        // "nextAttemptAt <= now" 조건에 영원히 걸리지 않는다 — 생성 시점부터 즉시 대상이 되게 한다.
+        this.nextAttemptAt = LocalDateTime.now();
     }
 
     public void markReady() {

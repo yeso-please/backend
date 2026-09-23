@@ -44,7 +44,7 @@ public class OnboardingEmbeddingRunner {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void runJob(UUID submissionId) {
-        EmbeddingJob job = embeddingJobRepository.findBySubmissionId(submissionId).orElse(null);
+        EmbeddingJob job = embeddingJobRepository.findBySubmissionIdForUpdate(submissionId).orElse(null);
         if (job == null) {
             log.warn("No embedding job for submission (already processed or missing): submissionId={}", submissionId);
             return;

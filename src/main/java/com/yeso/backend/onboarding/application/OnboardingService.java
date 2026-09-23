@@ -152,15 +152,16 @@ public class OnboardingService {
         for (AnswerRequest answer : answers) {
             Integer number = answer.questionNumber();
             Integer choice = answer.choice();
-            if (number != null && byNumber.containsKey(number)) {
+            if (number == null || number < 1 || number > OnboardingQuestionBank.QUESTIONS.size()) {
+                throw new InvalidChoiceException(number == null ? -1 : number);
+            }
+            if (byNumber.containsKey(number)) {
                 throw new DuplicateQuestionAnswerException(number);
             }
             if (choice == null || (choice != 1 && choice != 2)) {
-                throw new InvalidChoiceException(number == null ? -1 : number);
+                throw new InvalidChoiceException(number);
             }
-            if (number != null) {
-                byNumber.put(number, choice);
-            }
+            byNumber.put(number, choice);
         }
         for (int number = 1; number <= OnboardingQuestionBank.QUESTIONS.size(); number++) {
             if (!byNumber.containsKey(number)) {
