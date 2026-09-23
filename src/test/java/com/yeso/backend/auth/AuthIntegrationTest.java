@@ -1,6 +1,8 @@
 package com.yeso.backend.auth;
 
 import com.jayway.jsonpath.JsonPath;
+import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.auth.infrastructure.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -30,7 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,6 +61,9 @@ class AuthIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private static String signupBody(String email, String password, String nickname) {
         return """
@@ -384,6 +391,56 @@ class AuthIntegrationTest {
         void logout_withoutCookie_stillReturnsNoContent() throws Exception {
             mockMvc.perform(post("/api/auth/logout"))
                     .andExpect(status().isNoContent());
+        }
+    }
+
+    @Nested
+    @DisplayName("감사 시각")
+    class Auditing {
+
+        @Test
+        @DisplayName("생성·수정 시각을 서버가 자동으로 기록한다")
+        void userTimestamps_areManagedByJpaAuditing() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(signupBody("audit@example.com", "password123", "before")));
+
+            User user = userRepository.findByEmail("audit@example.com").orElseThrow();
+            assertThat(user.getCreatedAt()).isNotNull();
+            assertThat(user.getUpdatedAt()).isNotNull();
+            var initialUpdatedAt = user.getUpdatedAt();
+
+            Thread.sleep(5);
+            user.setNickname("after");
+            userRepository.saveAndFlush(user);
+
+            assertThat(user.getUpdatedAt()).isAfter(initialUpdatedAt);
+        }
+    }
+
+    @Nested
+    @DisplayName("CORS")
+    class Cors {
+
+        @Test
+        @DisplayName("허용 Origin의 preflight 요청에는 credentials CORS 헤더를 반환한다")
+        void preflight_allowedOrigin() throws Exception {
+            mockMvc.perform(options("/api/auth/signup")
+                            .header("Origin", "http://localhost:3000")
+                            .header("Access-Control-Request-Method", "POST"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+                    .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+        }
+
+        @Test
+        @DisplayName("allowlist 밖 Origin에는 CORS 허용 헤더를 반환하지 않는다")
+        void preflight_disallowedOrigin() throws Exception {
+            mockMvc.perform(options("/api/auth/signup")
+                            .header("Origin", "https://untrusted.example.com")
+                            .header("Access-Control-Request-Method", "POST"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
         }
     }
 }

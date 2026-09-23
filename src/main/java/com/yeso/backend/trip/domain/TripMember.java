@@ -1,5 +1,6 @@
-package com.yeso.backend.auth.domain;
+package com.yeso.backend.trip.domain;
 
+import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,24 +19,23 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/**
- * 소셜 로그인 연동 계정. User와 분리해두어 한 계정에 카카오+구글을
- * 동시에 연결(계정 통합)할 수 있게 한다.
- */
 @Entity
 @Table(
-        name = "social_accounts",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"provider", "provider_user_id"})
+        name = "trip_members",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"trip_plan_id", "user_id"})
 )
-@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
-public class SocialAccount {
+public class TripMember {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "trip_plan_id", nullable = false)
+    private TripPlan tripPlan;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -43,18 +43,14 @@ public class SocialAccount {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private SocialProvider provider;
+    private TripMemberRole role;
 
-    @Column(name = "provider_user_id", nullable = false)
-    private String providerUserId;
+    @Column(name = "joined_at", nullable = false)
+    private LocalDateTime joinedAt = LocalDateTime.now();
 
-    @org.springframework.data.annotation.CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    public SocialAccount(User user, SocialProvider provider, String providerUserId) {
+    public TripMember(TripPlan tripPlan, User user, TripMemberRole role) {
+        this.tripPlan = tripPlan;
         this.user = user;
-        this.provider = provider;
-        this.providerUserId = providerUserId;
+        this.role = role;
     }
 }

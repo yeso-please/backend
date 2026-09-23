@@ -91,7 +91,7 @@
 ## 결정과 미해결 사항
 
 - **refresh 토큰을 opaque로 전환**: PR #8/ADR-0001은 refresh도 서명된 JWT로 발급했으나, WORK-01 계약이 256bit
-  이상 opaque 토큰을 요구해 [ADR-0002](../adr/0002-opaque-refresh-token-rotation.md)로 이를 대체했다.
+  이상 opaque 토큰을 요구해 [ADR-0003](../adr/0003-opaque-refresh-token-rotation.md)로 이를 대체했다.
   ADR-0001은 `superseded`로 표시했다.
 - **refresh 토큰을 body가 아닌 HttpOnly cookie로 전달**: XSS로 인한 JS 접근을 차단하기 위해서다. 대신 CSRF는
   `SameSite=Lax` + 상태 변경 요청이 모두 POST라는 점으로 완화한다(별도 CSRF 토큰은 이번 범위에 포함하지 않음).

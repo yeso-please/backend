@@ -1,5 +1,8 @@
-package com.yeso.backend.auth.domain;
+package com.yeso.backend.profile.domain;
 
+import com.yeso.backend.attraction.domain.Attraction;
+
+import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,7 +14,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -19,19 +21,17 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 소셜 로그인 연동 계정. User와 분리해두어 한 계정에 카카오+구글을
- * 동시에 연결(계정 통합)할 수 있게 한다.
+ * 사용자의 관광지 반응 기록(좋아요/저장). 이 로그를 모아
+ * {@link UserTasteVector}를 만족도 가중 평균으로 갱신한다
+ * (데모 TravelerProfileService의 "여행 DNA" 갱신 방식과 동일한 아이디어).
  */
 @Entity
-@Table(
-        name = "social_accounts",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"provider", "provider_user_id"})
-)
+@Table(name = "user_interactions")
 @jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
-public class SocialAccount {
+public class UserInteraction {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,20 +41,21 @@ public class SocialAccount {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "attraction_id", nullable = false)
+    private Attraction attraction;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private SocialProvider provider;
-
-    @Column(name = "provider_user_id", nullable = false)
-    private String providerUserId;
+    private InteractionAction action;
 
     @org.springframework.data.annotation.CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    public SocialAccount(User user, SocialProvider provider, String providerUserId) {
+    public UserInteraction(User user, Attraction attraction, InteractionAction action) {
         this.user = user;
-        this.provider = provider;
-        this.providerUserId = providerUserId;
+        this.attraction = attraction;
+        this.action = action;
     }
 }

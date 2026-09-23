@@ -20,7 +20,7 @@ Controller, validation, Security 단계의 실패 응답을 `ApiErrorResponse` �
 ## 제외
 
 - 성공 응답 wrapper 도입
-- CORS, 감사 엔티티, OpenAPI 설정
+- 성공 응답 wrapper 도입, OpenAPI 설정
 
 ## 완료 기준
 
