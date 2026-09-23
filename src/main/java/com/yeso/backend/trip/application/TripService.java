@@ -169,10 +169,10 @@ public class TripService {
 
     private static void validateOrigin(Double lat, Double lng) {
         if ((lat == null) != (lng == null)) {
-            throw new InvalidOriginException();
+            throw InvalidOriginException.missingPair();
         }
         if (lat != null && (lat < -90 || lat > 90 || lng < -180 || lng > 180)) {
-            throw new InvalidOriginException();
+            throw InvalidOriginException.outOfRange();
         }
     }
 }

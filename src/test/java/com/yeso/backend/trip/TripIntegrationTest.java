@@ -1,8 +1,12 @@
 package com.yeso.backend.trip;
 
 import com.jayway.jsonpath.JsonPath;
+import com.yeso.backend.trip.domain.TripParticipant;
+import com.yeso.backend.trip.domain.TripParticipantStatus;
+import com.yeso.backend.trip.domain.TripParticipantType;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripPlanStatus;
+import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +27,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,6 +62,9 @@ class TripIntegrationTest {
 
     @Autowired
     private TripPlanRepository tripPlanRepository;
+
+    @Autowired
+    private TripParticipantRepository tripParticipantRepository;
 
     private static int emailSeq = 0;
 
@@ -107,7 +115,7 @@ class TripIntegrationTest {
             String token = freshToken();
             LocalDate startDate = LocalDate.now().plusDays(10);
 
-            mockMvc.perform(post("/api/trips")
+            MvcResult result = mockMvc.perform(post("/api/trips")
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(createBody(startDate, 2, "CAR")))
@@ -117,7 +125,14 @@ class TripIntegrationTest {
                     .andExpect(jsonPath("$.endDate").value(startDate.plusDays(2).toString()))
                     .andExpect(jsonPath("$.transport").value("CAR"))
                     .andExpect(jsonPath("$.version").value(0))
-                    .andExpect(jsonPath("$.dayWindows.length()").value(3));
+                    .andExpect(jsonPath("$.dayWindows.length()").value(3))
+                    .andReturn();
+
+            Long tripId = Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());
+            List<TripParticipant> participants = tripParticipantRepository.findByTripPlanId(tripId);
+            assertThat(participants).hasSize(1);
+            assertThat(participants.get(0).getParticipantType()).isEqualTo(TripParticipantType.OWNER);
+            assertThat(participants.get(0).getStatus()).isEqualTo(TripParticipantStatus.READY);
         }
 
         @Test
@@ -193,7 +208,7 @@ class TripIntegrationTest {
         }
 
         @Test
-        @DisplayName("origin은 lat만 있으면 400 INVALID_ORIGIN을 반환한다(XOR)")
+        @DisplayName("origin은 lat만 있으면 400 INVALID_ORIGIN을 반환한다(both-or-neither)")
         void create_originOnlyLat_returnsBadRequest() throws Exception {
             String token = freshToken();
 

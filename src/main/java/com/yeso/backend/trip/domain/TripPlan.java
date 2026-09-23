@@ -1,7 +1,7 @@
 package com.yeso.backend.trip.domain;
 
+import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.domain.User;
-import com.yeso.backend.domain.Region;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
