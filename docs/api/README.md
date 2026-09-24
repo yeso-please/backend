@@ -35,6 +35,15 @@
 
 각 파일 절 머리의 `계약 상태`는 `agreed`(팀 리뷰 통과, 구현은 이 계약을 따른다) 또는 `draft`(작성 중, 구현 배정 전)다. 미결 항목은 파일 끝 **결정 필요**에 모은다.
 
+## 범위
+
+| 구분 | 범위 | 백엔드 구현 목표 |
+|---|---|---|
+| **MVP** | §1 인증, §2 온보딩·친구, §3 여행·지역, §4 초대·공유(친구 직접 초대 포함), §5 코스·식당, §7 지역·관광지 | 2026-09-27 |
+| **추가 기능** | §6 여행기·사진 지도(지도에 여행 기록) | 미정. 항목이 더 늘어날 수 있다 |
+
+GitHub 마일스톤 `MVP`, `추가 기능`과 같은 구분이다. 아래 체크리스트의 `범위` 열도 이를 따른다.
+
 ## 도메인 그룹
 
 파일은 HTTP를 노출하는 모듈(BC) 단위다. endpoint는 Controller가 속한 모듈의 파일에 둔다([모듈·의존성](../conventions/모듈-의존성.md)).
@@ -46,7 +55,7 @@
 | 3 | 여행 context·지역 | [trip.md](trip.md#3-여행-context지역) | `trip/context` |
 | 4 | 초대·공유 | [trip.md](trip.md#4-초대공유) | `trip/invite` |
 | 5 | 코스 | [trip.md](trip.md#5-코스) | `trip/course` |
-| 6 | 여행기·사진 지도 | [trip.md](trip.md#6-여행기사진-지도) | `trip/diary` |
+| 6 | 여행기·사진 지도 (추가 기능) | [trip.md](trip.md#6-여행기사진-지도) | `trip/diary` |
 | 7 | 지역·관광지 | [attraction.md](attraction.md) | `attraction/region` |
 
 ## 흐름 개요
@@ -60,7 +69,7 @@
 | E. 코스 만들기 | `POST /courses/{id}/generate` → 지도 `GET /regions/{sigCd}/attractions` · `GET /attractions/{id}` → `GET /courses/{id}/alternatives` → `PATCH /courses/{id}/schedule` |
 | F. 식당 | `GET /courses/{id}/restaurants/recommendations` · `…/search` → `PATCH /courses/{id}/schedule`(SET_RESTAURANT) |
 | G. 보여주기·탈퇴 | `POST /courses/{id}/share-links` → (제3자) `GET /shared/courses/{token}` → `GET /shared/courses` · `DELETE /trips/{id}/participants/me` |
-| H. 여행기(여행 종료 후) | `POST /courses/{id}/diary` → `POST /diaries/{id}/photos` → `PATCH /diaries/{id}` → `POST /diaries/{id}/publish` → `GET /me/travel-map` |
+| H. 여행기(추가 기능, 여행 종료 후) | `POST /courses/{id}/diary` → `POST /diaries/{id}/photos` → `PATCH /diaries/{id}` → `POST /diaries/{id}/publish` → `GET /me/travel-map` |
 | I. 친구 | `POST /friend-links` → (친구) `GET /friend-links/by-token/{token}` → `POST /friend-links/by-token/{token}/accept` → `GET /friends/{userId}/travel-map` |
 
 ## 계약 변경 절차
@@ -144,66 +153,66 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 
 ✅ 구현·계약 일치 · 🔧 구현됐으나 계약과 다름(변경 필요) · ⬜ 미구현
 
-| | § | Method | Path | 호출 | 설명 |
-|---|---|---|---|---|---|
-| ✅ | [1-1](auth.md#1-1-회원가입) | POST | `/auth/signup` | 공개 | 회원가입 + refresh cookie |
-| ✅ | [1-2](auth.md#1-2-로그인) | POST | `/auth/login` | 공개 | 로그인 + refresh cookie |
-| ✅ | [1-3](auth.md#1-3-토큰-갱신) | POST | `/auth/refresh` | refresh | access 재발급·회전 |
-| ✅ | [1-4](auth.md#1-4-로그아웃) | POST | `/auth/logout` | 공개 | refresh 폐기 |
-| ✅ | [1-5](auth.md#1-5-내-정보) | GET | `/users/me` | 회원 | 내 정보·온보딩 여부 |
-| ✅ | [2-1](profile.md#2-1-온보딩-질문) | GET | `/onboarding/questions` | 공개 | 질문·태그 사전 |
-| ✅ | [2-2](profile.md#2-2-온보딩-제출) | POST | `/onboarding/submissions` | 회원 | 제출·재검사 |
-| ✅ | [2-3](profile.md#2-3-내-온보딩-결과) | GET | `/onboarding/me` | 회원 | 최신 제출 |
-| ⬜ | [2-4](profile.md#2-4-친구-초대-링크-발급) | POST | `/friend-links` | 회원 | 친구 초대 링크 발급 |
-| ⬜ | [2-5](profile.md#2-5-내-친구-초대-링크-목록) | GET | `/friend-links` | 회원 | 내 친구 초대 링크 목록 |
-| ⬜ | [2-6](profile.md#2-6-친구-초대-링크-폐기) | DELETE | `/friend-links/{id}` | 회원 | 링크 폐기 |
-| ⬜ | [2-7](profile.md#2-7-친구-초대-링크-미리보기) | GET | `/friend-links/by-token/{token}` | 공개 | 보낸 사람 미리보기 |
-| ⬜ | [2-8](profile.md#2-8-친구-초대-수락) | POST | `/friend-links/by-token/{token}/accept` | 회원 | 수락 → 바로 친구 |
-| ⬜ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 |
-| ⬜ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 |
-| ✅ | [3-1](trip.md#3-1-선택-불가-날짜) | GET | `/trips/unavailable-dates` | 회원 | 내 여행·참여 여행 날짜 |
-| ✅ | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인 |
-| ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 |
-| ✅ | [3-4](trip.md#3-4-여행-context-조회) | GET | `/trips/{tripId}/context` | 참여자 | context 조회 |
-| ✅ | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지만 |
-| ✅ | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 |
-| ⬜ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 |
-| ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 |
-| ✅ | [3-9](trip.md#3-9-여행-탈퇴) | DELETE | `/trips/{tripId}/participants/me` | 참여자 | 탈퇴(마지막이면 여행 삭제) |
-| ✅ | [4-1](trip.md#4-1-초대-링크-발급) | POST | `/trips/{tripId}/invites` | 참여자 | 초대 링크 발급 |
-| ✅ | [4-2](trip.md#4-2-초대-링크-목록) | GET | `/trips/{tripId}/invites` | 참여자 | 초대 링크 목록 |
-| ✅ | [4-3](trip.md#4-3-초대-링크-폐기) | DELETE | `/trips/{tripId}/invites/{inviteId}` | 참여자 | 초대 링크 폐기 |
-| ✅ | [4-4](trip.md#4-4-초대-링크-미리보기) | GET | `/invites/{token}` | 공개 | 초대 미리보기 |
-| ✅ | [4-5](trip.md#4-5-초대-링크-수락) | POST | `/invites/{token}/accept` | 회원 | 초대 링크 수락 |
-| ⬜ | [4-6](trip.md#4-6-친구-초대) | POST | `/trips/{tripId}/friend-invites` | 참여자 | 친구 직접 초대 |
-| ⬜ | [4-7](trip.md#4-7-받은-초대-목록) | GET | `/me/trip-invites` | 회원 | 받은 초대 |
-| ⬜ | [4-8](trip.md#4-8-받은-초대-수락거절) | POST | `/me/trip-invites/{id}/accept`·`/decline` | 회원 | 받은 초대 수락·거절 |
-| ✅ | [4-9](trip.md#4-9-공유-링크-발급) | POST | `/courses/{tripId}/share-links` | 참여자 | 읽기 전용 공유 링크 |
-| ✅ | [4-10](trip.md#4-10-공유-링크-목록) | GET | `/courses/{tripId}/share-links` | 참여자 | 공유 링크 목록 |
-| ✅ | [4-11](trip.md#4-11-공유-링크-폐기) | DELETE | `/courses/{tripId}/share-links/{linkId}` | 참여자 | 공유 링크 폐기 |
-| ✅ | [4-12](trip.md#4-12-공유-링크-열기) | GET | `/shared/courses/{token}` | 공개 | cookie 교환·303 |
-| 🔧 | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) |
-| ⬜ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) |
-| ⬜ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 |
-| ⬜ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 |
-| ⬜ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지 |
-| ⬜ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 |
-| ⬜ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 |
-| ⬜ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) |
-| ⬜ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 |
-| ⬜ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 |
-| ⬜ | [6-4](trip.md#6-4-여행기-수정) | PATCH | `/diaries/{diaryId}` | 작성자 | 본문·공개 범위 수정 |
-| ⬜ | [6-5](trip.md#6-5-여행기-발행) | POST | `/diaries/{diaryId}/publish` | 작성자 | 발행 |
-| ⬜ | [6-6](trip.md#6-6-여행기-조회) | GET | `/diaries/{diaryId}` | 작성자·친구 | 상세 |
-| ⬜ | [6-7](trip.md#6-7-내-여행-지도) | GET | `/me/travel-map` | 회원 | 내 핀 목록 |
-| ⬜ | [6-8](trip.md#6-8-친구-여행-지도) | GET | `/friends/{userId}/travel-map` | 수락된 친구 | 친구 핀 목록 |
-| ⬜ | [6-9](trip.md#6-9-여행기-공유-링크-발급목록) | POST·GET | `/diaries/{diaryId}/share-links` | 작성자 | 읽기 전용 링크 발급·목록 |
-| ⬜ | [6-10](trip.md#6-10-여행기-공유-링크-폐기) | DELETE | `/diaries/{diaryId}/share-links/{linkId}` | 작성자 | 링크 폐기 |
-| ⬜ | [6-11](trip.md#6-11-여행기-공유-링크-열기) | GET | `/shared/diaries/{token}` | 공개 | cookie 교환·303 |
-| ⬜ | [6-12](trip.md#6-12-공유-여행기-조회) | GET | `/shared/diaries` | 공유 소지자 | 공유 여행기 |
-| ⬜ | [7-1](attraction.md#7-1-지역-목록) | GET | `/regions` | 회원 | 250개 지역·추첨 가능 여부 |
-| ⬜ | [7-2](attraction.md#7-2-지역-카드) | GET | `/regions/{sigCd}/card` | 인증된 주체 | 지역 소개 카드 |
-| ⬜ | [7-3](attraction.md#7-3-지도-관광지-핀) | GET | `/regions/{sigCd}/attractions` | 인증된 주체 | 지도 핀 |
-| ⬜ | [7-4](attraction.md#7-4-관광지-상세) | GET | `/attractions/{attractionId}` | 인증된 주체 | 관광지 상세 |
+| | § | Method | Path | 호출 | 설명 | 범위 |
+|---|---|---|---|---|---|---|
+| ✅ | [1-1](auth.md#1-1-회원가입) | POST | `/auth/signup` | 공개 | 회원가입 + refresh cookie | MVP |
+| ✅ | [1-2](auth.md#1-2-로그인) | POST | `/auth/login` | 공개 | 로그인 + refresh cookie | MVP |
+| ✅ | [1-3](auth.md#1-3-토큰-갱신) | POST | `/auth/refresh` | refresh | access 재발급·회전 | MVP |
+| ✅ | [1-4](auth.md#1-4-로그아웃) | POST | `/auth/logout` | 공개 | refresh 폐기 | MVP |
+| ✅ | [1-5](auth.md#1-5-내-정보) | GET | `/users/me` | 회원 | 내 정보·온보딩 여부 | MVP |
+| ✅ | [2-1](profile.md#2-1-온보딩-질문) | GET | `/onboarding/questions` | 공개 | 질문·태그 사전 | MVP |
+| ✅ | [2-2](profile.md#2-2-온보딩-제출) | POST | `/onboarding/submissions` | 회원 | 제출·재검사 | MVP |
+| ✅ | [2-3](profile.md#2-3-내-온보딩-결과) | GET | `/onboarding/me` | 회원 | 최신 제출 | MVP |
+| ⬜ | [2-4](profile.md#2-4-친구-초대-링크-발급) | POST | `/friend-links` | 회원 | 친구 초대 링크 발급 | MVP |
+| ⬜ | [2-5](profile.md#2-5-내-친구-초대-링크-목록) | GET | `/friend-links` | 회원 | 내 친구 초대 링크 목록 | MVP |
+| ⬜ | [2-6](profile.md#2-6-친구-초대-링크-폐기) | DELETE | `/friend-links/{id}` | 회원 | 링크 폐기 | MVP |
+| ⬜ | [2-7](profile.md#2-7-친구-초대-링크-미리보기) | GET | `/friend-links/by-token/{token}` | 공개 | 보낸 사람 미리보기 | MVP |
+| ⬜ | [2-8](profile.md#2-8-친구-초대-수락) | POST | `/friend-links/by-token/{token}/accept` | 회원 | 수락 → 바로 친구 | MVP |
+| ⬜ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 | MVP |
+| ⬜ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 | MVP |
+| ✅ | [3-1](trip.md#3-1-선택-불가-날짜) | GET | `/trips/unavailable-dates` | 회원 | 내 여행·참여 여행 날짜 | MVP |
+| ✅ | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인 | MVP |
+| ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
+| ✅ | [3-4](trip.md#3-4-여행-context-조회) | GET | `/trips/{tripId}/context` | 참여자 | context 조회 | MVP |
+| ✅ | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지만 | MVP |
+| ✅ | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 | MVP |
+| ⬜ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
+| ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 | MVP |
+| ✅ | [3-9](trip.md#3-9-여행-탈퇴) | DELETE | `/trips/{tripId}/participants/me` | 참여자 | 탈퇴(마지막이면 여행 삭제) | MVP |
+| ✅ | [4-1](trip.md#4-1-초대-링크-발급) | POST | `/trips/{tripId}/invites` | 참여자 | 초대 링크 발급 | MVP |
+| ✅ | [4-2](trip.md#4-2-초대-링크-목록) | GET | `/trips/{tripId}/invites` | 참여자 | 초대 링크 목록 | MVP |
+| ✅ | [4-3](trip.md#4-3-초대-링크-폐기) | DELETE | `/trips/{tripId}/invites/{inviteId}` | 참여자 | 초대 링크 폐기 | MVP |
+| ✅ | [4-4](trip.md#4-4-초대-링크-미리보기) | GET | `/invites/{token}` | 공개 | 초대 미리보기 | MVP |
+| ✅ | [4-5](trip.md#4-5-초대-링크-수락) | POST | `/invites/{token}/accept` | 회원 | 초대 링크 수락 | MVP |
+| ⬜ | [4-6](trip.md#4-6-친구-초대) | POST | `/trips/{tripId}/friend-invites` | 참여자 | 친구 직접 초대 | MVP |
+| ⬜ | [4-7](trip.md#4-7-받은-초대-목록) | GET | `/me/trip-invites` | 회원 | 받은 초대 | MVP |
+| ⬜ | [4-8](trip.md#4-8-받은-초대-수락거절) | POST | `/me/trip-invites/{id}/accept`·`/decline` | 회원 | 받은 초대 수락·거절 | MVP |
+| ✅ | [4-9](trip.md#4-9-공유-링크-발급) | POST | `/courses/{tripId}/share-links` | 참여자 | 읽기 전용 공유 링크 | MVP |
+| ✅ | [4-10](trip.md#4-10-공유-링크-목록) | GET | `/courses/{tripId}/share-links` | 참여자 | 공유 링크 목록 | MVP |
+| ✅ | [4-11](trip.md#4-11-공유-링크-폐기) | DELETE | `/courses/{tripId}/share-links/{linkId}` | 참여자 | 공유 링크 폐기 | MVP |
+| ✅ | [4-12](trip.md#4-12-공유-링크-열기) | GET | `/shared/courses/{token}` | 공개 | cookie 교환·303 | MVP |
+| 🔧 | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) | MVP |
+| ⬜ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
+| ⬜ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
+| ⬜ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
+| ⬜ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지 | MVP |
+| ⬜ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
+| ⬜ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
+| ⬜ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
+| ⬜ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
+| ⬜ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |
+| ⬜ | [6-4](trip.md#6-4-여행기-수정) | PATCH | `/diaries/{diaryId}` | 작성자 | 본문·공개 범위 수정 | 추가 |
+| ⬜ | [6-5](trip.md#6-5-여행기-발행) | POST | `/diaries/{diaryId}/publish` | 작성자 | 발행 | 추가 |
+| ⬜ | [6-6](trip.md#6-6-여행기-조회) | GET | `/diaries/{diaryId}` | 작성자·친구 | 상세 | 추가 |
+| ⬜ | [6-7](trip.md#6-7-내-여행-지도) | GET | `/me/travel-map` | 회원 | 내 핀 목록 | 추가 |
+| ⬜ | [6-8](trip.md#6-8-친구-여행-지도) | GET | `/friends/{userId}/travel-map` | 수락된 친구 | 친구 핀 목록 | 추가 |
+| ⬜ | [6-9](trip.md#6-9-여행기-공유-링크-발급목록) | POST·GET | `/diaries/{diaryId}/share-links` | 작성자 | 읽기 전용 링크 발급·목록 | 추가 |
+| ⬜ | [6-10](trip.md#6-10-여행기-공유-링크-폐기) | DELETE | `/diaries/{diaryId}/share-links/{linkId}` | 작성자 | 링크 폐기 | 추가 |
+| ⬜ | [6-11](trip.md#6-11-여행기-공유-링크-열기) | GET | `/shared/diaries/{token}` | 공개 | cookie 교환·303 | 추가 |
+| ⬜ | [6-12](trip.md#6-12-공유-여행기-조회) | GET | `/shared/diaries` | 공유 소지자 | 공유 여행기 | 추가 |
+| ⬜ | [7-1](attraction.md#7-1-지역-목록) | GET | `/regions` | 회원 | 250개 지역·추첨 가능 여부 | MVP |
+| ⬜ | [7-2](attraction.md#7-2-지역-카드) | GET | `/regions/{sigCd}/card` | 인증된 주체 | 지역 소개 카드 | MVP |
+| ⬜ | [7-3](attraction.md#7-3-지도-관광지-핀) | GET | `/regions/{sigCd}/attractions` | 인증된 주체 | 지도 핀 | MVP |
+| ⬜ | [7-4](attraction.md#7-4-관광지-상세) | GET | `/attractions/{attractionId}` | 인증된 주체 | 관광지 상세 | MVP |
 
 `🔧` 항목의 구체적 차이는 각 절의 "구현과의 차이"에 적는다.
