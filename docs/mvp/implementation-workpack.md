@@ -65,7 +65,7 @@ DB 변경은 PostgreSQL Testcontainers에서 빈 DB migrate, JPA validate,
 
 `fieldErrors/details`는 비면 생략 가능하다. CORS는 정확한 origin allowlist만 허용한다. token은 최초 링크 교환 뒤 URL에서 제거하고 DB에는 SHA-256 hash만 저장한다.
 
-권장 순서: `00 → (01,09A) → 02/03 → 04 → 05 → 06 → 07 → 08`, 이후 `09B/dev RDS`다.
+권장 순서: `00 → (01,09A) → 02/03 → 04 → 05 → 06 → 07 → 08 → 10`, 이후 `09B/dev RDS`다.
 
 ---
 
@@ -400,6 +400,21 @@ PR CI는 RDS에 접속하지 않는다. 이미 공유 DB에 적용된 migration 
 완료 문서: `docs/features/data-migration.md`, 위 RDS/TourAPI runbook, 실제 실행 결과에서 secret을 제거한 migration report와 복구 기록.
 
 ---
+
+---
+
+## WORK-10 여행기·사진 지도·친구 공개
+
+확정 코스마다 사진 여행기 하나를 발행하고, 내 지도에서 핀을 눌러 기록을 다시 본다. 친구 공개는 상호 수락 친구만, 링크 공유는 해당 여행기만 읽기 전용으로 제공한다. 전체 지도 공개·피드·댓글·좋아요는 하지 않는다.
+
+- 사진은 1~30장, 허용 이미지 형식/크기 검증과 악성 파일 검사 후 저장한다. 공개 응답에서 EXIF 전체와 원본 파일명을 제거한다.
+- 공개 범위는 `PRIVATE|FRIENDS|LINK`, 위치 정밀도는 `EXACT|CITY|HIDDEN`이며 기본은 `PRIVATE`와 `CITY`다.
+- 발행 시 확정 지역·장소 카테고리·명시 만족 태그/점수만 낮은 가중치의 취향 신호로 저장한다. 본문·사진 분석·EXIF·열람 수는 추천에 쓰지 않으며 opt-out을 지원한다.
+- 친구 요청은 `PENDING→ACCEPTED|REJECTED|BLOCKED`이며 FRIENDS 조회마다 수락 상태를 서버가 확인한다.
+
+테스트: 여행당 단일 여행기, 사진 0/1/30/31장, 파일 검증, 위치 정밀도별 응답, PRIVATE/FRIENDS/LINK 권한 행렬, 친구 차단 즉시 차단, 링크 만료/폐기, 취향 opt-in/out 및 본문·EXIF 비반영.
+
+완료 문서: `docs/features/travel-diary-map-sharing.md`, `docs/api/travel-diaries.md`.
 
 ## 3. 전체 MVP 인수 시나리오
 
