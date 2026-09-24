@@ -50,9 +50,6 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/onboarding/questions").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/invites/*").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/invites/*/participants").permitAll()
-                        // guest session(Bearer)은 JWT가 아니라 GuestSessionArgumentResolver가 직접 검증한다.
-                        .requestMatchers(HttpMethod.POST, "/api/invite-participants/*/onboarding").permitAll()
                         // share session은 HttpOnly cookie로 검증한다.
                         .requestMatchers(HttpMethod.GET, "/api/shared/courses/**").permitAll()
                         .anyRequest().authenticated())

@@ -2,7 +2,6 @@ package com.yeso.backend.shared.config;
 
 import com.yeso.backend.shared.web.CurrentUserArgumentResolver;
 import com.yeso.backend.shared.web.CurrentUserIdArgumentResolver;
-import com.yeso.backend.trip.presentation.invite.GuestSessionArgumentResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
@@ -20,12 +19,10 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final CurrentUserArgumentResolver currentUserArgumentResolver;
     private final CurrentUserIdArgumentResolver currentUserIdArgumentResolver;
-    private final GuestSessionArgumentResolver guestSessionArgumentResolver;
 
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(currentUserArgumentResolver);
         resolvers.add(currentUserIdArgumentResolver);
-        resolvers.add(guestSessionArgumentResolver);
     }
 }

@@ -4,10 +4,11 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 공유된 확정 일정 조회 응답. 실제 관광지/식당 stop은 코스 생성·편집·확정(WORK-06/07/08)이
- * 아직 없어 항상 빈 배열이다 — trip context만 먼저 노출한다(WORK-04 범위 명시).
+ * 공유 링크로 보는 코스. 코스 저장(WORK-06) 전이라 {@code days}는 항상 빈 배열이며,
+ * 이후 docs/api/trip.md의 {@code Course} 전체로 확장한다.
  */
 public record SharedCourseViewResponse(
-        Long tripId, String permission, String status, LocalDate startDate, LocalDate endDate, List<Object> stops
+        Long tripId, String myRole, LocalDate startDate, LocalDate endDate, List<Object> days
 ) {
+    public static final String VIEWER = "VIEWER";
 }

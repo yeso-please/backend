@@ -4,8 +4,10 @@ import com.yeso.backend.trip.domain.CourseShareLink;
 
 import java.time.LocalDateTime;
 
-public record ShareLinkResponse(Long id, String token, String permission, LocalDateTime expiresAt) {
+/** {@code token} 원문은 발급 응답에서만 반환한다. */
+public record ShareLinkResponse(Long id, String token, LocalDateTime expiresAt, LocalDateTime createdAt) {
+
     public static ShareLinkResponse of(CourseShareLink link, String token) {
-        return new ShareLinkResponse(link.getId(), token, link.getPermission().name(), link.getExpiresAt());
+        return new ShareLinkResponse(link.getId(), token, link.getExpiresAt(), link.getCreatedAt());
     }
 }

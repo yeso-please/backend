@@ -2,11 +2,13 @@ package com.yeso.backend.trip.presentation;
 
 import com.yeso.backend.shared.web.CurrentUserId;
 import com.yeso.backend.trip.application.TripService;
+import com.yeso.backend.trip.domain.TripPeriod;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -44,6 +46,24 @@ public class TripController {
     public ResponseEntity<TripContextResponse> create(
             @CurrentUserId Long userId, @RequestBody CreateTripRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(tripService.createTrip(userId, request));
+    }
+
+    @GetMapping
+    public List<MyTripResponse> myTrips(
+            @CurrentUserId Long userId, @RequestParam(required = false) TripPeriod period) {
+        return tripService.listMyTrips(userId, period);
+    }
+
+    @GetMapping("/{id}/participants")
+    public List<ParticipantResponse> participants(@CurrentUserId Long userId, @PathVariable Long id) {
+        return tripService.listParticipants(userId, id);
+    }
+
+    /** "내 여행 목록에서 삭제". 마지막 참여자가 나가면 여행이 삭제된다. */
+    @DeleteMapping("/{id}/participants/me")
+    public ResponseEntity<Void> leave(@CurrentUserId Long userId, @PathVariable Long id) {
+        tripService.leave(userId, id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/context")

@@ -3,8 +3,6 @@ package com.yeso.backend.trip.domain;
 import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,10 +17,9 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 참여/온보딩 초대 링크. Share(확정 일정 권한)와는 별도 token 체계다(WORK-04).
+ * 회원을 여행 참여자로 들이는 초대 링크. 읽기 전용 공유 링크와는 별도 token 체계다.
  * 원문은 발급 응답에서 한 번만 반환하고 DB에는 SHA-256 해시만 저장한다.
- * 하나의 링크로 여러 손님이 각자 참여할 수 있어 participant와는 1:N이다.
- * {@code permission}은 이 링크로 들어온 손님이 확정 일정에 대해 갖는 기본 권한이다.
+ * 폐기 전까지 여러 회원이 각자 수락할 수 있어 participant와는 1:N이다.
  */
 @Entity
 @Table(name = "trip_invitations")
@@ -49,9 +46,6 @@ public class TripInvitation {
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private SharePermission permission;
 
     @Column(name = "revoked_at")
     private LocalDateTime revokedAt;
@@ -61,17 +55,13 @@ public class TripInvitation {
 
     public TripInvitation(
             TripPlan tripPlan, String tokenHash, User invitedByUser,
-            SharePermission permission, LocalDateTime expiresAt) {
+            LocalDateTime expiresAt) {
         this.tripPlan = tripPlan;
         this.tokenHash = tokenHash;
         this.invitedByUser = invitedByUser;
-        this.permission = permission;
-        this.expiresAt = expiresAt;
+                this.expiresAt = expiresAt;
     }
 
-    public void changePermission(SharePermission permission) {
-        this.permission = permission;
-    }
 
     public boolean isActive(LocalDateTime now) {
         return revokedAt == null && expiresAt.isAfter(now);

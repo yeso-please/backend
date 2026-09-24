@@ -16,7 +16,8 @@ import java.time.Duration;
 public class ShareSessionCookieFactory {
 
     public static final String COOKIE_NAME = "share_session";
-    private static final String COOKIE_PATH = "/api/shared/courses";
+    // EDIT 공유 소지자가 코스 편집·관광지 API도 같은 세션으로 호출하므로 /api 전체에 싣는다.
+    private static final String COOKIE_PATH = "/api";
     private static final Duration SESSION_TTL = Duration.ofHours(2);
 
     private final AuthCookieProperties cookieProperties;

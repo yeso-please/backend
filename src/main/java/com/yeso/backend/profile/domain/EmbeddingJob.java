@@ -18,8 +18,8 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 제출 1건당 임베딩 요청 상태와 재시도 bookkeeping. 성공 전까지는 user_taste_vectors/
- * guest_taste_vectors에 row가 생기지 않으므로(두 테이블 모두 embedding NOT NULL) 이 테이블이
+ * 제출 1건당 임베딩 요청 상태와 재시도 bookkeeping. 성공 전까지는 user_taste_vectors에
+ * row가 생기지 않으므로(embedding NOT NULL) 이 테이블이
  * "아직 준비되지 않은 상태"를 표현하는 유일한 곳이다.
  */
 @Entity

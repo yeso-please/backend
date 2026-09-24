@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TokenAudienceTest {
 
@@ -20,7 +19,6 @@ class TokenAudienceTest {
 
             assertThat(TokenAudience.INVITE.matches(inviteToken)).isTrue();
             assertThat(TokenAudience.SHARE_LINK.matches(inviteToken)).isFalse();
-            assertThat(TokenAudience.GUEST_SESSION.matches(inviteToken)).isFalse();
             assertThat(TokenAudience.SHARE_SESSION.matches(inviteToken)).isFalse();
         }
 
@@ -37,36 +35,6 @@ class TokenAudienceTest {
         void requiresSeparator() {
             assertThat(TokenAudience.SHARE_SESSION.matches("sside-effect")).isFalse();
             assertThat(TokenAudience.SHARE_SESSION.matches("ss_body")).isTrue();
-        }
-    }
-
-    @Nested
-    @DisplayName("공유 권한")
-    class Permission {
-
-        @Test
-        @DisplayName("EDIT만 편집을 허용한다")
-        void onlyEditAllowsEditing() {
-            assertThat(SharePermission.EDIT.allowsEdit()).isTrue();
-            assertThat(SharePermission.VIEW.allowsEdit()).isFalse();
-        }
-
-        @Test
-        @DisplayName("알 수 없는 값과 null은 INVALID_SHARE_PERMISSION이다")
-        void rejectsUnknownValues() {
-            assertThatThrownBy(() -> SharePermission.parse("ADMIN"))
-                    .isInstanceOf(InvalidSharePermissionException.class);
-            assertThatThrownBy(() -> SharePermission.parse(null))
-                    .isInstanceOf(InvalidSharePermissionException.class);
-        }
-
-        @Test
-        @DisplayName("null이면 기본값을 쓰되 잘못된 값은 여전히 거부한다")
-        void parseOrDefault() {
-            assertThat(SharePermission.parseOrDefault(null, SharePermission.VIEW)).isEqualTo(SharePermission.VIEW);
-            assertThat(SharePermission.parseOrDefault("EDIT", SharePermission.VIEW)).isEqualTo(SharePermission.EDIT);
-            assertThatThrownBy(() -> SharePermission.parseOrDefault("ADMIN", SharePermission.VIEW))
-                    .isInstanceOf(InvalidSharePermissionException.class);
         }
     }
 }

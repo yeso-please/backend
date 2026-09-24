@@ -74,25 +74,13 @@ public class OnboardingService {
      */
     public UUID submit(Long userId, OnboardingSubmissionRequest request) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        OnboardingSubmission submission = buildAndPersistSubmission(user, null, request);
+        OnboardingSubmission submission = buildAndPersistSubmission(user, request);
         user.setLatestOnboardingSubmissionId(submission.getId());
         registerEmbeddingJob(submission, EmbeddingOwnerType.USER, userId);
         return submission.getId();
     }
 
-    /**
-     * WORK-04 guest 온보딩이 재사용한다 — user 대신 {@code guestParticipantId}(trip_participants.id)에
-     * 귀속시킨다. participant 상태 전이(ONBOARDING→READY)와 latest pointer 갱신은 이 서비스가 아니라
-     * 호출자(trip.application.invite)가 맡는다 — onboarding이 trip 패키지를 참조하지 않기 위함이다.
-     */
-    public UUID submitForGuest(Long guestParticipantId, OnboardingSubmissionRequest request) {
-        OnboardingSubmission submission = buildAndPersistSubmission(null, guestParticipantId, request);
-        registerEmbeddingJob(submission, EmbeddingOwnerType.GUEST, guestParticipantId);
-        return submission.getId();
-    }
-
-    private OnboardingSubmission buildAndPersistSubmission(
-            User user, Long guestParticipantId, OnboardingSubmissionRequest request) {
+    private OnboardingSubmission buildAndPersistSubmission(User user, OnboardingSubmissionRequest request) {
         if (!OnboardingQuestionBank.QUESTION_VERSION.equals(request.questionVersion())) {
             throw new InvalidQuestionVersionException();
         }
@@ -116,7 +104,6 @@ public class OnboardingService {
         OnboardingSubmission submission = new OnboardingSubmission(
                 user, OnboardingQuestionBank.QUESTION_VERSION, mbtiCode, profileText,
                 scheduleDensity, experienceTags, excludeTags);
-        submission.setGuestParticipantId(guestParticipantId);
         submissionRepository.save(submission);
 
         answersByNumber.forEach((number, choice) ->

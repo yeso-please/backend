@@ -1,10 +1,8 @@
 package com.yeso.backend.profile.application;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
-import com.yeso.backend.profile.domain.GuestTasteVector;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.profile.domain.EmbeddingJob;
-import com.yeso.backend.profile.domain.EmbeddingOwnerType;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
 import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.infrastructure.EmbeddingClient;
@@ -14,7 +12,6 @@ import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.EmbeddingRequest;
 import com.yeso.backend.profile.infrastructure.EmbeddingResult;
 import com.yeso.backend.profile.infrastructure.EmbeddingTransientException;
-import com.yeso.backend.profile.infrastructure.GuestTasteVectorRepository;
 import com.yeso.backend.profile.infrastructure.UserTasteVectorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +37,6 @@ public class OnboardingEmbeddingRunner {
 
     private final EmbeddingJobRepository embeddingJobRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
-    private final GuestTasteVectorRepository guestTasteVectorRepository;
     private final UserRepository userRepository;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingProperties embeddingProperties;
@@ -78,36 +74,21 @@ public class OnboardingEmbeddingRunner {
     }
 
     private void applyReady(EmbeddingJob job, OnboardingSubmission submission, EmbeddingResult result) {
-        if (job.getOwnerType() == EmbeddingOwnerType.USER) {
-            byte[] embedding = Base64.getDecoder().decode(result.embeddingBase64());
-            // submission.getUser()는 다른(이미 끝난) 트랜잭션의 lazy proxy이므로 이 세션에서
-            // 새로 참조를 얻는다. UserTasteVector가 Persistable을 구현해 save()가 새 row에는
-            // persist를, 기존 row에는 merge를 정확히 선택한다(@MapsId + 비생성 ID라 기본 판정이 틀림).
-            UserTasteVector vector = userTasteVectorRepository.findById(job.getOwnerId())
-                    .orElseGet(() -> new UserTasteVector(
-                            userRepository.getReferenceById(job.getOwnerId()), embedding, result.dimension(),
-                            submission.getProfileText(), job.getModelVersion(), job.getTemplateVersion()));
-            vector.setEmbedding(embedding);
-            vector.setDimension(result.dimension());
-            vector.setProfileText(submission.getProfileText());
-            vector.setModelVersion(job.getModelVersion());
-            vector.setTemplateVersion(job.getTemplateVersion());
-            vector.setUpdatedAt(LocalDateTime.now());
-            userTasteVectorRepository.save(vector);
-        } else {
-            byte[] embedding = Base64.getDecoder().decode(result.embeddingBase64());
-            GuestTasteVector vector = guestTasteVectorRepository.findById(job.getOwnerId())
-                    .orElseGet(() -> new GuestTasteVector(
-                            job.getOwnerId(), embedding, result.dimension(),
-                            submission.getProfileText(), job.getModelVersion(), job.getTemplateVersion()));
-            vector.setEmbedding(embedding);
-            vector.setDimension(result.dimension());
-            vector.setProfileText(submission.getProfileText());
-            vector.setModelVersion(job.getModelVersion());
-            vector.setTemplateVersion(job.getTemplateVersion());
-            vector.setUpdatedAt(LocalDateTime.now());
-            guestTasteVectorRepository.save(vector);
-        }
+        byte[] embedding = Base64.getDecoder().decode(result.embeddingBase64());
+        // submission.getUser()는 다른(이미 끝난) 트랜잭션의 lazy proxy이므로 이 세션에서
+        // 새로 참조를 얻는다. UserTasteVector가 Persistable을 구현해 save()가 새 row에는
+        // persist를, 기존 row에는 merge를 정확히 선택한다(@MapsId + 비생성 ID라 기본 판정이 틀림).
+        UserTasteVector vector = userTasteVectorRepository.findById(job.getOwnerId())
+                .orElseGet(() -> new UserTasteVector(
+                        userRepository.getReferenceById(job.getOwnerId()), embedding, result.dimension(),
+                        submission.getProfileText(), job.getModelVersion(), job.getTemplateVersion()));
+        vector.setEmbedding(embedding);
+        vector.setDimension(result.dimension());
+        vector.setProfileText(submission.getProfileText());
+        vector.setModelVersion(job.getModelVersion());
+        vector.setTemplateVersion(job.getTemplateVersion());
+        vector.setUpdatedAt(LocalDateTime.now());
+        userTasteVectorRepository.save(vector);
         job.markReady();
         submission.setTasteStatus(TasteStatus.READY);
     }

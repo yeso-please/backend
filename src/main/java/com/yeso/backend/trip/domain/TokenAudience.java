@@ -10,7 +10,6 @@ package com.yeso.backend.trip.domain;
 public enum TokenAudience {
 
     INVITE("iv"),
-    GUEST_SESSION("gs"),
     SHARE_LINK("sl"),
     SHARE_SESSION("ss");
 

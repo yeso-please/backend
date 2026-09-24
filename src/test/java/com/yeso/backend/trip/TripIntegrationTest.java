@@ -1,11 +1,10 @@
 package com.yeso.backend.trip;
 
 import com.jayway.jsonpath.JsonPath;
+import com.yeso.backend.profile.infrastructure.EmbeddingClient;
+import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.domain.TripParticipant;
-import com.yeso.backend.trip.domain.TripParticipantStatus;
 import com.yeso.backend.trip.domain.TripParticipantType;
-import com.yeso.backend.trip.domain.TripPlan;
-import com.yeso.backend.trip.domain.TripPlanStatus;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,8 +13,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,17 +36,25 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * 여행 context·날짜 중복 차단·목록·탈퇴. 2026-09-24 정책: 여행은 만드는 순간 기간을 차지하고,
+ * 날짜는 바꿀 수 없으며, 삭제 대신 개인 탈퇴만 있다(마지막 참여자가 나가면 여행 삭제).
+ */
 @Testcontainers
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(TripIntegrationTest.FakeEmbeddingClientConfig.class)
 @TestPropertySource(properties = {
         "jwt.secret=test-only-secret-not-used-outside-automated-tests",
         "spring.jpa.properties.hibernate.default_schema=app"
@@ -57,6 +68,15 @@ class TripIntegrationTest {
             .withUsername("tripin_test")
             .withPassword("tripin_test");
 
+    @TestConfiguration
+    static class FakeEmbeddingClientConfig {
+        @Bean
+        @Primary
+        FakeEmbeddingClient fakeEmbeddingClient() {
+            return new FakeEmbeddingClient();
+        }
+    }
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -66,9 +86,20 @@ class TripIntegrationTest {
     @Autowired
     private TripParticipantRepository tripParticipantRepository;
 
+    @Autowired
+    private EmbeddingClient embeddingClient;
+
     private static int emailSeq = 0;
 
-    private String accessTokenFor(String email) throws Exception {
+    @BeforeEach
+    void setUp() {
+        ((FakeEmbeddingClient) embeddingClient).setMode(FakeEmbeddingClient.Mode.SUCCESS);
+    }
+
+    // ---------- fixtures ----------
+
+    private String signup() throws Exception {
+        String email = "trip" + (emailSeq++) + "_" + System.nanoTime() + "@example.com";
         MvcResult signup = mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -78,8 +109,24 @@ class TripIntegrationTest {
         return JsonPath.read(signup.getResponse().getContentAsString(), "$.accessToken");
     }
 
+    /** 여행을 만들려면 최초 설문을 마쳐야 한다. */
     private String freshToken() throws Exception {
-        return accessTokenFor("trip" + (emailSeq++) + "_" + System.nanoTime() + "@example.com");
+        String token = signup();
+        mockMvc.perform(post("/api/onboarding/submissions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(onboardingBody()))
+                .andExpect(status().isCreated());
+        return token;
+    }
+
+    static String onboardingBody() {
+        String answers = IntStream.rangeClosed(1, 12)
+                .mapToObj(n -> "{\"questionNumber\":%d,\"choice\":1}".formatted(n))
+                .collect(Collectors.joining(",", "[", "]"));
+        return """
+                {"questionVersion":"demo-mbti-v1","answers":%s,"scheduleDensity":"RELAXED"}
+                """.formatted(answers);
     }
 
     private static String createBody(LocalDate startDate, int nights, String transport) {
@@ -96,13 +143,10 @@ class TripIntegrationTest {
                 .andReturn();
     }
 
-    private Long createConfirmedTrip(String token, LocalDate startDate, int nights) throws Exception {
+    private Long createTripId(String token, LocalDate startDate, int nights) throws Exception {
         MvcResult result = createTrip(token, startDate, nights);
-        Long tripId = Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());
-        TripPlan tripPlan = tripPlanRepository.findById(tripId).orElseThrow();
-        tripPlan.setStatus(TripPlanStatus.CONFIRMED);
-        tripPlanRepository.save(tripPlan);
-        return tripId;
+        assertThat(result.getResponse().getStatus()).isEqualTo(201);
+        return Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());
     }
 
     @Nested
@@ -110,7 +154,7 @@ class TripIntegrationTest {
     class Create {
 
         @Test
-        @DisplayName("유효한 요청이면 201과 함께 DRAFT 여행을 만든다")
+        @DisplayName("유효한 요청이면 201과 함께 지역·코스 없는 여행을 만들고 만든 사람을 참여자로 등록한다")
         void create_success() throws Exception {
             String token = freshToken();
             LocalDate startDate = LocalDate.now().plusDays(10);
@@ -120,19 +164,36 @@ class TripIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(createBody(startDate, 2, "CAR")))
                     .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.status").value("DRAFT"))
+                    .andExpect(jsonPath("$.status").doesNotExist())
+                    .andExpect(jsonPath("$.draftInvalidated").doesNotExist())
                     .andExpect(jsonPath("$.nights").value(2))
                     .andExpect(jsonPath("$.endDate").value(startDate.plusDays(2).toString()))
                     .andExpect(jsonPath("$.transport").value("CAR"))
+                    .andExpect(jsonPath("$.regionSigCd").isEmpty())
+                    .andExpect(jsonPath("$.regionSelection").isEmpty())
+                    .andExpect(jsonPath("$.scheduleDensity").isEmpty())
+                    .andExpect(jsonPath("$.hasCourse").value(false))
                     .andExpect(jsonPath("$.version").value(0))
                     .andExpect(jsonPath("$.dayWindows.length()").value(3))
                     .andReturn();
 
             Long tripId = Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());
-            List<TripParticipant> participants = tripParticipantRepository.findByTripPlanId(tripId);
+            List<TripParticipant> participants = tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId);
             assertThat(participants).hasSize(1);
             assertThat(participants.get(0).getParticipantType()).isEqualTo(TripParticipantType.OWNER);
-            assertThat(participants.get(0).getStatus()).isEqualTo(TripParticipantStatus.READY);
+        }
+
+        @Test
+        @DisplayName("최초 설문을 마치지 않았으면 409 ONBOARDING_REQUIRED다")
+        void create_withoutOnboarding_returnsConflict() throws Exception {
+            String token = signup();
+
+            mockMvc.perform(post("/api/trips")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(createBody(LocalDate.now().plusDays(5), 1, "WALK")))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("ONBOARDING_REQUIRED"));
         }
 
         @Test
@@ -140,62 +201,42 @@ class TripIntegrationTest {
         void create_nightsBoundary_zeroAndSixAccepted() throws Exception {
             String token = freshToken();
 
-            createTrip(token, LocalDate.now().plusDays(5), 0).getResponse();
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now().plusDays(20), 0, "WALK")))
-                    .andExpect(status().isCreated());
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now().plusDays(40), 6, "WALK")))
-                    .andExpect(status().isCreated());
+            assertThat(createTrip(token, LocalDate.now().plusDays(20), 0).getResponse().getStatus()).isEqualTo(201);
+            assertThat(createTrip(token, LocalDate.now().plusDays(40), 6).getResponse().getStatus()).isEqualTo(201);
         }
 
         @Test
-        @DisplayName("nights=-1 또는 7이면 400 INVALID_NIGHTS를 반환한다")
+        @DisplayName("nights=-1 또는 7이면 400 TRIP_INVALID_NIGHTS다")
         void create_nightsOutOfRange_returnsBadRequest() throws Exception {
             String token = freshToken();
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now().plusDays(5), -1, "WALK")))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_NIGHTS"));
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now().plusDays(5), 7, "WALK")))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_NIGHTS"));
+            for (int nights : new int[]{-1, 7}) {
+                mockMvc.perform(post("/api/trips")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(LocalDate.now().plusDays(5), nights, "WALK")))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("TRIP_INVALID_NIGHTS"));
+            }
         }
 
         @Test
-        @DisplayName("startDate가 오늘이거나 과거면 400 INVALID_START_DATE를 반환한다")
+        @DisplayName("startDate가 오늘이거나 과거면 400 TRIP_INVALID_START_DATE다")
         void create_startDateNotInFuture_returnsBadRequest() throws Exception {
             String token = freshToken();
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now(), 1, "WALK")))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_START_DATE"));
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(LocalDate.now().minusDays(1), 1, "WALK")))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_START_DATE"));
+            for (LocalDate startDate : new LocalDate[]{LocalDate.now(), LocalDate.now().minusDays(1)}) {
+                mockMvc.perform(post("/api/trips")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(startDate, 1, "WALK")))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("TRIP_INVALID_START_DATE"));
+            }
         }
 
         @Test
-        @DisplayName("transport가 유효하지 않으면 400 INVALID_TRANSPORT를 반환한다")
+        @DisplayName("transport가 유효하지 않으면 400 TRIP_INVALID_TRANSPORT다")
         void create_invalidTransport_returnsBadRequest() throws Exception {
             String token = freshToken();
 
@@ -208,33 +249,20 @@ class TripIntegrationTest {
         }
 
         @Test
-        @DisplayName("origin은 lat만 있으면 400 INVALID_ORIGIN을 반환한다(both-or-neither)")
-        void create_originOnlyLat_returnsBadRequest() throws Exception {
+        @DisplayName("origin은 lat만 있거나 범위를 벗어나면 400 TRIP_INVALID_ORIGIN이다")
+        void create_invalidOrigin_returnsBadRequest() throws Exception {
             String token = freshToken();
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"startDate":"%s","nights":1,"transport":"WALK","originLat":37.5}
-                                    """.formatted(LocalDate.now().plusDays(5))))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_ORIGIN"));
-        }
-
-        @Test
-        @DisplayName("origin 범위를 벗어나면 400 INVALID_ORIGIN을 반환한다")
-        void create_originOutOfRange_returnsBadRequest() throws Exception {
-            String token = freshToken();
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"startDate":"%s","nights":1,"transport":"WALK","originLat":999,"originLng":37.5}
-                                    """.formatted(LocalDate.now().plusDays(5))))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TRIP_INVALID_ORIGIN"));
+            for (String origin : new String[]{"\"originLat\":37.5", "\"originLat\":999,\"originLng\":37.5"}) {
+                mockMvc.perform(post("/api/trips")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"startDate":"%s","nights":1,"transport":"WALK",%s}
+                                        """.formatted(LocalDate.now().plusDays(5), origin)))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.code").value("TRIP_INVALID_ORIGIN"));
+            }
         }
 
         @Test
@@ -254,96 +282,78 @@ class TripIntegrationTest {
         }
 
         @Test
-        @DisplayName("확정된 여행과 날짜가 겹치면(포함 관계) 409와 conflicts를 반환한다")
-        void create_overlapsConfirmed_containment_returnsConflict() throws Exception {
+        @DisplayName("이미 만든 여행과 겹치면(포함·시작쪽·끝쪽·감싸기) 409와 conflicts를 반환한다")
+        void create_overlapsExistingTrip_returnsConflict() throws Exception {
             String token = freshToken();
             LocalDate base = LocalDate.now().plusDays(100);
-            createConfirmedTrip(token, base, 5); // base ~ base+5, CONFIRMED
+            createTripId(token, base.plusDays(5), 5); // existing: base+5 ~ base+10
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(base.plusDays(1), 1, "WALK"))) // fully inside existing
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"))
-                    .andExpect(jsonPath("$.details.conflicts[0].tripId").isNotEmpty());
+            LocalDate[][] requests = {
+                    {base.plusDays(6), base.plusDays(7)},   // 포함
+                    {base, base.plusDays(5)},               // 시작일에 닿음
+                    {base.plusDays(10), base.plusDays(12)}, // 종료일에 닿음
+                    {base.plusDays(4), base.plusDays(10)},  // 감싸기
+            };
+            for (LocalDate[] range : requests) {
+                int nights = (int) (range[1].toEpochDay() - range[0].toEpochDay());
+                mockMvc.perform(post("/api/trips")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody(range[0], nights, "WALK")))
+                        .andExpect(status().isConflict())
+                        .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"))
+                        .andExpect(jsonPath("$.details.conflicts[0].tripId").isNotEmpty());
+            }
         }
 
         @Test
-        @DisplayName("확정된 여행과 날짜가 겹치면(시작쪽 부분) 409를 반환한다")
-        void create_overlapsConfirmed_partialAtStart_returnsConflict() throws Exception {
-            String token = freshToken();
-            LocalDate base = LocalDate.now().plusDays(120);
-            createConfirmedTrip(token, base.plusDays(5), 5); // existing: base+5 ~ base+10
+        @DisplayName("다른 사람의 여행과는 겹쳐도 된다")
+        void create_otherUsersTrip_doesNotConflict() throws Exception {
+            LocalDate base = LocalDate.now().plusDays(130);
+            createTripId(freshToken(), base, 3);
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(base, 5, "WALK"))) // base ~ base+5, touches existing start
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"));
+            assertThat(createTrip(freshToken(), base, 3).getResponse().getStatus()).isEqualTo(201);
         }
 
         @Test
-        @DisplayName("확정된 여행과 날짜가 겹치면(끝쪽 부분) 409를 반환한다")
-        void create_overlapsConfirmed_partialAtEnd_returnsConflict() throws Exception {
+        @DisplayName("같은 사용자가 겹치는 여행을 동시에 만들면 하나만 성공한다")
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        void create_concurrentOverlapping_onlyOneSucceeds() throws Exception {
             String token = freshToken();
-            LocalDate base = LocalDate.now().plusDays(140);
-            createConfirmedTrip(token, base, 5); // existing: base ~ base+5
+            LocalDate base = LocalDate.now().plusDays(150);
 
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(base.plusDays(5), 5, "WALK"))) // touches existing end
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"));
-        }
+            int threadCount = 3;
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger created = new AtomicInteger();
+            AtomicInteger conflicted = new AtomicInteger();
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
+                    start.await();
+                    int status = createTrip(token, base, 2).getResponse().getStatus();
+                    if (status == 201) {
+                        created.incrementAndGet();
+                    } else if (status == 409) {
+                        conflicted.incrementAndGet();
+                    }
+                    return null;
+                });
+            }
+            start.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
 
-        @Test
-        @DisplayName("확정된 여행을 완전히 포함하는 새 요청도 409를 반환한다")
-        void create_overlapsConfirmed_newContainsExisting_returnsConflict() throws Exception {
-            String token = freshToken();
-            LocalDate base = LocalDate.now().plusDays(160);
-            createConfirmedTrip(token, base.plusDays(2), 1); // existing: base+2 ~ base+3
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(base, 6, "WALK"))) // base ~ base+6, contains existing
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"));
-        }
-
-        @Test
-        @DisplayName("DRAFT/CANCELLED 여행은 overlap 판정에서 제외된다")
-        void create_ignoresDraftAndCancelledTrips() throws Exception {
-            String token = freshToken();
-            LocalDate base = LocalDate.now().plusDays(180);
-
-            // DRAFT 상태로 남겨둔다 (확정하지 않음)
-            createTrip(token, base, 5);
-
-            // CANCELLED 상태로 별도 여행을 만든다
-            MvcResult cancelled = createTrip(token, base.plusDays(1), 2);
-            Long cancelledId = Long.valueOf(JsonPath.read(cancelled.getResponse().getContentAsString(), "$.id").toString());
-            TripPlan cancelledTrip = tripPlanRepository.findById(cancelledId).orElseThrow();
-            cancelledTrip.setStatus(TripPlanStatus.CANCELLED);
-            tripPlanRepository.save(cancelledTrip);
-
-            mockMvc.perform(post("/api/trips")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(createBody(base, 5, "WALK")))
-                    .andExpect(status().isCreated());
+            assertThat(created.get()).isEqualTo(1);
+            assertThat(conflicted.get()).isEqualTo(threadCount - 1);
         }
     }
 
     @Nested
-    @DisplayName("context 사전 확인")
+    @DisplayName("날짜 중복 사전 확인")
     class Check {
 
         @Test
-        @DisplayName("겹치지 않으면 available=true를 반환한다")
+        @DisplayName("겹치지 않으면 available=true다")
         void check_noConflict_returnsAvailableTrue() throws Exception {
             String token = freshToken();
 
@@ -359,11 +369,12 @@ class TripIntegrationTest {
         }
 
         @Test
-        @DisplayName("겹치면 available=false와 conflicts를 반환하고 저장하지 않는다")
+        @DisplayName("이미 만든 여행과 겹치면 available=false와 conflicts를 반환하고 저장하지 않는다")
         void check_conflict_returnsAvailableFalseWithoutSaving() throws Exception {
             String token = freshToken();
             LocalDate base = LocalDate.now().plusDays(200);
-            createConfirmedTrip(token, base, 3);
+            createTripId(token, base, 3);
+            long before = tripPlanRepository.count();
 
             mockMvc.perform(post("/api/trips/context/check")
                             .header("Authorization", "Bearer " + token)
@@ -374,6 +385,8 @@ class TripIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.available").value(false))
                     .andExpect(jsonPath("$.conflicts.length()").value(1));
+
+            assertThat(tripPlanRepository.count()).isEqualTo(before);
         }
     }
 
@@ -382,173 +395,155 @@ class TripIntegrationTest {
     class Context {
 
         @Test
-        @DisplayName("소유자는 자신의 여행 context를 조회할 수 있다")
-        void getContext_owner_success() throws Exception {
+        @DisplayName("참여자는 여행 context를 조회할 수 있다")
+        void getContext_participant_success() throws Exception {
             String token = freshToken();
-            MvcResult created = createTrip(token, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
+            Long tripId = createTripId(token, LocalDate.now().plusDays(5), 2);
 
-            mockMvc.perform(get("/api/trips/" + tripId + "/context").header("Authorization", "Bearer " + token))
+            mockMvc.perform(get("/api/trips/{id}/context", tripId).header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.id").value(tripId));
+                    .andExpect(jsonPath("$.id").value(tripId))
+                    .andExpect(jsonPath("$.hasCourse").value(false));
         }
 
         @Test
-        @DisplayName("존재하지 않는 여행은 404 TRIP_NOT_FOUND를 반환한다")
-        void getContext_notFound() throws Exception {
-            String token = freshToken();
+        @DisplayName("없거나 참여하지 않은 여행은 404 TRIP_NOT_FOUND다")
+        void getContext_notParticipant_returnsNotFound() throws Exception {
+            Long tripId = createTripId(freshToken(), LocalDate.now().plusDays(5), 2);
+            String otherToken = freshToken();
 
-            mockMvc.perform(get("/api/trips/999999999/context").header("Authorization", "Bearer " + token))
+            mockMvc.perform(get("/api/trips/999999999/context").header("Authorization", "Bearer " + otherToken))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
-        }
-
-        @Test
-        @DisplayName("타인의 여행은 404 TRIP_NOT_FOUND를 반환한다")
-        void getContext_otherUser_returnsNotFound() throws Exception {
-            String ownerToken = freshToken();
-            String otherToken = freshToken();
-            MvcResult created = createTrip(ownerToken, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
-
-            mockMvc.perform(get("/api/trips/" + tripId + "/context").header("Authorization", "Bearer " + otherToken))
+            mockMvc.perform(get("/api/trips/{id}/context", tripId).header("Authorization", "Bearer " + otherToken))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
         }
     }
 
     @Nested
-    @DisplayName("context 수정")
+    @DisplayName("이동수단·출발지 수정")
     class Update {
 
-        private String patchBody(LocalDate startDate, int nights, String transport, int version) {
+        private String patchBody(String transport, int version) {
             return """
-                    {"startDate":"%s","nights":%d,"transport":"%s","version":%d}
-                    """.formatted(startDate, nights, transport, version);
+                    {"transport":"%s","originLat":37.5,"originLng":127.0,"version":%d}
+                    """.formatted(transport, version);
         }
 
         @Test
-        @DisplayName("소유자가 DRAFT를 수정하면 200과 draftInvalidated=true를 반환한다")
-        void updateContext_owner_success() throws Exception {
+        @DisplayName("이동수단·출발지를 바꾸면 200과 증가한 version을 반환하고 날짜는 그대로다")
+        void update_success() throws Exception {
             String token = freshToken();
-            MvcResult created = createTrip(token, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
+            LocalDate startDate = LocalDate.now().plusDays(5);
+            Long tripId = createTripId(token, startDate, 2);
 
-            mockMvc.perform(patch("/api/trips/" + tripId + "/context")
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(patchBody(LocalDate.now().plusDays(6), 3, "CAR", 0)))
+                            .content(patchBody("CAR", 0)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.nights").value(3))
                     .andExpect(jsonPath("$.transport").value("CAR"))
-                    .andExpect(jsonPath("$.version").value(1))
-                    .andExpect(jsonPath("$.draftInvalidated").value(true));
+                    .andExpect(jsonPath("$.originLat").value(37.5))
+                    .andExpect(jsonPath("$.startDate").value(startDate.toString()))
+                    .andExpect(jsonPath("$.nights").value(2))
+                    .andExpect(jsonPath("$.version").value(1));
         }
 
         @Test
-        @DisplayName("확정된 여행을 수정하려 하면 409 TRIP_CONTEXT_LOCKED를 반환한다")
-        void updateContext_confirmedTrip_returnsLocked() throws Exception {
+        @DisplayName("출발지를 둘 다 null로 보내면 출발지를 지운다")
+        void update_clearOrigin() throws Exception {
             String token = freshToken();
-            Long tripId = createConfirmedTrip(token, LocalDate.now().plusDays(5), 2);
+            Long tripId = createTripId(token, LocalDate.now().plusDays(5), 2);
 
-            mockMvc.perform(patch("/api/trips/" + tripId + "/context")
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(patchBody(LocalDate.now().plusDays(6), 3, "CAR", 0)))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_CONTEXT_LOCKED"));
+                            .content(patchBody("CAR", 0)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"originLat\":null,\"originLng\":null,\"version\":1}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.transport").value("CAR"))
+                    .andExpect(jsonPath("$.originLat").isEmpty());
         }
 
         @Test
-        @DisplayName("버전이 다르면 409 TRIP_VERSION_CONFLICT를 반환한다")
-        void updateContext_staleVersion_returnsVersionConflict() throws Exception {
+        @DisplayName("시작일·박수를 보내면 400 COMMON_INVALID_REQUEST다(생성 후 날짜 변경 불가)")
+        void update_dates_returnsBadRequest() throws Exception {
             String token = freshToken();
-            MvcResult created = createTrip(token, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
+            Long tripId = createTripId(token, LocalDate.now().plusDays(5), 2);
 
-            mockMvc.perform(patch("/api/trips/" + tripId + "/context")
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(patchBody(LocalDate.now().plusDays(6), 3, "CAR", 5)))
+                            .content("""
+                                    {"startDate":"%s","nights":3,"version":0}
+                                    """.formatted(LocalDate.now().plusDays(6))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"));
+        }
+
+        @Test
+        @DisplayName("version이 다르면 409 TRIP_VERSION_CONFLICT다")
+        void update_staleVersion_returnsConflict() throws Exception {
+            String token = freshToken();
+            Long tripId = createTripId(token, LocalDate.now().plusDays(5), 2);
+
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(patchBody("CAR", 5)))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.code").value("TRIP_VERSION_CONFLICT"));
         }
 
         @Test
-        @DisplayName("타인의 여행을 수정하려 하면 404 TRIP_NOT_FOUND를 반환한다")
-        void updateContext_otherUser_returnsNotFound() throws Exception {
-            String ownerToken = freshToken();
-            String otherToken = freshToken();
-            MvcResult created = createTrip(ownerToken, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
+        @DisplayName("참여하지 않은 여행은 404 TRIP_NOT_FOUND다")
+        void update_notParticipant_returnsNotFound() throws Exception {
+            Long tripId = createTripId(freshToken(), LocalDate.now().plusDays(5), 2);
 
-            mockMvc.perform(patch("/api/trips/" + tripId + "/context")
-                            .header("Authorization", "Bearer " + otherToken)
+            mockMvc.perform(patch("/api/trips/{id}/context", tripId)
+                            .header("Authorization", "Bearer " + freshToken())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(patchBody(LocalDate.now().plusDays(6), 3, "CAR", 0)))
+                            .content(patchBody("CAR", 0)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
         }
 
         @Test
-        @DisplayName("변경 후 날짜가 확정 여행과 겹치면 409 TRIP_DATE_OVERLAP을 반환한다")
-        void updateContext_resultingOverlap_returnsConflict() throws Exception {
-            String token = freshToken();
-            LocalDate base = LocalDate.now().plusDays(220);
-            createConfirmedTrip(token, base, 3);
-
-            MvcResult created = createTrip(token, base.plusDays(10), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
-
-            mockMvc.perform(patch("/api/trips/" + tripId + "/context")
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(patchBody(base.plusDays(1), 1, "WALK", 0)))
-                    .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"));
-        }
-
-        @Test
-        @DisplayName("동시에 같은 버전으로 두 번 수정하면 정확히 하나만 성공한다")
+        @DisplayName("동시에 같은 version으로 두 번 수정하면 정확히 하나만 성공한다")
         @Transactional(propagation = Propagation.NOT_SUPPORTED)
-        void updateContext_concurrentSameVersion_onlyOneSucceeds() throws Exception {
+        void update_concurrentSameVersion_onlyOneSucceeds() throws Exception {
             String token = freshToken();
-            MvcResult created = createTrip(token, LocalDate.now().plusDays(5), 2);
-            Long tripId = Long.valueOf(JsonPath.read(created.getResponse().getContentAsString(), "$.id").toString());
+            Long tripId = createTripId(token, LocalDate.now().plusDays(5), 2);
 
             int threadCount = 2;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-            CountDownLatch ready = new CountDownLatch(threadCount);
             CountDownLatch start = new CountDownLatch(1);
             AtomicInteger successCount = new AtomicInteger();
             AtomicInteger conflictCount = new AtomicInteger();
-
-            Runnable task = () -> {
-                try {
-                    ready.countDown();
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
                     start.await();
-                    int status = mockMvc.perform(patch("/api/trips/" + tripId + "/context")
+                    int status = mockMvc.perform(patch("/api/trips/{id}/context", tripId)
                                     .header("Authorization", "Bearer " + token)
                                     .contentType(MediaType.APPLICATION_JSON)
-                                    .content(patchBody(LocalDate.now().plusDays(6), 3, "CAR", 0)))
+                                    .content(patchBody("CAR", 0)))
                             .andReturn().getResponse().getStatus();
                     if (status == 200) {
                         successCount.incrementAndGet();
                     } else if (status == 409) {
                         conflictCount.incrementAndGet();
                     }
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            };
-
-            for (int i = 0; i < threadCount; i++) {
-                executor.submit(task);
+                    return null;
+                });
             }
-            ready.await();
             start.countDown();
             executor.shutdown();
-            executor.awaitTermination(10, TimeUnit.SECONDS);
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
 
             assertThat(successCount.get()).isEqualTo(1);
             assertThat(conflictCount.get()).isEqualTo(threadCount - 1);
@@ -560,43 +555,89 @@ class TripIntegrationTest {
     class UnavailableDates {
 
         @Test
-        @DisplayName("확정된 여행 기간을 반환한다")
-        void unavailableDates_returnsConfirmedTripRanges() throws Exception {
+        @DisplayName("내 여행 기간을 반환하고 다른 사람의 여행은 포함하지 않는다")
+        void unavailableDates_returnsMyTrips() throws Exception {
             String token = freshToken();
             LocalDate base = LocalDate.now().plusDays(300);
-            createConfirmedTrip(token, base, 3);
+            Long tripId = createTripId(token, base, 3);
+            createTripId(freshToken(), base.plusDays(1), 1);
 
             mockMvc.perform(get("/api/trips/unavailable-dates")
                             .header("Authorization", "Bearer " + token)
                             .param("from", base.minusDays(5).toString())
                             .param("to", base.plusDays(10).toString()))
                     .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].tripId").value(tripId))
                     .andExpect(jsonPath("$[0].startDate").value(base.toString()))
                     .andExpect(jsonPath("$[0].endDate").value(base.plusDays(3).toString()));
         }
+    }
+
+    @Nested
+    @DisplayName("내 여행 목록·참여자·탈퇴")
+    class ListAndLeave {
 
         @Test
-        @DisplayName("DRAFT/CANCELLED 여행은 선택 불가능한 날짜에서 제외된다")
-        void unavailableDates_excludesDraftAndCancelledTrips() throws Exception {
+        @DisplayName("내 여행 목록은 시작일 순이고 참여자를 포함한다")
+        void list_returnsMyTripsInStartDateOrder() throws Exception {
             String token = freshToken();
-            LocalDate draftBase = LocalDate.now().plusDays(320);
-            LocalDate cancelledBase = LocalDate.now().plusDays(340);
+            Long later = createTripId(token, LocalDate.now().plusDays(60), 1);
+            Long sooner = createTripId(token, LocalDate.now().plusDays(30), 1);
 
-            // DRAFT: 확정하지 않고 그대로 둔다.
-            createTrip(token, draftBase, 2);
+            mockMvc.perform(get("/api/trips").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(2))
+                    .andExpect(jsonPath("$[0].tripId").value(sooner))
+                    .andExpect(jsonPath("$[1].tripId").value(later))
+                    .andExpect(jsonPath("$[0].participants.length()").value(1))
+                    .andExpect(jsonPath("$[0].hasCourse").value(false))
+                    .andExpect(jsonPath("$[0].hasMyDiary").value(false));
 
-            // CANCELLED: 확정 후 취소 상태로 되돌린다.
-            Long cancelledTripId = createConfirmedTrip(token, cancelledBase, 2);
-            TripPlan cancelledTrip = tripPlanRepository.findById(cancelledTripId).orElseThrow();
-            cancelledTrip.setStatus(TripPlanStatus.CANCELLED);
-            tripPlanRepository.save(cancelledTrip);
-
-            mockMvc.perform(get("/api/trips/unavailable-dates")
-                            .header("Authorization", "Bearer " + token)
-                            .param("from", draftBase.minusDays(5).toString())
-                            .param("to", cancelledBase.plusDays(10).toString()))
+            mockMvc.perform(get("/api/trips").param("period", "PAST").header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(0));
+        }
+
+        @Test
+        @DisplayName("참여자 목록은 만든 사람을 isCreator=true로 표시한다")
+        void participants_listsCreator() throws Exception {
+            String token = freshToken();
+            Long tripId = createTripId(token, LocalDate.now().plusDays(30), 1);
+
+            mockMvc.perform(get("/api/trips/{id}/participants", tripId).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].nickname").value("tester"))
+                    .andExpect(jsonPath("$[0].isCreator").value(true));
+        }
+
+        @Test
+        @DisplayName("마지막 참여자가 탈퇴하면 204이고 여행이 삭제되어 그 기간을 다시 쓸 수 있다")
+        void leave_lastParticipant_deletesTrip() throws Exception {
+            String token = freshToken();
+            LocalDate base = LocalDate.now().plusDays(400);
+            Long tripId = createTripId(token, base, 2);
+
+            mockMvc.perform(delete("/api/trips/{id}/participants/me", tripId).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isNoContent());
+
+            assertThat(tripPlanRepository.findById(tripId)).isEmpty();
+            mockMvc.perform(get("/api/trips/{id}/context", tripId).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isNotFound());
+            assertThat(createTrip(token, base, 2).getResponse().getStatus()).isEqualTo(201);
+        }
+
+        @Test
+        @DisplayName("참여하지 않은 여행에서 탈퇴하면 404 TRIP_NOT_FOUND다")
+        void leave_notParticipant_returnsNotFound() throws Exception {
+            Long tripId = createTripId(freshToken(), LocalDate.now().plusDays(30), 1);
+
+            mockMvc.perform(delete("/api/trips/{id}/participants/me", tripId)
+                            .header("Authorization", "Bearer " + freshToken()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
+            assertThat(tripPlanRepository.findById(tripId)).isPresent();
         }
     }
 }

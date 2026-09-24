@@ -5,14 +5,10 @@ import com.yeso.backend.profile.infrastructure.EmbeddingClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.domain.CourseShareLink;
 import com.yeso.backend.trip.domain.TripInvitation;
-import com.yeso.backend.trip.domain.TripParticipant;
-import com.yeso.backend.trip.domain.TripParticipantStatus;
-import com.yeso.backend.trip.domain.TripParticipantType;
 import com.yeso.backend.trip.infrastructure.CourseShareLinkRepository;
-import com.yeso.backend.trip.infrastructure.GuestSessionRepository;
 import com.yeso.backend.trip.infrastructure.ShareSessionCookieFactory;
 import com.yeso.backend.trip.infrastructure.TripInvitationRepository;
-import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
+import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,29 +34,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * WORK-04 비회원 초대와 VIEW/EDIT 공유. 초대(참여·온보딩)와 공유(확정 일정 권한)는 별도 token
- * 체계이므로 두 계열을 섞어 쓰는 경로까지 함께 검증한다.
+ * 회원 초대와 읽기 전용 공유(2026-09-24 정책). 초대는 회원을 동등한 참여자로 들이고, 공유는
+ * 참여하지 않은 사람에게 일정을 보여준다. 두 token 체계를 섞어 쓰는 경로까지 함께 검증한다.
  */
 @Testcontainers
 @SpringBootTest
@@ -92,16 +79,13 @@ class InviteSharingIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private TripParticipantRepository tripParticipantRepository;
+    private TripPlanRepository tripPlanRepository;
 
     @Autowired
     private TripInvitationRepository tripInvitationRepository;
 
     @Autowired
     private CourseShareLinkRepository courseShareLinkRepository;
-
-    @Autowired
-    private GuestSessionRepository guestSessionRepository;
 
     @Autowired
     private EmbeddingClient embeddingClient;
@@ -115,27 +99,45 @@ class InviteSharingIntegrationTest {
 
     // ---------- fixtures ----------
 
-    private String freshToken() throws Exception {
+    private String signup(String nickname) throws Exception {
         String email = "invite" + (seq++) + "_" + System.nanoTime() + "@example.com";
         MvcResult signup = mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"%s","password":"password123","nickname":"주최자"}
-                                """.formatted(email)))
+                                {"email":"%s","password":"password123","nickname":"%s"}
+                                """.formatted(email, nickname)))
                 .andReturn();
         return JsonPath.read(signup.getResponse().getContentAsString(), "$.accessToken");
     }
 
-    /** 회원마다 새 token을 쓰므로 날짜 중복 차단(WORK-03)에 걸리지 않는다. */
-    private Long createTrip(String token) throws Exception {
+    private String member(String nickname) throws Exception {
+        String token = signup(nickname);
+        mockMvc.perform(post("/api/onboarding/submissions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(TripIntegrationTest.onboardingBody()))
+                .andExpect(status().isCreated());
+        return token;
+    }
+
+    private String freshToken() throws Exception {
+        return member("만든사람");
+    }
+
+    private Long createTrip(String token, LocalDate startDate) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/trips")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"startDate":"%s","nights":2,"transport":"CAR"}
-                                """.formatted(LocalDate.now().plusDays(10))))
+                                """.formatted(startDate)))
+                .andExpect(status().isCreated())
                 .andReturn();
         return Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());
+    }
+
+    private Long createTrip(String token) throws Exception {
+        return createTrip(token, LocalDate.now().plusDays(10));
     }
 
     private MvcResult createInvite(String token, Long tripId, String body) throws Exception {
@@ -150,22 +152,29 @@ class InviteSharingIntegrationTest {
         return JsonPath.read(createInvite(token, tripId, "{}").getResponse().getContentAsString(), "$.token");
     }
 
-    private MvcResult join(String inviteToken, String displayName) throws Exception {
-        return mockMvc.perform(post("/api/invites/{token}/participants", inviteToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"displayName":"%s"}
-                                """.formatted(displayName)))
+    private MvcResult accept(String token, String inviteToken) throws Exception {
+        return mockMvc.perform(post("/api/invites/{token}/accept", inviteToken)
+                        .header("Authorization", "Bearer " + token))
                 .andReturn();
     }
 
-    private String shareLinkToken(String token, Long tripId, String permission) throws Exception {
+    /** 만든 사람과 초대를 수락한 친구, 두 참여자가 있는 여행. */
+    private record SharedTrip(Long tripId, String creator, String friend) {
+    }
+
+    private SharedTrip tripWithFriend() throws Exception {
+        String creator = freshToken();
+        Long tripId = createTrip(creator);
+        String friend = member("여행친구");
+        assertThat(accept(friend, inviteToken(creator, tripId)).getResponse().getStatus()).isEqualTo(201);
+        return new SharedTrip(tripId, creator, friend);
+    }
+
+    private String shareLinkToken(String token, Long tripId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/courses/{tripId}/share-links", tripId)
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"permission":"%s"}
-                                """.formatted(permission)))
+                        .content("{}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         return JsonPath.read(result.getResponse().getContentAsString(), "$.token");
@@ -180,28 +189,14 @@ class InviteSharingIntegrationTest {
                 .getCookie(ShareSessionCookieFactory.COOKIE_NAME);
     }
 
-    private static String onboardingBody() {
-        Map<Integer, Integer> byNumber = new HashMap<>();
-        for (int i = 1; i <= 12; i++) {
-            byNumber.put(i, 1);
-        }
-        String answers = byNumber.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(e -> "{\"questionNumber\":%d,\"choice\":%d}".formatted(e.getKey(), e.getValue()))
-                .collect(Collectors.joining(",", "[", "]"));
-        return """
-                {"questionVersion":"demo-mbti-v1","answers":%s,"scheduleDensity":"RELAXED"}
-                """.formatted(answers);
-    }
-
     // ---------- tests ----------
 
     @Nested
-    @DisplayName("초대 링크 생성")
-    class CreateInvite {
+    @DisplayName("초대 링크 발급·목록·폐기")
+    class InviteLinks {
 
         @Test
-        @DisplayName("기본값은 VIEW 권한과 7일 만료이고 token 원문은 생성 응답에만 실린다")
+        @DisplayName("기본 7일 만료이고 permission이 없으며 token 원문은 발급 응답에만 실린다")
         void create_defaults() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
@@ -210,17 +205,18 @@ class InviteSharingIntegrationTest {
             String body = result.getResponse().getContentAsString();
 
             assertThat(result.getResponse().getStatus()).isEqualTo(201);
-            assertThat(JsonPath.<String>read(body, "$.permission")).isEqualTo("VIEW");
+            assertThat(body).doesNotContain("permission");
             String raw = JsonPath.read(body, "$.token");
-            assertThat(raw).isNotBlank();
+            assertThat(raw).startsWith("iv_");
             assertThat(LocalDateTime.parse(JsonPath.<String>read(body, "$.expiresAt")))
                     .isCloseTo(LocalDateTime.now().plusDays(7), within(1, ChronoUnit.MINUTES));
+            assertThat(JsonPath.<String>read(body, "$.createdAt")).isNotBlank();
 
-            String listBody = mockMvc.perform(get("/api/trips/{tripId}/invites", tripId)
-                            .header("Authorization", "Bearer " + token))
+            mockMvc.perform(get("/api/trips/{tripId}/invites", tripId).header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
-                    .andReturn().getResponse().getContentAsString();
-            assertThat(listBody).doesNotContain(raw);
+                    .andExpect(jsonPath("$[0].token").doesNotExist())
+                    .andExpect(jsonPath("$[0].revoked").value(false))
+                    .andExpect(jsonPath("$[0].createdBy.nickname").value("만든사람"));
         }
 
         @Test
@@ -237,20 +233,6 @@ class InviteSharingIntegrationTest {
         }
 
         @Test
-        @DisplayName("permission=EDIT를 지정하면 그대로 저장한다")
-        void create_editPermission() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-
-            mockMvc.perform(post("/api/trips/{tripId}/invites", tripId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"permission\":\"EDIT\"}"))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.permission").value("EDIT"));
-        }
-
-        @Test
         @DisplayName("expiresInDays는 1과 30이 허용되고 0과 31은 400이다")
         void create_expiresInDaysBoundary() throws Exception {
             String token = freshToken();
@@ -258,30 +240,21 @@ class InviteSharingIntegrationTest {
 
             assertThat(createInvite(token, tripId, "{\"expiresInDays\":1}").getResponse().getStatus()).isEqualTo(201);
             assertThat(createInvite(token, tripId, "{\"expiresInDays\":30}").getResponse().getStatus()).isEqualTo(201);
-
-            mockMvc.perform(post("/api/trips/{tripId}/invites", tripId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"expiresInDays\":0}"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("INVALID_EXPIRES_IN_DAYS"));
-
-            mockMvc.perform(post("/api/trips/{tripId}/invites", tripId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"expiresInDays\":31}"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("INVALID_EXPIRES_IN_DAYS"));
+            for (int days : new int[]{0, 31}) {
+                MvcResult result = createInvite(token, tripId, "{\"expiresInDays\":%d}".formatted(days));
+                assertThat(result.getResponse().getStatus()).isEqualTo(400);
+                assertThat(JsonPath.<String>read(result.getResponse().getContentAsString(), "$.code"))
+                        .isEqualTo("INVALID_EXPIRES_IN_DAYS");
+            }
         }
 
         @Test
-        @DisplayName("소유자가 아니면 여행의 존재를 숨기고 404다")
-        void create_notOwner_returnsNotFound() throws Exception {
+        @DisplayName("참여자가 아니면 여행의 존재를 숨기고 404다")
+        void create_notParticipant_returnsNotFound() throws Exception {
             Long tripId = createTrip(freshToken());
-            String otherToken = freshToken();
 
             mockMvc.perform(post("/api/trips/{tripId}/invites", tripId)
-                            .header("Authorization", "Bearer " + otherToken)
+                            .header("Authorization", "Bearer " + freshToken())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{}"))
                     .andExpect(status().isNotFound())
@@ -289,8 +262,36 @@ class InviteSharingIntegrationTest {
         }
 
         @Test
-        @DisplayName("다른 여행의 초대 ID로 조회·수정하면 404다")
-        void invite_crossTripId_returnsNotFound() throws Exception {
+        @DisplayName("초대를 수락한 참여자도 초대 링크를 만들 수 있다(동등한 권한)")
+        void create_byInvitedParticipant() throws Exception {
+            SharedTrip trip = tripWithFriend();
+
+            assertThat(createInvite(trip.friend(), trip.tripId(), "{}").getResponse().getStatus()).isEqualTo(201);
+        }
+
+        @Test
+        @DisplayName("폐기하면 204이고 이후 미리보기·수락은 410 INVITE_REVOKED다")
+        void revoke_blocksFurtherUse() throws Exception {
+            String token = freshToken();
+            Long tripId = createTrip(token);
+            String body = createInvite(token, tripId, "{}").getResponse().getContentAsString();
+            String raw = JsonPath.read(body, "$.token");
+            Long inviteId = Long.valueOf(JsonPath.read(body, "$.id").toString());
+
+            mockMvc.perform(delete("/api/trips/{tripId}/invites/{inviteId}", tripId, inviteId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isNoContent());
+
+            mockMvc.perform(get("/api/invites/{token}", raw))
+                    .andExpect(status().isGone())
+                    .andExpect(jsonPath("$.code").value("INVITE_REVOKED"));
+            MvcResult accepted = accept(member("늦은친구"), raw);
+            assertThat(accepted.getResponse().getStatus()).isEqualTo(410);
+        }
+
+        @Test
+        @DisplayName("다른 여행의 초대 ID로 폐기하면 404 INVITE_NOT_FOUND다")
+        void revoke_crossTripId_returnsNotFound() throws Exception {
             String ownerA = freshToken();
             String ownerB = freshToken();
             Long tripA = createTrip(ownerA);
@@ -299,212 +300,169 @@ class InviteSharingIntegrationTest {
                     JsonPath.read(createInvite(ownerA, tripA, "{}").getResponse().getContentAsString(), "$.id")
                             .toString());
 
-            mockMvc.perform(get("/api/trips/{tripId}/invites/{inviteId}", tripB, inviteOfA)
+            mockMvc.perform(delete("/api/trips/{tripId}/invites/{inviteId}", tripB, inviteOfA)
                             .header("Authorization", "Bearer " + ownerB))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("INVITE_NOT_FOUND"));
-
-            mockMvc.perform(patch("/api/trips/{tripId}/invites/{inviteId}", tripB, inviteOfA)
-                            .header("Authorization", "Bearer " + ownerB)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"revoked\":true}"))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("INVITE_NOT_FOUND"));
         }
     }
 
     @Nested
-    @DisplayName("초대 참여")
-    class Join {
+    @DisplayName("초대 미리보기·수락")
+    class Accept {
 
         @Test
-        @DisplayName("표시 이름만으로 가입 없이 INVITED 참여자와 guest session이 생긴다")
-        void join_success() throws Exception {
+        @DisplayName("미리보기는 로그인 없이 보낸 사람·기간·인원만 보여준다")
+        void preview_public() throws Exception {
             String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
+            LocalDate startDate = LocalDate.now().plusDays(10);
+            Long tripId = createTrip(token, startDate);
 
-            MvcResult result = join(raw, "  동행이  ");
-            String body = result.getResponse().getContentAsString();
-
-            assertThat(result.getResponse().getStatus()).isEqualTo(201);
-            assertThat(JsonPath.<String>read(body, "$.displayName")).isEqualTo("동행이");
-            assertThat(JsonPath.<String>read(body, "$.status")).isEqualTo("INVITED");
-
-            Long participantId = Long.valueOf(JsonPath.read(body, "$.participantId").toString());
-            TripParticipant participant = tripParticipantRepository.findById(participantId).orElseThrow();
-            assertThat(participant.getParticipantType()).isEqualTo(TripParticipantType.GUEST);
-            assertThat(participant.getUser()).isNull();
-            assertThat(participant.getTripInvitationId()).isNotNull();
-
-            String sessionToken = JsonPath.read(body, "$.guestSessionToken");
-            assertThat(guestSessionRepository.findByTokenHash(sessionToken)).isEmpty();
+            mockMvc.perform(get("/api/invites/{token}", inviteToken(token, tripId)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.valid").value(true))
+                    .andExpect(jsonPath("$.startDate").value(startDate.toString()))
+                    .andExpect(jsonPath("$.inviterNickname").value("만든사람"))
+                    .andExpect(jsonPath("$.participantCount").value(1))
+                    .andExpect(jsonPath("$.regionName").isEmpty());
         }
 
         @Test
-        @DisplayName("표시 이름이 공백뿐이거나 trim 후 30자를 넘으면 400이다")
-        void join_invalidDisplayName() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
+        @DisplayName("설문을 마친 회원이 수락하면 201과 여행 context를 받고 참여자가 된다")
+        void accept_success() throws Exception {
+            SharedTrip trip = tripWithFriend();
 
-            assertThat(join(raw, "   ").getResponse().getStatus()).isEqualTo(400);
-            assertThat(join(raw, "가".repeat(31)).getResponse().getStatus()).isEqualTo(400);
-            assertThat(join(raw, "가".repeat(30)).getResponse().getStatus()).isEqualTo(201);
+            mockMvc.perform(get("/api/trips/{id}/context", trip.tripId()).header("Authorization", "Bearer " + trip.friend()))
+                    .andExpect(status().isOk());
+            mockMvc.perform(get("/api/trips/{id}/participants", trip.tripId())
+                            .header("Authorization", "Bearer " + trip.friend()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(2))
+                    .andExpect(jsonPath("$[1].nickname").value("여행친구"))
+                    .andExpect(jsonPath("$[1].isCreator").value(false));
+            mockMvc.perform(get("/api/trips").header("Authorization", "Bearer " + trip.friend()))
+                    .andExpect(jsonPath("$[0].tripId").value(trip.tripId()));
         }
 
         @Test
-        @DisplayName("링크 하나로 동시에 참여해도 각자 별도 참여자와 세션을 받는다")
-        void join_concurrent_createsDistinctParticipants() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
+        @DisplayName("이미 참여 중이면 200으로 같은 결과를 준다(멱등)")
+        void accept_twice_isIdempotent() throws Exception {
+            String creator = freshToken();
+            Long tripId = createTrip(creator);
+            String raw = inviteToken(creator, tripId);
+            String friend = member("여행친구");
 
-            int threads = 4;
-            ExecutorService pool = Executors.newFixedThreadPool(threads);
-            CountDownLatch start = new CountDownLatch(1);
-            CountDownLatch done = new CountDownLatch(threads);
-            Set<Long> participantIds = ConcurrentHashMap.newKeySet();
-            Set<String> sessionTokens = ConcurrentHashMap.newKeySet();
+            assertThat(accept(friend, raw).getResponse().getStatus()).isEqualTo(201);
+            MvcResult again = accept(friend, raw);
+            assertThat(again.getResponse().getStatus()).isEqualTo(200);
+            assertThat(JsonPath.<Integer>read(again.getResponse().getContentAsString(), "$.id").longValue())
+                    .isEqualTo(tripId);
+            assertThat(accept(creator, raw).getResponse().getStatus()).isEqualTo(200);
+        }
 
-            for (int i = 0; i < threads; i++) {
-                int index = i;
-                pool.submit(() -> {
-                    try {
-                        start.await();
-                        String body = join(raw, "손님" + index).getResponse().getContentAsString();
-                        participantIds.add(Long.valueOf(JsonPath.read(body, "$.participantId").toString()));
-                        sessionTokens.add(JsonPath.read(body, "$.guestSessionToken"));
-                    } catch (Exception ignored) {
-                        // 실패는 아래 크기 단언에서 드러난다.
-                    } finally {
-                        done.countDown();
-                    }
-                });
-            }
-            start.countDown();
-            assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
-            pool.shutdownNow();
+        @Test
+        @DisplayName("설문을 마치지 않았으면 409 ONBOARDING_REQUIRED다")
+        void accept_withoutOnboarding_returnsConflict() throws Exception {
+            String creator = freshToken();
+            Long tripId = createTrip(creator);
 
-            assertThat(participantIds).hasSize(threads);
-            assertThat(sessionTokens).hasSize(threads);
+            MvcResult result = accept(signup("신규"), inviteToken(creator, tripId));
+            assertThat(result.getResponse().getStatus()).isEqualTo(409);
+            assertThat(JsonPath.<String>read(result.getResponse().getContentAsString(), "$.code"))
+                    .isEqualTo("ONBOARDING_REQUIRED");
+        }
+
+        @Test
+        @DisplayName("수락자의 기존 여행과 날짜가 겹치면 409 TRIP_DATE_OVERLAP이다")
+        void accept_overlapWithOwnTrip_returnsConflict() throws Exception {
+            String creator = freshToken();
+            LocalDate startDate = LocalDate.now().plusDays(50);
+            Long tripId = createTrip(creator, startDate);
+            String friend = member("여행친구");
+            createTrip(friend, startDate.plusDays(1));
+
+            MvcResult result = accept(friend, inviteToken(creator, tripId));
+            assertThat(result.getResponse().getStatus()).isEqualTo(409);
+            assertThat(JsonPath.<String>read(result.getResponse().getContentAsString(), "$.code"))
+                    .isEqualTo("TRIP_DATE_OVERLAP");
+        }
+
+        @Test
+        @DisplayName("참여한 여행의 기간은 수락자에게도 선택 불가다")
+        void accept_blocksFriendsCalendar() throws Exception {
+            SharedTrip trip = tripWithFriend();
+
+            mockMvc.perform(post("/api/trips")
+                            .header("Authorization", "Bearer " + trip.friend())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"startDate":"%s","nights":0,"transport":"WALK"}
+                                    """.formatted(LocalDate.now().plusDays(11))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("TRIP_DATE_OVERLAP"));
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void accept_anonymous_returnsUnauthorized() throws Exception {
+            String creator = freshToken();
+            Long tripId = createTrip(creator);
+
+            mockMvc.perform(post("/api/invites/{token}/accept", inviteToken(creator, tripId)))
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test
         @DisplayName("만료된 초대는 410 INVITE_EXPIRED다")
-        void join_expired_returnsGone() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
-
-            TripInvitation invitation = tripInvitationRepository
-                    .findByTripPlanIdOrderByCreatedAtDesc(tripId).get(0);
+        void accept_expired_returnsGone() throws Exception {
+            String creator = freshToken();
+            Long tripId = createTrip(creator);
+            String raw = inviteToken(creator, tripId);
+            TripInvitation invitation = tripInvitationRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).get(0);
             invitation.setExpiresAt(LocalDateTime.now().minusSeconds(1));
             tripInvitationRepository.save(invitation);
 
-            mockMvc.perform(post("/api/invites/{token}/participants", raw)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"displayName\":\"늦은손님\"}"))
-                    .andExpect(status().isGone())
-                    .andExpect(jsonPath("$.code").value("INVITE_EXPIRED"));
-        }
-
-        @Test
-        @DisplayName("폐기된 초대는 410 INVITE_REVOKED다")
-        void join_revoked_returnsGone() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            MvcResult created = createInvite(token, tripId, "{}");
-            String body = created.getResponse().getContentAsString();
-            String raw = JsonPath.read(body, "$.token");
-            Long inviteId = Long.valueOf(JsonPath.read(body, "$.id").toString());
-
-            mockMvc.perform(patch("/api/trips/{tripId}/invites/{inviteId}", tripId, inviteId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"revoked\":true}"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.revoked").value(true));
-
-            mockMvc.perform(get("/api/invites/{token}", raw))
-                    .andExpect(status().isGone())
-                    .andExpect(jsonPath("$.code").value("INVITE_REVOKED"));
+            MvcResult result = accept(member("늦은친구"), raw);
+            assertThat(result.getResponse().getStatus()).isEqualTo(410);
+            assertThat(JsonPath.<String>read(result.getResponse().getContentAsString(), "$.code"))
+                    .isEqualTo("INVITE_EXPIRED");
         }
 
         @Test
         @DisplayName("공유 token을 초대 엔드포인트에 쓰면 TOKEN_AUDIENCE_MISMATCH다")
-        void join_shareToken_returnsAudienceMismatch() throws Exception {
+        void preview_shareToken_returnsAudienceMismatch() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
-            String shareToken = shareLinkToken(token, tripId, "VIEW");
 
-            mockMvc.perform(get("/api/invites/{token}", shareToken))
+            mockMvc.perform(get("/api/invites/{token}", shareLinkToken(token, tripId)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("TOKEN_AUDIENCE_MISMATCH"));
         }
     }
 
     @Nested
-    @DisplayName("게스트 온보딩")
-    class GuestOnboarding {
+    @DisplayName("탈퇴")
+    class Leave {
 
         @Test
-        @DisplayName("guest session으로 제출하면 참여자가 READY가 된다")
-        void submit_success() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String body = join(inviteToken(token, tripId), "동행이").getResponse().getContentAsString();
-            Long participantId = Long.valueOf(JsonPath.read(body, "$.participantId").toString());
-            String guestSession = JsonPath.read(body, "$.guestSessionToken");
+        @DisplayName("만든 사람이 탈퇴해도 남은 참여자의 여행은 유지되고, 마지막 참여자가 나가면 삭제된다")
+        void leave_creatorThenFriend() throws Exception {
+            SharedTrip trip = tripWithFriend();
 
-            mockMvc.perform(post("/api/invite-participants/{id}/onboarding", participantId)
-                            .header("Authorization", "Bearer " + guestSession)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(onboardingBody()))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.mbtiCode").exists());
+            mockMvc.perform(delete("/api/trips/{id}/participants/me", trip.tripId())
+                            .header("Authorization", "Bearer " + trip.creator()))
+                    .andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/trips/{id}/context", trip.tripId()).header("Authorization", "Bearer " + trip.creator()))
+                    .andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/trips/{id}/participants", trip.tripId())
+                            .header("Authorization", "Bearer " + trip.friend()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1));
 
-            TripParticipant participant = tripParticipantRepository.findById(participantId).orElseThrow();
-            assertThat(participant.getStatus()).isEqualTo(TripParticipantStatus.READY);
-            assertThat(participant.getLatestOnboardingSubmissionId()).isNotNull();
-        }
-
-        @Test
-        @DisplayName("다른 참여자의 온보딩은 제출할 수 없다")
-        void submit_otherParticipant_returnsUnauthorized() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
-
-            String mine = join(raw, "나").getResponse().getContentAsString();
-            String theirs = join(raw, "남").getResponse().getContentAsString();
-            Long theirParticipantId = Long.valueOf(JsonPath.read(theirs, "$.participantId").toString());
-            String mySession = JsonPath.read(mine, "$.guestSessionToken");
-
-            mockMvc.perform(post("/api/invite-participants/{id}/onboarding", theirParticipantId)
-                            .header("Authorization", "Bearer " + mySession)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(onboardingBody()))
-                    .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.code").value("GUEST_SESSION_INVALID"));
-        }
-
-        @Test
-        @DisplayName("초대 token을 guest session 대신 쓰면 TOKEN_AUDIENCE_MISMATCH다")
-        void submit_inviteToken_returnsAudienceMismatch() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String raw = inviteToken(token, tripId);
-            Long participantId = Long.valueOf(
-                    JsonPath.read(join(raw, "동행이").getResponse().getContentAsString(), "$.participantId")
-                            .toString());
-
-            mockMvc.perform(post("/api/invite-participants/{id}/onboarding", participantId)
-                            .header("Authorization", "Bearer " + raw)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(onboardingBody()))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("TOKEN_AUDIENCE_MISMATCH"));
+            mockMvc.perform(delete("/api/trips/{id}/participants/me", trip.tripId())
+                            .header("Authorization", "Bearer " + trip.friend()))
+                    .andExpect(status().isNoContent());
+            assertThat(tripPlanRepository.findById(trip.tripId())).isEmpty();
         }
     }
 
@@ -513,37 +471,58 @@ class InviteSharingIntegrationTest {
     class Sharing {
 
         @Test
-        @DisplayName("open은 token을 HttpOnly cookie로 교환하고 token 없는 URL로 303 redirect한다")
+        @DisplayName("open은 token을 HttpOnly cookie(Path=/api)로 교환하고 token 없는 URL로 303 redirect한다")
         void open_exchangesTokenForCookie() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
-            String shareToken = shareLinkToken(token, tripId, "VIEW");
+            String shareToken = shareLinkToken(token, tripId);
 
             MvcResult opened = mockMvc.perform(get("/api/shared/courses/{token}", shareToken))
                     .andExpect(status().isSeeOther())
                     .andExpect(header().string(HttpHeaders.LOCATION, "/api/shared/courses"))
                     .andReturn();
 
-            assertThat(opened.getResponse().getHeader(HttpHeaders.LOCATION)).doesNotContain(shareToken);
             assertThat(opened.getResponse().getContentAsString()).doesNotContain(shareToken);
-
             Cookie cookie = opened.getResponse().getCookie(ShareSessionCookieFactory.COOKIE_NAME);
             assertThat(cookie).isNotNull();
             assertThat(cookie.isHttpOnly()).isTrue();
             assertThat(cookie.getValue()).isNotEqualTo(shareToken);
+            assertThat(cookie.getPath()).isEqualTo("/api");
         }
 
         @Test
-        @DisplayName("교환한 세션으로 일정을 VIEW 권한으로 조회한다")
+        @DisplayName("발급 응답은 permission 없이 token·만료·createdAt을 준다")
+        void create_readOnlyLink() throws Exception {
+            String token = freshToken();
+            Long tripId = createTrip(token);
+
+            mockMvc.perform(post("/api/courses/{tripId}/share-links", tripId)
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"expiresInDays\":3}"))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.token").exists())
+                    .andExpect(jsonPath("$.createdAt").exists())
+                    .andExpect(jsonPath("$.permission").doesNotExist());
+
+            mockMvc.perform(get("/api/courses/{tripId}/share-links", tripId).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].createdBy.nickname").value("만든사람"))
+                    .andExpect(jsonPath("$[0].permission").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("교환한 세션으로 일정을 VIEWER로 조회한다")
         void view_withSession() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
-            Cookie cookie = openShareSession(shareLinkToken(token, tripId, "VIEW"));
+            Cookie cookie = openShareSession(shareLinkToken(token, tripId));
 
             mockMvc.perform(get("/api/shared/courses").cookie(cookie))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.tripId").value(tripId))
-                    .andExpect(jsonPath("$.permission").value("VIEW"));
+                    .andExpect(jsonPath("$.myRole").value("VIEWER"))
+                    .andExpect(jsonPath("$.days.length()").value(0));
         }
 
         @Test
@@ -555,55 +534,17 @@ class InviteSharingIntegrationTest {
         }
 
         @Test
-        @DisplayName("권한을 EDIT로 바꾸면 세션 조회 결과도 EDIT가 된다")
-        void patch_permission_appliesToSession() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-            String shareToken = shareLinkToken(token, tripId, "VIEW");
-            Long linkId = courseShareLinkRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).get(0).getId();
-
-            mockMvc.perform(patch("/api/courses/{tripId}/share-links/{linkId}", tripId, linkId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"permission\":\"EDIT\"}"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.permission").value("EDIT"));
-
-            mockMvc.perform(get("/api/shared/courses").cookie(openShareSession(shareToken)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.permission").value("EDIT"));
-        }
-
-        @Test
-        @DisplayName("알 수 없는 permission 값은 400이다")
-        void create_invalidPermission_returnsBadRequest() throws Exception {
-            String token = freshToken();
-            Long tripId = createTrip(token);
-
-            mockMvc.perform(post("/api/courses/{tripId}/share-links", tripId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"permission\":\"ADMIN\"}"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("INVALID_SHARE_PERMISSION"));
-        }
-
-        @Test
-        @DisplayName("링크를 폐기하면 이미 발급된 세션으로도 더는 볼 수 없다")
+        @DisplayName("링크를 폐기하면 204이고 이미 발급된 세션으로도 더는 볼 수 없다")
         void revoke_killsExistingSession() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
-            Cookie cookie = openShareSession(shareLinkToken(token, tripId, "VIEW"));
+            Cookie cookie = openShareSession(shareLinkToken(token, tripId));
             Long linkId = courseShareLinkRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).get(0).getId();
 
             mockMvc.perform(get("/api/shared/courses").cookie(cookie)).andExpect(status().isOk());
-
-            mockMvc.perform(patch("/api/courses/{tripId}/share-links/{linkId}", tripId, linkId)
-                            .header("Authorization", "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"revoked\":true}"))
-                    .andExpect(status().isOk());
-
+            mockMvc.perform(delete("/api/courses/{tripId}/share-links/{linkId}", tripId, linkId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isNoContent());
             mockMvc.perform(get("/api/shared/courses").cookie(cookie))
                     .andExpect(status().isGone())
                     .andExpect(jsonPath("$.code").value("SHARE_LINK_REVOKED"));
@@ -614,7 +555,7 @@ class InviteSharingIntegrationTest {
         void expired_killsExistingSession() throws Exception {
             String token = freshToken();
             Long tripId = createTrip(token);
-            Cookie cookie = openShareSession(shareLinkToken(token, tripId, "VIEW"));
+            Cookie cookie = openShareSession(shareLinkToken(token, tripId));
 
             CourseShareLink link = courseShareLinkRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).get(0);
             link.setExpiresAt(LocalDateTime.now().minusSeconds(1));
@@ -637,17 +578,17 @@ class InviteSharingIntegrationTest {
         }
 
         @Test
-        @DisplayName("소유자가 아니면 공유 링크를 만들 수 없다")
-        void create_notOwner_returnsNotFound() throws Exception {
-            Long tripId = createTrip(freshToken());
-            String otherToken = freshToken();
+        @DisplayName("참여자가 아니면 공유 링크를 만들 수 없고, 초대를 수락한 참여자는 만들 수 있다")
+        void create_permission() throws Exception {
+            SharedTrip trip = tripWithFriend();
 
-            mockMvc.perform(post("/api/courses/{tripId}/share-links", tripId)
-                            .header("Authorization", "Bearer " + otherToken)
+            mockMvc.perform(post("/api/courses/{tripId}/share-links", trip.tripId())
+                            .header("Authorization", "Bearer " + freshToken())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"permission\":\"VIEW\"}"))
+                            .content("{}"))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
+            assertThat(shareLinkToken(trip.friend(), trip.tripId())).startsWith("sl_");
         }
     }
 }
