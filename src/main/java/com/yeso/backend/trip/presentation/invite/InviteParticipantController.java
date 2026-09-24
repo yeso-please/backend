@@ -1,8 +1,8 @@
 package com.yeso.backend.trip.presentation.invite;
 
 import com.yeso.backend.trip.application.invite.InviteService;
-import com.yeso.backend.onboarding.presentation.OnboardingSubmissionRequest;
-import com.yeso.backend.onboarding.presentation.OnboardingSubmissionResponse;
+import com.yeso.backend.profile.presentation.OnboardingSubmissionRequest;
+import com.yeso.backend.profile.presentation.OnboardingSubmissionResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

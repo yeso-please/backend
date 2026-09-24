@@ -1,8 +1,11 @@
 # 온보딩 API
 
-- 상태: implemented (회원 제출만 — guest 참여자 제출은 WORK-04 이후 미구현)
-- 갱신일: 2026-09-21
+- 상태: implemented (회원 제출 및 WORK-04 비회원 참여자 제출)
+- 갱신일: 2026-09-24
 - 관련 기능 명세: [온보딩·재검사·임베딩 job](../features/onboarding.md)
+
+온보딩 구현은 `profile` 모듈이 소유한다. 비회원 참여자 제출 경로와 guest session 계약은
+[초대·공유 API](invitations-and-sharing.md)에 정의한다.
 
 오류는 [공통 오류 응답](common-errors.md) 형식을 따른다. 이 문서에서 다루는 도메인 코드는 모두 HTTP 400이다
 (`REGION_NOT_FOUND`도 지역 존재는 요청 유효성 문제로 취급해 400이며 404가 아니다).

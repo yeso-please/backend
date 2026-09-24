@@ -1,10 +1,10 @@
 # 온보딩·재검사·임베딩 job
 
-- 상태: done (guest 참여자 제출은 WORK-04 이후로 미룸)
-- 담당 범위: onboarding
+- 상태: done (회원·guest 참여자 제출)
+- 담당 범위: profile 모듈의 온보딩
 - 작성일: 2026-09-21
-- 갱신일: 2026-09-21
-- 관련 이슈: #12 (WORK-02)
+- 갱신일: 2026-09-24
+- 관련 이슈: #12 (WORK-02), #32 (profile 모듈 통합)
 - 관련 API: [Onboarding API](../api/onboarding.md)
 
 ## 목표
@@ -29,11 +29,10 @@
   영구 실패/dimension 불일치를 구분해 job 상태(`PENDING/READY/FAILED`)로 흡수
 - 제출 트랜잭션 커밋 후에만 임베딩을 호출(`AFTER_COMMIT`)하고, 재시도는 `@Scheduled` sweeper가 처리
 
-### 제외 (후속)
+### WORK-04 연동
 
-- guest(초대 손님) 온보딩 제출 — `trip_participants` 기반 guest 세션이 있어야 하며 WORK-04(초대) 이후 구현
-- `guest_taste_vectors` 반영 — 위와 동일한 이유로 후속. `EmbeddingJob.ownerType=GUEST` 스키마는 미리 마련해뒀다
-- 온보딩 결과를 활용하는 지역 추첨/코스 생성(WORK-05/06)
+- guest(초대 손님) 온보딩 제출과 `guest_taste_vectors` 적재는 WORK-04에서 추가됐다.
+- 온보딩 결과를 활용하는 지역 추첨/코스 생성은 WORK-05/06 범위다.
 
 ## 사용자 흐름
 
@@ -67,21 +66,21 @@
 
 ## 구현 메모
 
-- Entity: `onboarding.domain.OnboardingSubmission`, `OnboardingAnswer`, `LikedTrip`, `EmbeddingJob`;
+- Entity: `profile.domain.OnboardingSubmission`, `OnboardingAnswer`, `LikedTrip`, `EmbeddingJob`;
   `auth.domain.User.latestOnboardingSubmissionId` 추가
-- Repository: `onboarding.infrastructure.OnboardingSubmissionRepository`, `OnboardingAnswerRepository`,
+- Repository: `profile.infrastructure.OnboardingSubmissionRepository`, `OnboardingAnswerRepository`,
   `LikedTripRepository`, `EmbeddingJobRepository`, `RegionRepository`(region bounded context가 생기기 전
   임시 위치), `UserTasteVectorRepository`
-- Service: `onboarding.application.OnboardingService`(검증·채점·저장), `OnboardingEmbeddingRunner`(임베딩
+- Service: `profile.application.OnboardingService`(검증·채점·저장), `OnboardingEmbeddingRunner`(임베딩
   호출과 job/submission 상태 갱신, `@Transactional(REQUIRES_NEW)`), `OnboardingSubmittedEventListener`
   (`@TransactionalEventListener(AFTER_COMMIT)`으로 위 runner를 외부 bean 호출), `EmbeddingRetrySweeper`
   (`@Scheduled`로 기한이 지난 PENDING job 재시도)
-- Controller: `onboarding.presentation.OnboardingController`
+- Controller: `profile.presentation.OnboardingController`
 - DTO: `OnboardingQuestionsResponse`, `AnswerRequest`, `LikedTripRequest`, `OnboardingSubmissionRequest`,
   `OnboardingSubmissionResponse`, `OnboardingMeResponse`
 - 도메인 로직: `OnboardingQuestionBank`(고정 질문·태그 상수), `MbtiScorer`(동점 처리 포함 채점),
   `OnboardingProfileTextComposer`(결정적 profileText 합성)
-- 예외: `onboarding.domain.OnboardingException`(베이스) → `InvalidQuestionVersionException`,
+- 예외: `profile.domain.OnboardingException`(베이스) → `InvalidQuestionVersionException`,
   `MissingQuestionAnswerException`, `DuplicateQuestionAnswerException`, `InvalidChoiceException`,
   `InvalidScheduleDensityException`, `TooManyExperienceTagsException`, `UnknownTagException`,
   `DuplicateLikedRegionException`, `TooManyLikedRegionsException`, `OnboardingRegionNotFoundException`(400)
@@ -113,7 +112,7 @@
   실패했다 — `isNew()`를 명시해 새 row는 `persist()`, 기존 row는 `merge()`가 되도록 고쳤다.
 - **`submission.status`(SUBMITTED 하나뿐)**: 작업서가 별도 컬럼으로 요구했지만 현재는 원자적으로 완성된
   제출만 저장하므로 실질적인 분기가 없다 — 향후 상태가 늘어날 여지를 위해 컬럼과 enum만 마련해뒀다.
-- **미해결**: guest 온보딩(WORK-04 이후), `EmbeddingRetrySweeper`의 재시도 간격/횟수 조정은 실제 Python
+- **미해결**: `EmbeddingRetrySweeper`의 재시도 간격/횟수 조정은 실제 Python
   서비스 SLA가 정해지면 다시 튜닝이 필요하다.
 
 ## 변경 이력
@@ -121,3 +120,4 @@
 | 날짜 | 변경 | 이유 |
 |---|---|---|
 | 2026-09-21 | 온보딩 질문·제출·재검사·임베딩 job 최초 구현 | WORK-02(이슈 #12) |
+| 2026-09-24 | 온보딩 코드를 profile 모듈로 통합 | 모듈 경계와 코드 배치 일치(이슈 #32) |

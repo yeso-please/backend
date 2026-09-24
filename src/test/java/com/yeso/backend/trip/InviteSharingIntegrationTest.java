@@ -1,8 +1,8 @@
 package com.yeso.backend.trip;
 
 import com.jayway.jsonpath.JsonPath;
-import com.yeso.backend.onboarding.infrastructure.EmbeddingClient;
-import com.yeso.backend.onboarding.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.profile.infrastructure.EmbeddingClient;
+import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.domain.CourseShareLink;
 import com.yeso.backend.trip.domain.TripInvitation;
 import com.yeso.backend.trip.domain.TripParticipant;
