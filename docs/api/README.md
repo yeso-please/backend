@@ -7,7 +7,9 @@
 - [공통 오류 응답과 인증 사용자 주입](common-errors.md)
 - [OpenAPI·Swagger](openapi.md)
 - [인증](auth.md)
-- 여행: 준비 중
+- [온보딩](onboarding.md)
+- [여행](trips.md)
+- [초대·공유](invitations-and-sharing.md)
 - 관광지: 준비 중
 
 새 API는 [REST API 명세 컨벤션](../conventions/API-명세.md)의 endpoint 템플릿을 사용합니다.

@@ -1,9 +1,13 @@
 # 0001. Refresh 토큰: 서명된 JWT + 서버측 해시 대조로 rotate/revoke
 
-- 상태: accepted
+- 상태: superseded by [0003](0003-opaque-refresh-token-rotation.md)
 - 결정일: 2026-09-18
 - 결정자: 인증 모듈 구현(claude)
 - 관련 작업: [회원가입/로그인/인증 모듈](../features/auth-login-signup.md)
+
+> **superseded**: WORK-01 계약(`docs/mvp/implementation-workpack.md`)이 refresh 토큰을 256bit 이상
+> opaque 값으로 명시해, [ADR-0003](0003-opaque-refresh-token-rotation.md)에서 아래 Option 1 대신
+> Option 2(opaque)를 채택했다. 이 문서는 당시의 trade-off 기록으로 남긴다.
 
 ## Context and Problem Statement
 

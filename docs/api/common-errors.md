@@ -22,6 +22,8 @@ Controller, validation, Security 계층은 모두 같은 JSON 모양을 사용�
 }
 ```
 
+`details`는 도메인 예외가 구조화된 부가 정보(예: WORK-03 `TRIP_DATE_OVERLAP`의 `conflicts` 목록)를 실어야 할 때만 붙는다. 값이 없으면 응답에서 생략된다.
+
 ## 공통 코드
 
 | HTTP | code | 사용 시점 |

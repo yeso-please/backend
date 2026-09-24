@@ -27,7 +27,8 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = exception.getErrorCode();
         log.warn("Domain exception code={}: {}", errorCode.code(), exception.getMessage());
         return ResponseEntity.status(errorCode.status())
-                .body(ApiErrorResponse.of(errorCode, exception.getMessage(), request.getRequestURI()));
+                .body(ApiErrorResponse.of(
+                        errorCode, exception.getMessage(), request.getRequestURI(), exception.getDetails()));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
