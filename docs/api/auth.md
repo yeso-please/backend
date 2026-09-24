@@ -47,7 +47,7 @@ Set-Cookie: refresh_token=...; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=1
 
 ### 1-1. 회원가입
 
-> `WORK-01` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 POST /api/auth/signup
@@ -78,7 +78,7 @@ POST /api/auth/signup
 
 ### 1-2. 로그인
 
-> `WORK-01` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 POST /api/auth/login
@@ -106,7 +106,7 @@ POST /api/auth/login
 
 ### 1-3. 토큰 갱신
 
-> `WORK-01` · `호출: refresh cookie` · `✅ 구현`
+> `호출: refresh cookie` · `✅ 구현`
 
 ```
 POST /api/auth/refresh
@@ -131,7 +131,7 @@ POST /api/auth/refresh
 
 ### 1-4. 로그아웃
 
-> `WORK-01` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 POST /api/auth/logout
@@ -145,7 +145,7 @@ POST /api/auth/logout
 
 ### 1-5. 내 정보
 
-> `WORK-01` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/users/me

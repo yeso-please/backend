@@ -66,6 +66,7 @@
 | `ONBOARDING_REQUIRED` | 409 | 최초 설문을 마치지 않고 여행을 만들려 함 |
 | `DRAW_INVALID_MODE` | 400 | `mode` 값 오류 |
 | `DRAW_NO_CONDITION_SELECTED` | 400 | `CONDITIONAL`인데 조건이 비었음 |
+| `REGION_NOT_FOUND` | 404 | `MANUAL`로 보낸 `sigCd`가 없는 지역 |
 | `DRAW_REGION_NOT_ELIGIBLE` | 422 | `MANUAL`로 고른 지역이 이 일수·밀도로 코스를 만들 수 없음 |
 | `DRAW_NO_ELIGIBLE_REGION` | 422 | 추첨 가능한 지역이 없음 |
 
@@ -84,7 +85,7 @@
 
 ### 3-1. 선택 불가 날짜
 
-> `WORK-03` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/trips/unavailable-dates?from=2026-10-01&to=2026-12-31
@@ -105,7 +106,7 @@ GET /api/trips/unavailable-dates?from=2026-10-01&to=2026-12-31
 
 ### 3-2. 날짜 중복 미리 확인
 
-> `WORK-03` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/trips/context/check
@@ -141,7 +142,7 @@ POST /api/trips/context/check
 
 ### 3-3. 여행 만들기
 
-> `WORK-03` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/trips
@@ -175,7 +176,7 @@ POST /api/trips
 
 ### 3-4. 여행 context 조회
 
-> `WORK-03` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/trips/{tripId}/context
@@ -192,7 +193,7 @@ GET /api/trips/{tripId}/context
 
 ### 3-5. 이동수단·출발지 수정
 
-> `WORK-03` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 PATCH /api/trips/{tripId}/context
@@ -228,7 +229,7 @@ PATCH /api/trips/{tripId}/context
 
 ### 3-6. 내 여행 목록
 
-> `WORK-03` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/trips?period=UPCOMING
@@ -252,19 +253,21 @@ GET /api/trips?period=UPCOMING
     "nights": 2,
     "participants": [{"userId": 1, "nickname": "나"}, {"userId": 12, "nickname": "여행친구"}],
     "hasCourse": true,
-    "hasMyDiary": false,
+    "myDiaryId": null,
     "updatedAt": "2026-10-01T21:00:00"
   }
 ]
 ```
 
-`title`은 코스를 만들기 전에는 `null`이다.
+- `title`은 코스를 만들기 전에는 `null`이다.
+- `myDiaryId`는 이 여행에 내가 쓴 여행기 ID, 없으면 `null`이다([6장](#6-여행기사진-지도)).
+- `period`: `UPCOMING`은 `endDate >= 오늘`, `PAST`는 `endDate < 오늘`(Asia/Seoul).
 
 ---
 
 ### 3-7. 지역 정하기
 
-> `WORK-05` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 POST /api/trips/{tripId}/region
@@ -292,9 +295,9 @@ POST /api/trips/{tripId}/region
 - `RANDOM`: 후보마다 같은 확률.
 - `CONDITIONAL`: `weight = 1 + 적용된 조건 점수의 합`으로 확률 추첨한다. 최고점 선택이 아니다.
   - `DISTANCE`: `1 - clamp(출발지~지역 중심 거리km / 300, 0, 1)`
-  - `MY_TASTE`: 지역 관광지와 **요청자** 취향의 코사인 상위 min(5,N)개 평균을 0~1로 변환
+  - `MY_TASTE`: 지역의 추천 가능 관광지 N개와 **요청자** 취향 벡터의 코사인 유사도 중 상위 min(5,N)개 평균 `c`를 `(c + 1) / 2`로 0~1에 맞춘다
 - 데이터가 없는 조건은 무시하고 `ignoredConditions`에 이유를 담는다. 전부 무시되면 균등 추첨과 경고를 반환한다.
-- 지역이 바뀌면 기존 코스는 삭제된다. 프론트는 코스가 있을 때(`hasCourse`) 먼저 확인을 받는다.
+- 결과 지역이나 밀도가 이전과 다르면 기존 코스를 삭제한다(`courseDeleted: true`). 같은 지역·밀도가 다시 나오면 코스를 유지한다. 프론트는 코스가 있을 때(`hasCourse`) 먼저 확인을 받는다.
 
 **Response `200 OK`**
 
@@ -306,8 +309,8 @@ POST /api/trips/{tripId}/region
   "city": "경주시",
   "regionSelection": "CONDITIONAL",
   "scheduleDensity": "RELAXED",
-  "appliedConditions": ["DISTANCE", "MY_TASTE"],
-  "ignoredConditions": [],
+  "appliedConditions": ["MY_TASTE"],
+  "ignoredConditions": [{"condition": "DISTANCE", "reason": "ORIGIN_MISSING"}],
   "candidateCount": 187,
   "courseDeleted": false,
   "warnings": [],
@@ -333,13 +336,13 @@ POST /api/trips/{tripId}/region
 | 고른 지역이 부적격 | 422 | `DRAW_REGION_NOT_ELIGIBLE` |
 | 후보 0개 | 422 | `DRAW_NO_ELIGIBLE_REGION` |
 
-**Side effects** — 여행의 지역·선택 방식·밀도를 바꾸고 `version`을 올린다. 기존 코스를 삭제한다.
+**Side effects** — 여행의 지역·선택 방식·밀도를 바꾸고 `version`을 올린다. 지역이나 밀도가 바뀌었으면 기존 코스를 삭제한다.
 
 ---
 
 ### 3-8. 참여자 목록
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/trips/{tripId}/participants
@@ -360,7 +363,7 @@ GET /api/trips/{tripId}/participants
 
 ### 3-9. 여행 탈퇴
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 DELETE /api/trips/{tripId}/participants/me
@@ -374,6 +377,8 @@ DELETE /api/trips/{tripId}/participants/me
 - 다른 참여자의 여행은 그대로다. 코스도 바꾸지 않는다.
 - **마지막 참여자가 탈퇴하면 여행과 코스·초대·공유 링크를 삭제한다.**
 - 내가 쓴 여행기는 남는다([6장](#6-여행기사진-지도)).
+- 같은 여행의 탈퇴는 여행 단위로 직렬화된다. 마지막 두 명이 동시에 나가도 여행이 참여자 없이 남지 않는다.
+- 코스의 `updatedBy`·`tasteBasis`에 남은 탈퇴자는 닉네임 그대로 표시한다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -413,7 +418,7 @@ DELETE /api/trips/{tripId}/participants/me
 | `FRIEND_NOT_FOUND` | 404 | 친구가 아닌 사용자를 초대 |
 | `ONBOARDING_REQUIRED` | 409 | 최초 설문을 마치지 않고 수락 |
 | `TRIP_DATE_OVERLAP` | 409 | 수락자의 기존 여행과 날짜가 겹침. `details.conflicts` |
-| `INVITE_ALREADY_HANDLED` | 409 | 이미 수락·거절한 친구 초대 |
+| `INVITE_ALREADY_HANDLED` | 409 | 이미 수락·거절한 친구 초대, 또는 이미 참여 중인 친구를 초대 |
 | `INVITE_EXPIRED`, `INVITE_REVOKED` | 410 | 초대 링크 만료·폐기 |
 | `SHARE_LINK_EXPIRED`, `SHARE_LINK_REVOKED` | 410 | 공유 링크 만료·폐기 |
 
@@ -427,7 +432,7 @@ DELETE /api/trips/{tripId}/participants/me
 
 ### 4-1. 초대 링크 발급
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/trips/{tripId}/invites
@@ -459,7 +464,7 @@ POST /api/trips/{tripId}/invites
 
 ### 4-2. 초대 링크 목록
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/trips/{tripId}/invites
@@ -472,7 +477,7 @@ GET /api/trips/{tripId}/invites
 
 ### 4-3. 초대 링크 폐기
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 DELETE /api/trips/{tripId}/invites/{inviteId}
@@ -489,7 +494,7 @@ DELETE /api/trips/{tripId}/invites/{inviteId}
 
 ### 4-4. 초대 링크 미리보기
 
-> `WORK-04` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/invites/{token}
@@ -508,6 +513,7 @@ GET /api/invites/{token}
 | 오류 | HTTP | code |
 |---|---:|---|
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `INVITE_NOT_FOUND` |
 | 만료·폐기 | 410 | `INVITE_EXPIRED`, `INVITE_REVOKED` |
 
 
@@ -515,7 +521,7 @@ GET /api/invites/{token}
 
 ### 4-5. 초대 링크 수락
 
-> `WORK-04` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/invites/{token}/accept
@@ -528,6 +534,7 @@ POST /api/invites/{token}/accept
 | 오류 | HTTP | code |
 |---|---:|---|
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `INVITE_NOT_FOUND` |
 | 설문 미완료 | 409 | `ONBOARDING_REQUIRED` |
 | 내 여행과 날짜 겹침 | 409 | `TRIP_DATE_OVERLAP` |
 | 만료·폐기 | 410 | `INVITE_EXPIRED`, `INVITE_REVOKED` |
@@ -538,7 +545,7 @@ POST /api/invites/{token}/accept
 
 ### 4-6. 친구 초대
 
-> `WORK-04` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 POST /api/trips/{tripId}/friend-invites
@@ -556,10 +563,13 @@ POST /api/trips/{tripId}/friend-invites
 {"id": 9, "tripId": 42, "invitee": {"userId": 12, "nickname": "여행친구"}, "status": "PENDING", "createdAt": "2026-10-01T12:00:00"}
 ```
 
-이미 참여 중인 친구면 `409 INVITE_ALREADY_HANDLED`, 대기 중인 초대가 있으면 기존 초대를 `200 OK`로 돌려준다.
+- `status`: `PENDING`(대기), `ACCEPTED`, `DECLINED` 중 하나.
+- 이미 참여 중인 친구면 `409 INVITE_ALREADY_HANDLED`, 대기 중인 초대가 있으면 기존 초대를 `200 OK`로 돌려준다.
+- 친구가 초대 링크(4-5)로 먼저 참여하면 대기 중인 친구 초대는 `ACCEPTED`로 바뀌고 받은 초대 목록에서 사라진다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
+| 이미 참여 중 | 409 | `INVITE_ALREADY_HANDLED` |
 | 친구가 아님 | 404 | `FRIEND_NOT_FOUND` |
 | 없거나 참여자가 아님 | 404 | `TRIP_NOT_FOUND` |
 
@@ -567,7 +577,7 @@ POST /api/trips/{tripId}/friend-invites
 
 ### 4-7. 받은 초대 목록
 
-> `WORK-04` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/me/trip-invites
@@ -588,7 +598,7 @@ GET /api/me/trip-invites
 
 ### 4-8. 받은 초대 수락·거절
 
-> `WORK-04` · `호출: 회원(초대받은 사람)` · `⬜ 미구현`
+> `호출: 회원(초대받은 사람)` · `⬜ 미구현`
 
 ```
 POST /api/me/trip-invites/{id}/accept
@@ -610,7 +620,7 @@ POST /api/me/trip-invites/{id}/decline
 
 ### 4-9. 공유 링크 발급
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/courses/{tripId}/share-links
@@ -640,7 +650,7 @@ POST /api/courses/{tripId}/share-links
 
 ### 4-10. 공유 링크 목록
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/courses/{tripId}/share-links
@@ -653,7 +663,7 @@ GET /api/courses/{tripId}/share-links
 
 ### 4-11. 공유 링크 폐기
 
-> `WORK-04` · `호출: 참여자` · `✅ 구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 DELETE /api/courses/{tripId}/share-links/{linkId}
@@ -670,7 +680,7 @@ DELETE /api/courses/{tripId}/share-links/{linkId}
 
 ### 4-12. 공유 링크 열기
 
-> `WORK-04` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/shared/courses/{token}
@@ -687,29 +697,32 @@ Set-Cookie: share_session=ss_...; HttpOnly; SameSite=Lax; Path=/api; Max-Age=720
 
 `Path=/api`인 이유: 열람자가 같은 세션으로 지역 카드·관광지 상세도 조회한다.
 
+**프론트 흐름** — 공유 URL은 프론트 라우트(`/shared/{token}`)다. 프론트가 이 API를 `fetch(…, {credentials: 'include'})`로 부르면 브라우저가 303을 따라가 4-13의 JSON을 받는다. 이후 화면 URL에는 token을 남기지 않는다(`history.replaceState`).
+
 | 오류 | HTTP | code |
 |---|---:|---|
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `SHARE_LINK_NOT_FOUND` |
 | 만료·폐기 | 410 | `SHARE_LINK_EXPIRED`, `SHARE_LINK_REVOKED` |
 
 ---
 
 ### 4-13. 공유 코스 조회
 
-> `WORK-04` · `호출: 공유 링크 소지자` · `🔧 변경 필요`
+> `호출: 공유 링크 소지자` · `🔧 변경 필요`
 
 ```
 GET /api/shared/courses
 ```
 
-**Response `200 OK`** — [5-2](#5-2-코스-조회)의 `Course`, `myRole: "VIEWER"`. 코스가 아직 없으면 `days`가 빈 배열이다.
+**Response `200 OK`** — [5장](#5-코스)의 `Course`, `myRole: "VIEWER"`. 공유 링크 소지자가 코스를 보는 유일한 경로다. 코스가 아직 없으면 404가 아니라 `days: []`로 응답한다. 참여자 닉네임이 드러나는 `tasteBasis`·`updatedBy`는 `null`이다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
 | cookie 없음·만료 | 401 | `SHARE_SESSION_INVALID` |
 | 링크가 그 사이 만료·폐기됨 | 410 | `SHARE_LINK_EXPIRED`, `SHARE_LINK_REVOKED` |
 
-**구현과의 차이** — 코스 저장(WORK-06) 전이라 `{tripId, myRole, startDate, endDate, days: []}`만 반환한다.
+**구현과의 차이** — 코스 저장이 아직 없어 `{tripId, myRole, startDate, endDate, days: []}`만 반환한다.
 
 ---
 
@@ -732,7 +745,6 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 # 5. 코스
 
 - 계약 상태: draft
-- 관련 WORK: 06 코스 조립·폴백·제목, 07 지도 기반 편집과 식당
 - 정책 소스: [결정](../mvp/decisions.md#일정과-편집), [코스 조립](../mvp/data-and-recommendation.md#7-코스-조립)
 
 **코스란** — 여행의 날짜별 일정표(어디를 몇 시에 가는지)다. 여행마다 코스는 하나이며 **course id = trip id**다. 확정 단계는 없다. 만든 뒤 참여자 누구나 계속 고친다.
@@ -744,6 +756,8 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 ```
 
 - 모든 편집은 `version`을 보내고, 서버가 일정 전체의 시간·이동·식사·밀도 상한을 다시 계산한다. 클라이언트가 보낸 시간·거리는 믿지 않는다.
+- `version`은 여행마다 계속 증가한다. 코스가 삭제됐다가 다시 만들어져도 1로 돌아가지 않는다. 예전 화면의 편집 요청은 409로 걸러진다.
+- 이 장은 **밖에서 관찰되는 동작**만 정한다. 후보 점수식, 날짜 배정·순서 알고리즘, 폴백 세부, 제목 프롬프트는 [데이터·추천·코스 설계](../mvp/data-and-recommendation.md) §5~§8을 따른다. 5장을 구현하는 사람은 그 문서를 함께 읽는다.
 - 지역을 다시 정하면(3-7) 코스는 삭제된다.
 
 **`Course`**
@@ -792,15 +806,27 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `myRole` | `PARTICIPANT`(수정 가능) \| `VIEWER`(공유 링크, 읽기 전용). 프론트는 이것으로 편집 UI를 켠다 |
 | `titleSource` | 코스를 만들 때 LLM 제목을 시도한다(`LLM`). 실패하면 규칙 제목 `{지역명}, {대표 테마}를 따라 걷는 {일수}일`(`RULE`) |
 | `recommendationMode` | `PERSONALIZED`(취향 반영) \| `TOUR_OFFICIAL`(임베딩 장애 → TourAPI 공식 코스) \| `RULE_BASED`(취향 없는 규칙 코스) |
-| `tasteBasis` | 이 코스를 생성·재생성할 때 취향을 쓴 사람 |
-| `items[].itemId` | 서버가 부여하는 안정적 ID. 관광지 `a-{n}`, 식사 `m-{n}`. 편집 대상 지정에 쓴다 |
+| `tasteBasis` | 이 코스를 생성·재생성할 때 취향·제외 조건을 쓴 사람. `myRole: VIEWER`면 `null` |
+| `items[].itemId` | 서버가 부여하는 안정적 ID. 관광지 `a-{n}`, 식사 `m-{n}`. 편집 대상 지정에 쓴다. 재생성하면 모두 새 ID가 된다 |
+| `items[].type` | `ATTRACTION` \| `MEAL`. 아래 타입별 필드 표 참고 |
 | `items[].category` | `NATURE`(자연) \| `HISTORY_CULTURE`(역사·문화) \| `ACTIVITY`(체험·레포츠) \| `WALK_REST`(산책·휴식) \| `ETC`(기타) |
 | `items[].durationMinutes` | 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분). 실측이 아니므로 `estimated: true` |
 | `items[].travelFromPreviousMinutes` | 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 첫 항목은 `null` |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
 | `items[].restaurant` | 식사 슬롯에 고른 식당 스냅샷(`RestaurantSnapshot`). 없으면 `null` |
-| `updatedBy` | 마지막으로 코스를 바꾼 참여자 |
+| `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
+
+**항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
+
+| 필드 | ATTRACTION | MEAL |
+|---|---|---|
+| `itemId`, `type`, `startTime`, `durationMinutes` | 필수 | 필수 |
+| `attractionId`, `name`, `category`, `thumbnailUrl`, `lat`, `lng` | 필수(`thumbnailUrl`만 nullable) | — |
+| `travelFromPreviousMinutes` | 그날 첫 항목이면 `null` | — (식당 이동은 계산하지 않는다) |
+| `estimated`, `source`, `reason` | 필수(`reason`은 nullable) | — |
+| `meal` | — | `LUNCH` \| `DINNER` |
+| `restaurant` | — | `RestaurantSnapshot` 또는 `null` |
 
 **`RestaurantSnapshot`**
 
@@ -846,8 +872,9 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `TRIP_NOT_FOUND` | 404 | 없거나 접근 권한이 없는 여행 |
 | `COURSE_NOT_FOUND` | 404 | 여행은 있으나 코스를 아직 만들지 않음 |
 | `COURSE_ITEM_NOT_FOUND` | 404 | 없는 `itemId` |
+| `ATTRACTION_NOT_FOUND` | 404 | 없는 `attractionId` |
 | `TRIP_REGION_NOT_SELECTED` | 409 | 지역을 정하기 전 |
-| `COURSE_VERSION_CONFLICT` | 409 | `version` 불일치. `details.currentVersion` 포함 |
+| `COURSE_VERSION_CONFLICT` | 409 | `version` 불일치 또는 동시 최초 생성. `details.currentVersion` 포함 |
 | `ATTRACTION_ALREADY_IN_COURSE` | 409 | 이미 일정에 있는 관광지를 추가·교체 |
 | `INSUFFICIENT_COURSE_CANDIDATES` | 422 | 폴백까지 모두 실패. `details.days[]`에 날짜별 부족 사유 |
 | `ATTRACTION_NOT_RECOMMENDABLE` | 422 | 좌표·설명·검증 이미지가 없는 장소 |
@@ -861,7 +888,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 
 ### 5-1. 코스 생성·재생성
 
-> `WORK-06` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 POST /api/courses/{tripId}/generate
@@ -889,7 +916,7 @@ POST /api/courses/{tripId}/generate
 | `mealPreferences.lunchStart` | `string` | 아니오 | 기본 12:00 |
 | `mealPreferences.dinnerStart` | `string` | 아니오 | 기본 18:00 |
 | `mealPreferences.durationMinutes` | `number` | 아니오 | 30~120. 기본 60 |
-| `version` | `number` | 코스가 있으면 예 | 교체할 코스의 현재 `version`. 다른 참여자의 편집을 모르고 덮어쓰지 않기 위해서다 |
+| `version` | `number` | 코스가 있으면 예 | 교체할 코스의 현재 `version`. 코스가 있는데 없거나 다르면 409. 코스가 없는데 두 사람이 동시에 만들면 먼저 끝난 하나만 성공하고 나머지는 409다 |
 
 **생성 규칙**
 
@@ -911,19 +938,25 @@ POST /api/courses/{tripId}/generate
 | 코스 버전 불일치 | 409 | `COURSE_VERSION_CONFLICT` |
 | 후보 부족 | 422 | `INSUFFICIENT_COURSE_CANDIDATES` |
 
+`INSUFFICIENT_COURSE_CANDIDATES`의 `details`:
+
+```json
+{"days": [{"dayIndex": 1, "required": 4, "available": 1}]}
+```
+
 **Side effects** — 기존 항목을 지우고 `trip_stops`·`meal_stops`에 새 항목, 가정값, 추천 모드, 요청자 취향 스냅샷, 제목을 저장한다. 임베딩 서버를 요청마다 재시도하지 않는다.
 
 ---
 
 ### 5-2. 코스 조회
 
-> `WORK-06` · `호출: 참여자 · 공유 링크 소지자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 GET /api/courses/{tripId}
 ```
 
-**Response `200 OK`** — `Course`. 날짜·순서가 안정적으로 정렬된다. token 해시, 취향 벡터, 참여자의 설문 답변은 포함하지 않는다.
+**Response `200 OK`** — `Course` (`myRole: PARTICIPANT`). 공유 링크 소지자는 [4-13](#4-13-공유-코스-조회)을 쓴다. 날짜·순서가 안정적으로 정렬된다. token 해시, 취향 벡터, 참여자의 설문 답변은 포함하지 않는다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -934,7 +967,7 @@ GET /api/courses/{tripId}
 
 ### 5-3. 일정 편집
 
-> `WORK-07` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 PATCH /api/courses/{tripId}/schedule
@@ -968,6 +1001,8 @@ PATCH /api/courses/{tripId}/schedule
 | `CLEAR_RESTAURANT` | `itemId`(식사) | 식당 선택 해제 |
 
 - `operations`는 1~20개, 앞에서부터 차례로 적용한 결과를 검증한다.
+- `REMOVE`·`REPLACE`·`MOVE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 다른 타입이나 범위 밖 `dayIndex`·`position`은 `400 COURSE_INVALID_OPERATION`이다.
+- `REPLACE`는 `itemId`를 유지하고 장소만 바꾼다. `ADD`는 새 `itemId`를 만든다.
 - 추가·교체 대상은 같은 지역의 추천 가능 관광지여야 하고 이미 일정에 없어야 한다.
 - 적용 뒤 서버가 모든 날의 시작 시각·이동시간·식사 위치를 다시 계산한다. 상한·가용 시간을 넘기면 422로 거부하고 아무것도 바꾸지 않는다.
 - 날짜·지역·밀도·식사 기본 시각은 이 API로 바꾸지 않는다. 밀도·식사 시각은 재생성(5-1), 지역은 3-7이다.
@@ -978,12 +1013,16 @@ PATCH /api/courses/{tripId}/schedule
 |---|---:|---|
 | operation 형식 오류 | 400 | `COURSE_INVALID_OPERATION` |
 | 공유 링크로 호출 | 403 | `SHARE_VIEW_ONLY` |
-| 없는 항목 | 404 | `COURSE_ITEM_NOT_FOUND` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
+| 없는 항목·관광지 | 404 | `COURSE_ITEM_NOT_FOUND`, `ATTRACTION_NOT_FOUND` |
 | 버전 불일치 | 409 | `COURSE_VERSION_CONFLICT` |
 | 중복 장소 | 409 | `ATTRACTION_ALREADY_IN_COURSE` |
 | 추천 불가·타지역 장소 | 422 | `ATTRACTION_NOT_RECOMMENDABLE`, `ATTRACTION_REGION_MISMATCH` |
 | 시간·밀도 초과 | 422 | `SCHEDULE_INFEASIBLE` |
 | 식당 선택 위조·만료 | 422 | `RESTAURANT_SELECTION_INVALID` |
+
+`SCHEDULE_INFEASIBLE`의 `details`는 `{"dayIndex": 1, "reason": "…"}`이며 `reason`은 `WINDOW_EXCEEDED`(가용 시간 초과), `DENSITY_LIMIT_EXCEEDED`(하루 관광지 상한 초과), `MEAL_OVERLAP`(식사 시간 침범) 중 하나다.
 
 **동시성** — 두 사람이 같은 `version`으로 보내면 먼저 도착한 하나만 성공한다. 나머지는 409와 `details.currentVersion`을 받고, 5-2로 최신본을 다시 받아 적용한다.
 
@@ -991,7 +1030,7 @@ PATCH /api/courses/{tripId}/schedule
 
 ### 5-4. 대체 후보
 
-> `WORK-07` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
@@ -1027,13 +1066,14 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
 | 오류 | HTTP | code |
 |---|---:|---|
 | 공유 링크로 호출 | 403 | `SHARE_VIEW_ONLY` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
 | 없는 항목·코스 | 404 | `COURSE_ITEM_NOT_FOUND`, `COURSE_NOT_FOUND` |
 
 ---
 
 ### 5-5. 식당 추천
 
-> `WORK-07` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
@@ -1066,19 +1106,22 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 
 - `origin.type`: `PREVIOUS_ATTRACTION` \| `REGION_CENTER`
 - `regionFoodThemes`는 사람이 승인하고 출처가 있는 지역 음식·특산물만.
-- 섹션 순서가 우선순위다. TourAPI 음식점이 1순위, 공공 지정 식당이 보완이다. 각 섹션은 거리순.
-- `selectionToken`은 서버 서명 값이다. 이 슬롯에서만, 발급 후 30분 동안 5-3 `SET_RESTAURANT`에 쓸 수 있다.
+- 섹션 순서가 우선순위다. TourAPI 음식점이 1순위, 공공 지정 식당이 보완이다. 각 섹션은 거리순, 최대 20개. 결과가 없는 섹션도 빈 배열로 준다.
+- `selectionToken`(`rs_…`)은 `tripId`·`itemId`·원천·외부 ID·스냅샷 해시를 서버 비밀키로 서명한 값이다. 그 슬롯에서만, 발급 후 30분 동안 5-3 `SET_RESTAURANT`에 쓸 수 있다. 코스를 재생성해 `itemId`가 바뀌면 무효다. 서버는 이 값에서 스냅샷을 복원해 저장하므로 클라이언트가 식당 필드를 다시 보내지 않는다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
+| `radius`·`page`·`query` 범위 밖 | 400 | `COMMON_INVALID_REQUEST` |
 | 공유 링크로 호출 | 403 | `SHARE_VIEW_ONLY` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
 | 식사 슬롯이 아님·없음 | 404 | `COURSE_ITEM_NOT_FOUND` |
 
 ---
 
 ### 5-6. 식당 검색
 
-> `WORK-07` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=5000&page=1
@@ -1114,7 +1157,10 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 | 오류 | HTTP | code |
 |---|---:|---|
+| `radius`·`page`·`query` 범위 밖 | 400 | `COMMON_INVALID_REQUEST` |
 | 공유 링크로 호출 | 403 | `SHARE_VIEW_ONLY` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
 | 식사 슬롯이 아님·없음 | 404 | `COURSE_ITEM_NOT_FOUND` |
 | 카카오 장애 | 502 | `KAKAO_LOCAL_UNAVAILABLE` |
 | 카카오 한도 | 503 | `KAKAO_LOCAL_RATE_LIMITED` |
@@ -1124,7 +1170,6 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 # 6. 여행기·사진 지도
 
 - 계약 상태: draft
-- 관련 WORK: 10 여행기·사진 지도·친구 공개
 - 정책 소스: [결정](../mvp/decisions.md#여행기사진-지도친구-공개)
 - 정책: **여행 종료일이 지난** 여행에 참여자마다 여행기 하나. 여행기는 쓴 사람의 것이며 다른 참여자와 공유되지 않는다. 사진 1~30장. 내 지도에서 핀을 눌러 다시 본다. 친구 공개는 상호 수락 친구만, 링크 공유는 그 여행기만 읽기 전용이다. 전체 지도 공개·피드·댓글·좋아요는 없다.
 
@@ -1171,8 +1216,11 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 |---|---:|---|
 | `PHOTO_INVALID` | 400 | 허용하지 않는 형식·크기이거나 검사 실패 |
 | `PHOTO_LIMIT_EXCEEDED` | 400 | 사진이 30장을 넘음 |
+| `SHARE_SESSION_INVALID` | 401 | 여행기 공유 세션 cookie 없음·만료 |
 | `FRIENDSHIP_REQUIRED` | 403 | 수락된 친구가 아님 |
 | `DIARY_NOT_FOUND` | 404 | 없거나 볼 권한이 없음(구분하지 않음) |
+| `PHOTO_NOT_FOUND` | 404 | 이 여행기의 사진이 아님 |
+| `DIARY_SHARE_LINK_NOT_FOUND` | 404 | 없는 여행기 공유 링크·token |
 | `TRIP_NOT_ENDED` | 409 | 여행 종료일이 아직 지나지 않음 |
 | `DIARY_ALREADY_EXISTS_FOR_TRIP` | 409 | 이 여행에 내 여행기가 이미 있음. `details.diaryId` |
 | `DIARY_NOT_PUBLISHABLE` | 422 | 발행 조건 미충족. `details.missing` |
@@ -1182,7 +1230,7 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 ### 6-1. 여행기 만들기
 
-> `WORK-10` · `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `⬜ 미구현`
 
 ```
 POST /api/courses/{tripId}/diary
@@ -1190,7 +1238,11 @@ POST /api/courses/{tripId}/diary
 
 **Request Body** — 없거나 `{"title": "비 오는 날의 경주"}`
 
-**Response `201 Created`** — 내 `Diary` (`status: DRAFT`, 제목 기본값은 코스 제목)
+**Response `201 Created`** — 내 `Diary` (`status: DRAFT`)
+
+- 제목 기본값은 코스 제목, 코스가 없으면 `"{시작일} 여행"`이다.
+- `courseTitle`, `regionSigCd`, `visitedFrom`, `visitedTo`는 만들 때의 값을 복사해 둔다. 이후 여행이 바뀌거나 삭제돼도 여행기는 그대로다.
+- "여행이 끝났다"는 `endDate < 오늘`(Asia/Seoul)이다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -1204,7 +1256,7 @@ POST /api/courses/{tripId}/diary
 
 ### 6-2. 사진 올리기
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 POST /api/diaries/{diaryId}/photos
@@ -1235,11 +1287,15 @@ Content-Type: multipart/form-data
 
 ### 6-3. 사진 삭제
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 DELETE /api/diaries/{diaryId}/photos/{photoId}
 ```
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 없거나 작성자가 아님 | 404 | `DIARY_NOT_FOUND`, `PHOTO_NOT_FOUND` |
 
 **Response `204 No Content`** — 대표 사진을 지우면 `coverPhotoId`는 남은 첫 사진, 없으면 `null`이 된다. 발행된 여행기의 마지막 사진은 지울 수 없다(`422 DIARY_NOT_PUBLISHABLE`).
 
@@ -1247,7 +1303,7 @@ DELETE /api/diaries/{diaryId}/photos/{photoId}
 
 ### 6-4. 여행기 수정
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 PATCH /api/diaries/{diaryId}
@@ -1268,6 +1324,13 @@ PATCH /api/diaries/{diaryId}
 | `satisfaction` | 1~5 또는 `null` |
 | `experienceTags` | 최대 5개, 태그 사전의 부분집합 |
 | `coverPhotoId` | 이 여행기의 사진 |
+| `photoOrder` | 이 여행기 사진 ID 전체를 원하는 순서로 나열한 배열. 누락·중복이 있으면 400 |
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 값 오류 | 400 | `COMMON_INVALID_REQUEST` |
+| 없거나 작성자가 아님 | 404 | `DIARY_NOT_FOUND` |
+| 다른 여행기의 사진 ID | 404 | `PHOTO_NOT_FOUND` |
 
 **Response `200 OK`** — `Diary`. 발행 후에도 수정할 수 있다. `visibility`를 `LINK`에서 바꾸면 기존 공유 링크는 더 이상 열리지 않는다.
 
@@ -1275,7 +1338,7 @@ PATCH /api/diaries/{diaryId}
 
 ### 6-5. 여행기 발행
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 POST /api/diaries/{diaryId}/publish
@@ -1293,7 +1356,7 @@ POST /api/diaries/{diaryId}/publish
 
 ### 6-6. 여행기 조회
 
-> `WORK-10` · `호출: 작성자 · 친구(FRIENDS·발행됨)` · `⬜ 미구현`
+> `호출: 작성자 · 친구(FRIENDS·발행됨)` · `⬜ 미구현`
 
 ```
 GET /api/diaries/{diaryId}
@@ -1311,7 +1374,7 @@ GET /api/diaries/{diaryId}
 
 ### 6-7. 내 여행 지도
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/me/travel-map?from=2026-01-01&to=2026-12-31
@@ -1337,7 +1400,7 @@ GET /api/me/travel-map?from=2026-01-01&to=2026-12-31
 
 ### 6-8. 친구 여행 지도
 
-> `WORK-10` · `호출: 수락된 친구` · `⬜ 미구현`
+> `호출: 수락된 친구` · `⬜ 미구현`
 
 ```
 GET /api/friends/{userId}/travel-map?from=&to=
@@ -1351,13 +1414,16 @@ GET /api/friends/{userId}/travel-map?from=&to=
 
 ---
 
-### 6-9. 여행기 공유 링크 발급
+### 6-9. 여행기 공유 링크 발급·목록
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 POST /api/diaries/{diaryId}/share-links
+GET  /api/diaries/{diaryId}/share-links
 ```
+
+`GET`은 발급한 링크 목록(`{id, expiresAt, revoked, createdAt}[]`, 최신순, token 원문 없음)이다.
 
 **Request Body**
 
@@ -1377,13 +1443,14 @@ POST /api/diaries/{diaryId}/share-links
 | 오류 | HTTP | code |
 |---|---:|---|
 | 기간 오류 | 400 | `INVALID_EXPIRES_IN_DAYS` |
+| 없거나 작성자가 아님 | 404 | `DIARY_NOT_FOUND` |
 | 발행 전이거나 `LINK`가 아님 | 422 | `DIARY_NOT_PUBLISHABLE` (`details.missing: ["PUBLISHED" \| "VISIBILITY_LINK"]`) |
 
 ---
 
 ### 6-10. 여행기 공유 링크 폐기
 
-> `WORK-10` · `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `⬜ 미구현`
 
 ```
 DELETE /api/diaries/{diaryId}/share-links/{linkId}
@@ -1391,11 +1458,15 @@ DELETE /api/diaries/{diaryId}/share-links/{linkId}
 
 **Response `204 No Content`** — 이미 열린 세션도 즉시 무효다.
 
+| 오류 | HTTP | code |
+|---|---:|---|
+| 없거나 이 여행기의 링크가 아님 | 404 | `DIARY_SHARE_LINK_NOT_FOUND` |
+
 ---
 
 ### 6-11. 여행기 공유 링크 열기
 
-> `WORK-10` · `호출: 공개` · `⬜ 미구현`
+> `호출: 공개` · `⬜ 미구현`
 
 ```
 GET /api/shared/diaries/{token}
@@ -1411,13 +1482,14 @@ Set-Cookie: diary_share_session=…; HttpOnly; SameSite=Lax; Path=/api/shared/di
 | 오류 | HTTP | code |
 |---|---:|---|
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `DIARY_SHARE_LINK_NOT_FOUND` |
 | 만료·폐기 | 410 | `DIARY_SHARE_LINK_EXPIRED`, `DIARY_SHARE_LINK_REVOKED` |
 
 ---
 
 ### 6-12. 공유 여행기 조회
 
-> `WORK-10` · `호출: 여행기 공유 링크 소지자` · `⬜ 미구현`
+> `호출: 여행기 공유 링크 소지자` · `⬜ 미구현`
 
 ```
 GET /api/shared/diaries
@@ -1436,4 +1508,10 @@ GET /api/shared/diaries
 
 | ID | 항목 | 현재 초안 |
 |---|---|---|
-| T-1 | 여행기 사진 저장소 | 업로드 방식(서버 경유 multipart / S3 presigned URL)과 파일 크기 상한 10MB는 인프라 결정 전 초안 |
+| T-1 | 여행기 사진 저장소 | 업로드 방식(서버 경유 multipart / S3 presigned URL), 파일 크기 상한 10MB, 썸네일 생성 주체, 그리고 `PRIVATE`·`FRIENDS` 여행기 사진 URL을 서명 URL(만료 있음)로 줄지. 공개 URL이면 공개 범위가 무력해진다 |
+| T-2 | 제외 태그 적용 | 관광지에 계단·물놀이·야간·보행량 속성이 없다. 초안: 판정할 수 있는 것만 적용(물놀이는 분류로, 야간 이동은 가용 시간 20시 이전 종료로), 나머지는 저장만 하고 코스에 쓰지 않는다 |
+| T-3 | 운영시간·휴무 판정 | 원천 `useTime`·`restDate`가 자유 문자열이다. 초안: MVP에서는 코스 배치에 쓰지 않고 상세 화면에 원문만 보여준다 |
+| T-4 | 최초 코스를 누가 만드나 | 정책은 "최초 일정은 생성자 취향 기준"이다. 초안(5-1)은 참여자 누구나 자기 취향으로 만들 수 있다 |
+| T-5 | 여행이 끝난 뒤의 권한 | 종료된 여행에서 지역 재선택·코스 편집·초대·수락을 허용할지. 초안: 모두 허용 |
+| T-6 | 여행기 삭제 | 여행기 삭제 API를 둘지. 초안: 없음 |
+| T-7 | `LINK` 공개 여행기를 친구도 보나 | `visibility`가 값 하나라 `FRIENDS`와 `LINK`를 함께 쓸 수 없다. 초안: `LINK`는 친구에게도 보인다(더 넓은 공개) |

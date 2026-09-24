@@ -28,7 +28,7 @@
 
 ### 2-1. 온보딩 질문
 
-> `WORK-02` · `호출: 공개` · `✅ 구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/onboarding/questions
@@ -63,7 +63,7 @@ GET /api/onboarding/questions
 
 ### 2-2. 온보딩 제출
 
-> `WORK-02` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/onboarding/submissions
@@ -138,7 +138,7 @@ POST /api/onboarding/submissions
 
 ### 2-3. 내 온보딩 결과
 
-> `WORK-02` · `호출: 회원` · `✅ 구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/onboarding/me
@@ -178,7 +178,7 @@ GET /api/onboarding/me
 
 ### 2-4. 친구 초대 링크 발급
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 POST /api/friend-links
@@ -206,7 +206,7 @@ POST /api/friend-links
 
 ### 2-5. 내 친구 초대 링크 목록
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/friend-links
@@ -222,7 +222,7 @@ GET /api/friend-links
 
 ### 2-6. 친구 초대 링크 폐기
 
-> `WORK-10` · `호출: 회원(링크 주인)` · `⬜ 미구현`
+> `호출: 회원(링크 주인)` · `⬜ 미구현`
 
 ```
 DELETE /api/friend-links/{id}
@@ -238,7 +238,7 @@ DELETE /api/friend-links/{id}
 
 ### 2-7. 친구 초대 링크 미리보기
 
-> `WORK-10` · `호출: 공개` · `⬜ 미구현`
+> `호출: 공개` · `⬜ 미구현`
 
 ```
 GET /api/friend-links/by-token/{token}
@@ -255,13 +255,14 @@ GET /api/friend-links/by-token/{token}
 | 오류 | HTTP | code |
 |---|---:|---|
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `FRIEND_LINK_NOT_FOUND` |
 | 만료·폐기 | 410 | `FRIEND_LINK_EXPIRED`, `FRIEND_LINK_REVOKED` |
 
 ---
 
 ### 2-8. 친구 초대 수락
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 POST /api/friend-links/by-token/{token}/accept
@@ -279,6 +280,7 @@ POST /api/friend-links/by-token/{token}/accept
 |---|---:|---|
 | 내 링크 | 400 | `FRIEND_LINK_SELF` |
 | 다른 용도의 token | 400 | `TOKEN_AUDIENCE_MISMATCH` |
+| 없는 token | 404 | `FRIEND_LINK_NOT_FOUND` |
 | 만료·폐기 | 410 | `FRIEND_LINK_EXPIRED`, `FRIEND_LINK_REVOKED` |
 
 **Side effects** — `friendships`에 `ACCEPTED` 1건(두 사용자 쌍당 하나).
@@ -287,7 +289,7 @@ POST /api/friend-links/by-token/{token}/accept
 
 ### 2-9. 친구 목록
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/friends
@@ -303,7 +305,7 @@ GET /api/friends
 
 ### 2-10. 친구 끊기
 
-> `WORK-10` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 DELETE /api/friends/{userId}

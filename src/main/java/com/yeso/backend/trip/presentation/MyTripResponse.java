@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 내 여행 목록의 원소. {@code hasMyDiary}는 여행기(WORK-10)가 생기기 전까지 항상 false다.
+ * 내 여행 목록의 원소. {@code myDiaryId}는 여행기 기능이 생기기 전까지 항상 null이다.
  */
 public record MyTripResponse(
         Long tripId,
@@ -19,7 +19,7 @@ public record MyTripResponse(
         int nights,
         List<UserSummary> participants,
         boolean hasCourse,
-        boolean hasMyDiary,
+        Long myDiaryId,
         LocalDateTime updatedAt
 ) {
     public static MyTripResponse of(TripPlan tripPlan, List<UserSummary> participants, boolean hasCourse) {
@@ -34,7 +34,7 @@ public record MyTripResponse(
                 tripPlan.getNights(),
                 participants,
                 hasCourse,
-                false,
+                null,
                 tripPlan.getUpdatedAt());
     }
 }

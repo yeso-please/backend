@@ -592,7 +592,7 @@ class TripIntegrationTest {
                     .andExpect(jsonPath("$[1].tripId").value(later))
                     .andExpect(jsonPath("$[0].participants.length()").value(1))
                     .andExpect(jsonPath("$[0].hasCourse").value(false))
-                    .andExpect(jsonPath("$[0].hasMyDiary").value(false));
+                    .andExpect(jsonPath("$[0].myDiaryId").isEmpty());
 
             mockMvc.perform(get("/api/trips").param("period", "PAST").header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())

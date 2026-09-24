@@ -1,8 +1,7 @@
 # 7. 지역·관광지
 
 - 계약 상태: draft
-- 모듈: `attraction/region`. 데이터 수집(ingestion)은 HTTP API가 아니므로 이 문서에 없다([WORK-09](../mvp/implementation-workpack.md#work-09-h2-이관품질tourapi개발-rds)).
-- 관련 WORK: 05 지역 품질·추첨·카드, 07 지도 기반 코스 편집
+- 모듈: `attraction/region`
 - 정책 소스: [지역·관광지 품질](../mvp/decisions.md#지역관광지-품질), [지역 소개 콘텐츠](../mvp/data-and-recommendation.md#4-지역-소개-콘텐츠)
 
 **호출 주체** — 7-1은 회원. 7-2~7-4는 공공 관광 정보이므로 인증된 주체 누구나(회원, 공유 링크 share session) 호출할 수 있다. 특정 여행에 대한 권한은 확인하지 않는다.
@@ -21,6 +20,8 @@
 | `WALK_REST` | 산책·휴식 |
 | `ETC` | 기타 |
 
+원천 분류(TourAPI `contentTypeId`·분류 코드)에서 `category`와 기본 체류시간(60·90·120분)을 정하는 매핑 표는 [결정 필요 A-1](#결정-필요)이다. 5장 코스와 이 장이 같은 표를 쓴다.
+
 **오류 코드**
 
 | code | HTTP | 상황 |
@@ -35,7 +36,7 @@
 
 ### 7-1. 지역 목록
 
-> `WORK-05` · `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/regions?days=3&scheduleDensity=RELAXED
@@ -44,7 +45,7 @@ GET /api/regions?days=3&scheduleDensity=RELAXED
 | Query | 필수 | 설명 |
 |---|---|---|
 | `days` | 예 | 1~7. 여행 일수 |
-| `scheduleDensity` | 아니오 | `RELAXED` \| `PACKED`. 생략하면 호출자의 최신 온보딩 값 |
+| `scheduleDensity` | 아니오 | `RELAXED` \| `PACKED`. 생략하면 호출자의 최신 온보딩 값, 없으면 `RELAXED` |
 
 **Response `200 OK`** — 전국 지도에 그릴 250개 지역 전체
 
@@ -76,7 +77,7 @@ GET /api/regions?days=3&scheduleDensity=RELAXED
 
 ### 7-2. 지역 카드
 
-> `WORK-05` · `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 인증된 주체` · `⬜ 미구현`
 
 ```
 GET /api/regions/{sigCd}/card
@@ -91,7 +92,6 @@ GET /api/regions/{sigCd}/card
   "city": "경주시",
   "title": "천년의 시간이 머무는 도시",
   "introduction": ["첫 문단…", "둘째 문단…"],
-  "introductionStatus": "APPROVED",
   "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 1유형"},
   "characteristics": ["역사 유적", "야경"],
   "historyHighlights": ["신라의 수도"],
@@ -104,7 +104,8 @@ GET /api/regions/{sigCd}/card
 | 필드 | 설명 |
 |---|---|
 | `introduction` | 2~4문단. 검증된 사실·대표 관광지·출처로만 쓰고 사람이 승인한 문장 |
-| `landmarks` | 추천 가능 관광지 1~3개 |
+| `landmarks` | 승인된 소개문이 근거로 쓴 대표 관광지 중 추천 가능한 것 1~3개, 소개문에 나온 순서 |
+| `characteristics`, `historyHighlights` | 승인된 지역 소개 콘텐츠의 태그. 없으면 빈 배열 |
 | `heroImage.license` | 원천이 밝힌 이용 조건. 없으면 `null` |
 
 승인 콘텐츠가 없는 지역에 임시 문구·허구 소개를 만들지 않는다.
@@ -118,7 +119,7 @@ GET /api/regions/{sigCd}/card
 
 ### 7-3. 지도 관광지 핀
 
-> `WORK-07` · `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 인증된 주체` · `⬜ 미구현`
 
 ```
 GET /api/regions/{sigCd}/attractions?bbox=129.15,35.78,129.30,35.90&category=NATURE&cursor=&limit=100
@@ -142,8 +143,9 @@ GET /api/regions/{sigCd}/attractions?bbox=129.15,35.78,129.30,35.90&category=NAT
 }
 ```
 
-- 추천 불가 장소도 탐색용으로 표시할 수 있다(`recommendable: false`). 프론트는 "코스에 추가"를 비활성화하고, 서버도 5-3에서 거부한다.
-- 정렬은 `attractionId` 오름차순이며 cursor가 이 순서를 이어간다.
+- 추천 불가 장소도 항상 포함한다(`recommendable: false`). 프론트는 핀을 흐리게 그리고 "코스에 추가"를 비활성화하며, 서버도 5-3에서 거부한다. 좌표가 없는 장소는 핀을 그릴 수 없으므로 뺀다.
+- 정렬은 `attractionId` 오름차순이며, `nextCursor`는 그다음 페이지를 가리키는 불투명 문자열이다. 마지막 페이지면 `null`이다.
+- `bbox`는 위도 33~39, 경도 124~132 안이어야 한다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -154,7 +156,7 @@ GET /api/regions/{sigCd}/attractions?bbox=129.15,35.78,129.30,35.90&category=NAT
 
 ### 7-4. 관광지 상세
 
-> `WORK-07` · `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 인증된 주체` · `⬜ 미구현`
 
 ```
 GET /api/attractions/{attractionId}
@@ -193,3 +195,12 @@ GET /api/attractions/{attractionId}
 | 오류 | HTTP | code |
 |---|---:|---|
 | 없는 관광지 | 404 | `ATTRACTION_NOT_FOUND` |
+
+---
+
+## 결정 필요
+
+| ID | 항목 | 현재 초안 |
+|---|---|---|
+| A-1 | 원천 분류 → `category`·기본 체류시간 매핑 | 적재된 관광지 데이터의 분류 값을 확인한 뒤 표로 확정한다. 초안: 자연 → `NATURE`, 역사·건축·문화시설 → `HISTORY_CULTURE`(문화시설 120분), 레포츠·체험 → `ACTIVITY`(레포츠 120분), 휴양·공원 → `WALK_REST`, 그 외 `ETC`. 포토·전망 성격 장소 60분, 나머지 90분 |
+| A-2 | 지역 소개 승인 방식 | 승인 도구를 미뤘다. 승인된 소개문이 하나도 없으면 모든 지역이 추첨 불가다. MVP 시연 지역을 어떤 방식으로 승인해 둘지 정해야 한다 |
