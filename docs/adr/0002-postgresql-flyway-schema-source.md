@@ -25,6 +25,14 @@
 - Docker가 없는 개발 PC에서는 통합 테스트가 skip될 수 있지만 CI에서는 반드시 실행된다.
 - production schema를 애플리케이션이 임의 변경하지 않는다.
 
+### 보완: 데이터를 지우는 migration (2026-09-25)
+
+`DELETE`·`DROP`처럼 데이터를 지우는 migration은 Flyway로 되돌릴 수 없다. 예: `V6__member_only_trips.sql`(비회원 참여 데이터 삭제).
+
+- 파일 맨 위 주석에 무엇을 지우는지와 이유를 적는다.
+- 공유 DB(개발 RDS)에 적용하기 전에 스냅샷을 뜨고, 적용 후 행 수·`flyway validate`를 확인한다.
+- 운영 DB에는 자동 적용하지 않는다.
+
 ## Alternatives considered
 
 ### Hibernate `ddl-auto=update`

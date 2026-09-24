@@ -118,7 +118,7 @@ Controller, validation, Security 계층이 모두 같은 모양을 쓴다. 구�
 | **공유 링크 소지자** | `share_session` HttpOnly cookie (`ss_…`, 2시간, `Path=/api`) | 링크가 가리킨 여행 1개를 **읽기 전용**으로 | [4-12 공유 링크 열기](trip.md#4-12-공유-링크-열기) |
 | **여행기 공유 링크 소지자** | `diary_share_session` HttpOnly cookie (2시간, `Path=/api/shared/diaries`) | 링크가 가리킨 여행기 1개를 읽기 전용으로 | [6-11](trip.md#6-11-여행기-공유-링크-열기) |
 
-여행은 회원만 만들고 참여한다. 비회원 참여(guest session)는 2026-09-24 정책으로 없어졌다.
+여행을 만들고 수정하는 참여자는 회원이다. 비회원은 공유 링크로 열람만 하는 뷰어다(2026-09-24 정책). 비회원이 설문·편집하던 guest session은 없어졌다.
 
 배지의 `호출:` 표기는 다음 뜻이다.
 
