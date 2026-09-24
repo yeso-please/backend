@@ -85,6 +85,20 @@ class AuthIntegrationTest {
     }
 
     @Nested
+    @DisplayName("OpenAPI 문서")
+    class OpenApiDocs {
+
+        @Test
+        @DisplayName("익명 사용자가 OpenAPI JSON을 조회할 수 있다")
+        void apiDocs_public() throws Exception {
+            mockMvc.perform(get("/v3/api-docs"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.info.title").value("TriPin Backend API"))
+                    .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"));
+        }
+    }
+
+    @Nested
     @DisplayName("회원가입")
     class Signup {
 

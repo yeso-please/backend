@@ -47,6 +47,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(apiAccessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/onboarding/questions").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/invites/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/invites/*/participants").permitAll()
