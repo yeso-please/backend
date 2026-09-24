@@ -12,12 +12,14 @@
 → 확정 저장 → 여행기 사진 발행·내 지도 회고 → 조회/수정 권한별 공유 링크
 ```
 
+> **2026-09-24 정책 변경** — 회원 전용 공동 일정, 확정 단계 제거, 개인 탈퇴, 요청자 취향 기준 추천. [결정](decisions.md#2026-09-24-여행공동-일정-정책)이 이 폴더의 충돌하는 옛 내용보다 우선한다.
+
 ## 문서 읽는 순서
 
 1. [확정 제품 결정](decisions.md)
 2. [기능 흐름과 규칙](flow.md)
 3. [온보딩 질문 계약](onboarding-questionnaire.md)
-4. [REST API 계약](api.md)
+4. [REST API 개요](api.md) — 상세 계약은 [`docs/api/`](../api/README.md)
 5. [데이터·추천·코스 설계](data-and-recommendation.md)
 6. [구현 작업서](implementation-workpack.md)
 7. [초기 세팅과 담당 분배](delivery.md)

@@ -8,75 +8,52 @@ REST API 명세는 OpenAPI의 구조를 사람이 읽기 쉬운 Markdown으로 �
 
 ```text
 docs/api/
-├── README.md
-├── auth.md
-├── trips.md
-└── attractions.md
+├── README.md       개요·호출 주체·공통 오류·구현 체크리스트
+├── auth.md         § 1  auth
+├── profile.md      § 2  profile
+├── trip.md         § 3~6 trip (context·invite·course·diary)
+└── attraction.md   § 7  attraction
 ```
 
-도메인별로 파일을 나눕니다. endpoint가 많아지면 기능별 파일로 나누되, 같은 리소스의 생성·조회·수정·삭제는 가능한 한 함께 둡니다.
+HTTP를 노출하는 모듈(BC)마다 파일 하나를 둡니다. endpoint는 Controller가 속한 모듈의 파일에 두고, 파일 안의 절은 `presentation` 하위 패키지를 따릅니다. 이 폴더는 구현 여부와 관계없는 MVP 목표 계약이며, 구현 진척은 README의 체크리스트로 표시합니다.
 
 ## endpoint 템플릿
 
+절 머리에는 계약 상태(`agreed`·`draft`), 공통 응답 타입, 오류 코드 표를 둡니다. endpoint는 다음 모양입니다.
+
 ````markdown
-### POST /api/trips
+### 5-3. 일정 편집
 
-- 상태: implemented
-- 목적: 로그인 사용자의 여행 계획을 생성한다.
-- 인증: Bearer JWT required
-- 권한: 본인 리소스
+> `WORK-07` · `호출: 편집자` · `⬜ 미구현`
 
-#### Request
-
-Headers:
-
-| 이름 | 값 | 필수 |
-|---|---|---|
-| Authorization | Bearer `{accessToken}` | O |
-| Content-Type | application/json | O |
-
-Body:
-
-```json
-{
-  "regionId": 1,
-  "transport": "WALK"
-}
+```
+PATCH /api/courses/{tripId}/schedule
 ```
 
-#### Responses
-
-##### 201 Created
+**Request Body**
 
 ```json
-{
-  "id": 1,
-  "status": "CONFIRMED"
-}
+{"version": 3, "operations": [{"op": "REMOVE", "itemId": "a-105"}]}
 ```
 
-##### 400 Bad Request
+| 필드 | 타입 | 필수 | 제약 |
+|---|---|---|---|
+| `version` | `number` | 예 | 직전에 받은 값 |
 
-```json
-{
-  "status": 400,
-  "message": "입력값이 올바르지 않습니다."
-}
-```
+**Response `200 OK`** — `Course`
 
-##### 401 Unauthorized
+| 오류 | HTTP | code |
+|---|---:|---|
+| 버전 불일치 | 409 | `COURSE_VERSION_CONFLICT` |
 
-인증 토큰이 없거나 유효하지 않다.
+**Side effects** — 무엇을 만들고 바꾸는지.
 
-#### Side effects
-
-- `trip_plans`에 1건을 생성한다.
-
-#### Related
-
-- [Trip feature](../features/trip-create.md)
-- [API response convention](../conventions/API-응답-형식.md)
+**구현과의 차이** — `🔧 변경 필요`일 때만.
 ````
+
+- 배지: `WORK-nn` · `호출: 공개|회원|소유자|열람자|편집자|인증된 주체` · `✅ 구현|🔧 변경 필요|⬜ 미구현`. 호출 표기의 뜻은 `docs/api/README.md`에 있습니다.
+- 구현 상태를 바꾸면 README 체크리스트의 같은 행도 함께 바꿉니다.
+- 미결 항목은 본문에 흩어 두지 않고 파일 끝 "결정 필요" 표에 모읍니다.
 
 ## 반드시 기록할 항목
 

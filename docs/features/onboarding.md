@@ -5,7 +5,7 @@
 - 작성일: 2026-09-21
 - 갱신일: 2026-09-24
 - 관련 이슈: #12 (WORK-02), #32 (profile 모듈 통합)
-- 관련 API: [Onboarding API](../api/onboarding.md)
+- 관련 API: [온보딩 API](../api/profile.md#온보딩)
 
 ## 목표
 

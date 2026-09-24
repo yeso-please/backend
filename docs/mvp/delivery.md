@@ -49,7 +49,7 @@ WORK-04의 guest session 발급·검증은 `auth`, 초대 대상과 참여자 �
 
 WORK-05의 `/discovery/draw`는 `trip/context`에서 여행 소유권·DRAFT·참여자 상태를 읽고, profile 성향과 attraction의 적격성·추첨 계산을 이용한 뒤 여행에 결과를 반영하는 배치안이다. WORK-07의 `tripId/dayIndex/meal`을 받는 식당 API도 `trip/course`가 권한·검색 원점을 검증한 뒤 attraction에 필요한 조건을 전달한다. attraction이 trip을 역호출하는 서비스 순환을 피한다. 지역 카드·지도·관광지 상세는 attraction에서 제공한다. API URL과 응답 계약은 바꾸지 않는다.
 
-WORK-06의 코스 초안은 DB에 저장하지 않는다. WORK-07은 전달된 초안을 재검증·재계산하고, WORK-08에서 stops·meal·taste snapshot 저장과 여행 CONFIRMED 전환을 한 트랜잭션으로 처리한다.
+WORK-06은 코스 초안을 여행마다 하나 `trip_stops`·`meal_stops`에 버전과 함께 저장한다(2026-09-24 결정). WORK-07은 저장된 초안을 operation 단위로 편집하며 매번 전체 일정을 재검증·재계산하고, WORK-08은 재검증·taste snapshot·LLM 제목과 여행 CONFIRMED 전환을 한 트랜잭션으로 처리한다.
 
 ## 병렬 작업 전에 합의할 계약
 

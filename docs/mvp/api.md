@@ -1,6 +1,8 @@
-# MVP REST API 계약
+# MVP REST API 개요
 
-상태: 제품 결정 반영, 구현 전. base path는 `/api`. 날짜는 `YYYY-MM-DD`, 시간은 지역 현지 `HH:mm`, 서버 저장 시 시간대는 `Asia/Seoul`이다. ID는 양의 정수, 지역은 5자리 `SIG_CD` 문자열이다.
+> 이 문서는 흐름과 정책을 보여주는 **개요**다. 필드·경로·상태 코드·오류 코드의 최종 기준은 [`docs/api/`](../api/README.md)다. 둘이 다르면 `docs/api/`를 따른다(2026-09-24: 초안 서버 저장, `/courses/{tripId}` 경로, share session cookie 등).
+
+상태: 제품 결정 반영. base path는 `/api`. 날짜는 `YYYY-MM-DD`, 시간은 지역 현지 `HH:mm`, 서버 저장 시 시간대는 `Asia/Seoul`이다. ID는 양의 정수, 지역은 5자리 `SIG_CD` 문자열이다.
 
 인증 API를 제외한 소유자 API는 `Authorization: Bearer {accessToken}`이 필요하다. refresh token은 HttpOnly cookie다. 공유 API는 `X-Share-Token` 헤더를 사용하고 URL query에 토큰을 반복 노출하지 않는다. 공통 오류는 `{code,message,fieldErrors?,details?}`다.
 
@@ -139,7 +141,7 @@
 
 ## 여행기·사진 지도·친구 공개
 
-여행기와 사진 지도 계약은 [여행기·사진 지도 API](../api/travel-diaries.md)를 기준으로 한다. 확정 코스당 여행기 하나를 만들며, 지도 핀은 본인 또는 수락된 친구에게만 공개된다. 링크 공유는 해당 여행기만 읽을 수 있고 전체 지도 탐색 권한을 주지 않는다.
+여행기와 사진 지도 계약은 [여행기·사진 지도 API](../api/trip.md#6-여행기사진-지도)를 기준으로 한다. 확정 코스당 여행기 하나를 만들며, 지도 핀은 본인 또는 수락된 친구에게만 공개된다. 링크 공유는 해당 여행기만 읽을 수 있고 전체 지도 탐색 권한을 주지 않는다.
 
 ## 대표 오류 코드
 

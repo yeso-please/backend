@@ -15,7 +15,7 @@ TriPin 백엔드의 요구사항, API 계약, 설계 결정, 개발 규칙을 �
 
 - [MVP 구현 기준](mvp/README.md): 확정 제품 결정, 기능·API·데이터·PR별 작업 순서
 - [개발 RDS 생성·데모 데이터 이관 런북](runbooks/rds-postgresql-bootstrap-and-migration.md): AWS 초보자용 PostgreSQL RDS 생성, H2 이관, 검증, 보강 절차
-- [REST API](api/README.md): 구현된 API 계약
+- [REST API](api/README.md): MVP 전체의 목표 API 계약과 구현 체크리스트
 - [기능 명세](features/README.md): 작업 목표와 완료 기준
 - [ADR](adr/README.md): 중요한 설계 결정과 trade-off
 - [컨벤션](conventions/README.md): 팀 공통 개발 규칙

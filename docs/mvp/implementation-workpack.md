@@ -161,7 +161,7 @@ Migration: `question_version` 문자열화, submission `status/taste_status/comp
 
 테스트: 동점 포함 MBTI, 누락/중복, scheduleDensity 두 값/invalid, 태그 5/6, liked 0/30/31, 재검사 불변성, owner XOR, Python success/timeout/5xx/dimension mismatch.
 
-완료 문서: `docs/features/onboarding.md`, `docs/api/onboarding.md`.
+완료 문서: `docs/features/onboarding.md`, `docs/api/profile.md`.
 
 ---
 
@@ -189,7 +189,7 @@ Migration: `trip_plans.region_id` nullable, `CANCELLED` 상태와 optimistic `ve
 
 테스트: 0/6박과 -1/7박, 윤년/연말, overlap 네 형태의 check/create/patch 차단, DRAFT/CANCELLED 제외, origin XOR/범위, 타인 접근, 확정 수정, 동시 version 충돌.
 
-완료 문서: `docs/features/trip-context.md`, `docs/api/trips.md`.
+완료 문서: `docs/features/trip-context.md`, `docs/api/trip.md`.
 
 ---
 
@@ -217,7 +217,7 @@ Share API: `POST/GET/PATCH /courses/{id}/share-links`, `GET /shared/courses/{tok
 
 DB: invite permission/revokedAt, participant latest onboarding/version, 동일 invite+session participant unique. 테스트: 원문 미저장, 만료 경계, token type 혼용, 동시 participant 생성, 다른 participant 제출, VIEW/EDIT 행렬, 다른 trip ID 조합, redirect/history에서 token 제거.
 
-완료 문서: `docs/features/trip-invitation.md`, `docs/api/invitations-and-sharing.md`.
+완료 문서: `docs/features/trip-invitation.md`, `docs/api/trip.md`.
 
 ---
 
@@ -244,7 +244,7 @@ API: `GET /regions?days=&scheduleDensity=`, `POST /discovery/draw {tripId,mode,c
 
 테스트: days 1~7, 품질 교집합, 승인/hero, 동일 weight 경계 매핑, 조건 단독/조합, origin/vector/companion 없음, 동일 지역 재등장, 후보 0 summary, 카드 source/landmark.
 
-완료 문서: `docs/features/region-discovery.md`, `docs/api/regions-and-discovery.md`.
+완료 문서: `docs/features/region-discovery.md`, `docs/api/trip.md`(추첨), `docs/api/attraction.md`.
 
 ---
 
@@ -277,13 +277,13 @@ PUBLIC_TRANSIT distance*1.50/25kmh
 
 LLM 입력은 지역/days/실제 장소/검증 태그뿐. 40자 한 제목 검증 실패/timeout/429/5xx면 `{지역명}, {대표 테마}를 따라 걷는 {days}일`. 장소·순서를 LLM에 맡기지 않는다.
 
-CourseDraft는 `tripId,title,titleSource,recommendationMode,assumptions,days[].items,warnings,draftVersion=1`을 반환한다. item은 ATTRACTION 또는 restaurant null 가능한 MEAL이다. 초안은 DB에 저장하지 않는다.
+CourseDraft는 `tripId,title,titleSource,recommendationMode,assumptions,days[].items,warnings,version`을 반환한다. item은 ATTRACTION 또는 restaurant null 가능한 MEAL이다. 초안은 여행마다 하나 DB에 저장하며, 제목은 초안에서 규칙 제목, 확정 때 LLM 제목이다(2026-09-24 결정). 상세 계약은 `docs/api/trip.md` 5장.
 
 오류: `TRIP_REGION_NOT_SELECTED`, `INVALID_TRAVEL_WINDOW`, `INCOMPATIBLE_DRAFT_VERSION`, `INSUFFICIENT_COURSE_CANDIDATES`.
 
 테스트: 0~6박/시간 경계, 식사 포함·생략, RELAXED 4/PACKED 6과 목표 미달 warning, 중복/휴무, 60/90/120, 세 transport, 동행 평균/결측, exclusion, 세 추천 mode+422, LLM 장애/금칙, 대량 후보 성능.
 
-완료 문서: `docs/features/course-generation.md`, `docs/api/courses.md`.
+완료 문서: `docs/features/course-generation.md`, `docs/api/trip.md`.
 
 ---
 
@@ -312,7 +312,7 @@ Kakao adapter는 timeout, 429/Retry-After, 5xx, malformed/empty를 구분하고 
 
 테스트: bbox/category/cursor, thumbnail/detail, 품질·타지역 ADD/교체 거부, add/replace/remove/move 재계산, 밀도 상한·식사 충돌, TourAPI 39 우선순위와 공공 근거 label, origin fallback, Kakao timeout/429/malformed, menu 경계, snapshot 위조, 권한 행렬, key 로그 미노출.
 
-완료 문서: `docs/features/course-editing.md`, `docs/api/courses.md`, `docs/api/places.md`.
+완료 문서: `docs/features/course-editing.md`, `docs/api/trip.md`, `docs/api/attraction.md`.
 
 ---
 
@@ -333,7 +333,7 @@ Migration: optimistic `version`, 필요한 snapshot/reason/mode/titleSource, ide
 
 테스트: 정상 snapshot, 확정 직전 overlap 재검사 차단, key replay/conflict, 두 thread, 타지역/날짜/중복/품질 하락 위조, restaurant 위조, 중간 rollback, owner/VIEW/EDIT, 금지 필드, version conflict, 만료 share.
 
-완료 문서: `docs/features/course-confirmation.md`, `docs/api/courses.md`.
+완료 문서: `docs/features/course-confirmation.md`, `docs/api/trip.md`.
 
 ---
 
@@ -410,11 +410,11 @@ PR CI는 RDS에 접속하지 않는다. 이미 공유 DB에 적용된 migration 
 - 사진은 1~30장, 허용 이미지 형식/크기 검증과 악성 파일 검사 후 저장한다. 공개 응답에서 EXIF 전체와 원본 파일명을 제거한다.
 - 공개 범위는 `PRIVATE|FRIENDS|LINK`, 위치 정밀도는 `EXACT|CITY|HIDDEN`이며 기본은 `PRIVATE`와 `CITY`다.
 - 발행 시 확정 지역·장소 카테고리·명시 만족 태그/점수만 낮은 가중치의 취향 신호로 저장한다. 본문·사진 분석·EXIF·열람 수는 추천에 쓰지 않으며 opt-out을 지원한다.
-- 친구 요청은 `PENDING→ACCEPTED|REJECTED|BLOCKED`이며 FRIENDS 조회마다 수락 상태를 서버가 확인한다.
+- 친구는 회원끼리 친구 초대 링크(`fl_` token)로 맺는다. 수락하면 바로 `ACCEPTED`이고, 친구 끊기는 양쪽 공개를 즉시 막는다. FRIENDS 조회마다 관계를 서버가 확인한다(2026-09-24 결정, 계약은 `docs/api/profile.md`).
 
-테스트: 여행당 단일 여행기, 사진 0/1/30/31장, 파일 검증, 위치 정밀도별 응답, PRIVATE/FRIENDS/LINK 권한 행렬, 친구 차단 즉시 차단, 링크 만료/폐기, 취향 opt-in/out 및 본문·EXIF 비반영.
+테스트: 여행당 단일 여행기, 사진 0/1/30/31장, 파일 검증, 위치 정밀도별 응답, PRIVATE/FRIENDS/LINK 권한 행렬, 친구 끊기 즉시 차단, 친구·여행기 링크 만료/폐기, 취향 opt-in/out 및 본문·EXIF 비반영.
 
-완료 문서: `docs/features/travel-diary-map-sharing.md`, `docs/api/travel-diaries.md`.
+완료 문서: `docs/features/travel-diary-map-sharing.md`, `docs/api/trip.md`, `docs/api/profile.md`.
 
 ## 3. 전체 MVP 인수 시나리오
 
