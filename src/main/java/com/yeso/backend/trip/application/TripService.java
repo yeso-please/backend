@@ -126,6 +126,12 @@ public class TripService {
     }
 
     private TripPlan findOwnedTrip(Long userId, Long tripId) {
+        return requireOwnedTrip(userId, tripId);
+    }
+
+    /** invite/share 유스케이스가 소유권 확인에 재사용한다. 소유자가 아니면 존재를 숨기고 404다. */
+    @Transactional(readOnly = true)
+    public TripPlan requireOwnedTrip(Long userId, Long tripId) {
         TripPlan tripPlan = tripPlanRepository.findById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
         if (!tripPlan.isOwnedBy(userId)) {
             throw new TripNotFoundException(tripId);

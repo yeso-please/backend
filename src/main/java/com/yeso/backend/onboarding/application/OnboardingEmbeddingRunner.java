@@ -1,6 +1,7 @@
 package com.yeso.backend.onboarding.application;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.profile.domain.GuestTasteVector;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.onboarding.domain.EmbeddingJob;
 import com.yeso.backend.onboarding.domain.EmbeddingOwnerType;
@@ -13,6 +14,7 @@ import com.yeso.backend.onboarding.infrastructure.EmbeddingProperties;
 import com.yeso.backend.onboarding.infrastructure.EmbeddingRequest;
 import com.yeso.backend.onboarding.infrastructure.EmbeddingResult;
 import com.yeso.backend.onboarding.infrastructure.EmbeddingTransientException;
+import com.yeso.backend.onboarding.infrastructure.GuestTasteVectorRepository;
 import com.yeso.backend.onboarding.infrastructure.UserTasteVectorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class OnboardingEmbeddingRunner {
 
     private final EmbeddingJobRepository embeddingJobRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
+    private final GuestTasteVectorRepository guestTasteVectorRepository;
     private final UserRepository userRepository;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingProperties embeddingProperties;
@@ -92,9 +95,18 @@ public class OnboardingEmbeddingRunner {
             vector.setUpdatedAt(LocalDateTime.now());
             userTasteVectorRepository.save(vector);
         } else {
-            // guest_taste_vectors는 WORK-04(초대) 이후 guest 엔티티가 생기면 지원한다.
-            failPermanently(job, submission, "GUEST_NOT_SUPPORTED");
-            return;
+            byte[] embedding = Base64.getDecoder().decode(result.embeddingBase64());
+            GuestTasteVector vector = guestTasteVectorRepository.findById(job.getOwnerId())
+                    .orElseGet(() -> new GuestTasteVector(
+                            job.getOwnerId(), embedding, result.dimension(),
+                            submission.getProfileText(), job.getModelVersion(), job.getTemplateVersion()));
+            vector.setEmbedding(embedding);
+            vector.setDimension(result.dimension());
+            vector.setProfileText(submission.getProfileText());
+            vector.setModelVersion(job.getModelVersion());
+            vector.setTemplateVersion(job.getTemplateVersion());
+            vector.setUpdatedAt(LocalDateTime.now());
+            guestTasteVectorRepository.save(vector);
         }
         job.markReady();
         submission.setTasteStatus(TasteStatus.READY);
