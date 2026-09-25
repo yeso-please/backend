@@ -177,7 +177,7 @@ GET /api/onboarding/me
 
 ### 2-4. 친구 초대 링크 발급
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/friend-links
@@ -205,13 +205,13 @@ POST /api/friend-links
 
 ### 2-5. 내 친구 초대 링크 목록
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/friend-links
 ```
 
-**Response `200 OK`** — 최신순
+**Response `200 OK`** — 최신순. 만료·폐기된 링크도 포함한다(`revoked`, `expiresAt`로 구분). `acceptedCount`는 이 링크로 새로 친구가 된 수이며, 이미 친구였던 사람의 재수락은 세지 않는다.
 
 ```json
 [{"id": 4, "expiresAt": "2026-10-27T12:00:00", "revoked": false, "acceptedCount": 2, "createdAt": "2026-10-20T12:00:00"}]
@@ -221,7 +221,7 @@ GET /api/friend-links
 
 ### 2-6. 친구 초대 링크 폐기
 
-> `호출: 회원(링크 주인)` · `⬜ 미구현`
+> `호출: 회원(링크 주인)` · `✅ 구현`
 
 ```
 DELETE /api/friend-links/{id}
@@ -237,7 +237,7 @@ DELETE /api/friend-links/{id}
 
 ### 2-7. 친구 초대 링크 미리보기
 
-> `호출: 공개` · `⬜ 미구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/friend-links/by-token/{token}
@@ -261,7 +261,7 @@ GET /api/friend-links/by-token/{token}
 
 ### 2-8. 친구 초대 수락
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/friend-links/by-token/{token}/accept
@@ -288,7 +288,7 @@ POST /api/friend-links/by-token/{token}/accept
 
 ### 2-9. 친구 목록
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/friends
@@ -304,7 +304,7 @@ GET /api/friends
 
 ### 2-10. 친구 끊기
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 DELETE /api/friends/{userId}

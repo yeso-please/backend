@@ -1,4 +1,4 @@
-package com.yeso.backend.profile.presentation;
+package com.yeso.backend.profile.presentation.onboarding;
 
 import jakarta.validation.constraints.NotNull;
 

@@ -160,6 +160,31 @@ public class ApiFixtures {
         assertThat(result.getResponse().getStatus()).as("accept invite status").isEqualTo(201);
     }
 
+    // ---------- friend ----------
+
+    /** 친구 초대 링크를 발급하고 token 원문을 돌려준다. */
+    public String friendLinkToken(String accessToken) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/friend-links")
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andReturn();
+        assertThat(result.getResponse().getStatus()).as("create friend link status").isEqualTo(201);
+        return JsonPath.read(result.getResponse().getContentAsString(), "$.token");
+    }
+
+    public MvcResult acceptFriendLinkResult(String accessToken, String friendLinkToken) throws Exception {
+        return mockMvc.perform(post("/api/friend-links/by-token/{token}/accept", friendLinkToken)
+                        .header("Authorization", bearer(accessToken)))
+                .andReturn();
+    }
+
+    /** 두 회원을 친구로 만든다({@code a}가 링크를 만들고 {@code b}가 수락). */
+    public void makeFriends(Member a, Member b) throws Exception {
+        MvcResult result = acceptFriendLinkResult(b.accessToken(), friendLinkToken(a.accessToken()));
+        assertThat(result.getResponse().getStatus()).as("accept friend link status").isEqualTo(201);
+    }
+
     // ---------- share link ----------
 
     public String shareLinkToken(String accessToken, Long tripId, String body) throws Exception {

@@ -1,4 +1,4 @@
-package com.yeso.backend.profile.application;
+package com.yeso.backend.profile.application.onboarding;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
