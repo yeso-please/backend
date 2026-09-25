@@ -1,6 +1,8 @@
 package com.yeso.backend.shared.exception;
 
+import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 
 public abstract class DomainException extends RuntimeException {
 
@@ -24,5 +26,10 @@ public abstract class DomainException extends RuntimeException {
 
     public Map<String, Object> getDetails() {
         return details;
+    }
+
+    /** 값이 있으면 응답에 {@code Retry-After} 헤더(초)를 싣는다. 외부 API 호출 한도처럼 기다리면 풀리는 오류가 쓴다. */
+    public Optional<Duration> getRetryAfter() {
+        return Optional.empty();
     }
 }
