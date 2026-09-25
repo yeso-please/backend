@@ -2,9 +2,9 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태:** WORK-00 구현으로 PostgreSQL/Flyway V1과 `ddl-auto=validate`가 준비됐다. 브랜치의 CI가 통과하고 팀 리뷰로 V1을 승인한 다음 로컬 이관 리허설을 시작한다. JPA가 임의로 만든 테이블을 기준 스키마로 삼지 않는다.
+> **현재 상태(2026-09-25):** PostgreSQL/Flyway(V1~V6)와 `ddl-auto=validate`가 준비됐다. 개발 RDS는 아직 없다(#38). 이관 실행기는 #36에서 만든다. JPA가 임의로 만든 테이블을 기준 스키마로 삼지 않는다. 데이터를 지우는 migration(V6 등)은 [ADR 0002 보완](../adr/0002-postgresql-flyway-schema-source.md)대로 적용 전 스냅샷을 뜬다.
 
-> **중요한 현실 확인:** 2026-09-20 현재 이 저장소에는 WORK-09 이관 실행기와 migration 전용 Gradle task가 아직 없다. `./gradlew flywayMigrate`는 현재 실행할 수 없는 명령이다. 지금 바로 가능한 것은 PostgreSQL/Flyway V1 검증과 Spring Boot 기동 시 migration 적용까지다. H2 이관은 이 문서의 **Phase C 구현 계약**을 먼저 코드로 완성한 뒤 실행한다.
+> **중요한 현실 확인:** 2026-09-25 현재 이 저장소에는 이관 실행기(#36)와 migration 전용 Gradle task가 아직 없다. `./gradlew flywayMigrate`는 현재 실행할 수 없는 명령이다. 지금 바로 가능한 것은 PostgreSQL/Flyway V1 검증과 Spring Boot 기동 시 migration 적용까지다. H2 이관은 이 문서의 **Phase C 구현 계약**을 먼저 코드로 완성한 뒤 실행한다.
 
 ## 0. 이 문서를 사용하는 방법
 
@@ -12,9 +12,9 @@
 
 | 단계 | 누가 하는가 | 결과 |
 |---|---|---|
-| WORK-09A | 백엔드 개발자/에이전트 | H2를 읽어 로컬 PostgreSQL에 멱등 이관하는 실행기와 품질 리포트 |
-| WORK-09B | 인프라 담당 개발자 | 개발 RDS, 역할 분리, TLS, snapshot, 최초 schema/data 적재 |
-| WORK-09C | 백엔드 개발자 | 이후 Flyway 변경을 CI에서 검증하고 dev 배포 시 자동 반영하는 경로 |
+| 이슈 #36(H2 이관) | 백엔드 개발자/에이전트 | H2를 읽어 로컬 PostgreSQL에 멱등 이관하는 실행기와 품질 리포트 |
+| 이슈 #38(개발 RDS) | 인프라 담당 개발자 | 개발 RDS, 역할 분리, TLS, snapshot, 최초 schema/data 적재 |
+| 이슈 #37(Flyway 자동화) | 백엔드 개발자 | 이후 Flyway 변경을 CI에서 검증하고 dev 배포 시 자동 반영하는 경로 |
 
 완료 순서는 아래 하나뿐이다.
 
@@ -37,7 +37,7 @@
 - 엔티티만 바꾸고 `ddl-auto=update`로 RDS를 맞추지 않는다.
 - PR CI가 개발/운영 RDS에 접속하게 하지 않는다.
 - V1처럼 이미 공유 DB에 적용된 migration을 수정하지 않는다.
-- 운영 RDS에 WORK-09 명령을 실행하지 않는다.
+- 운영 RDS에 이관 명령을 실행하지 않는다.
 
 ### 0.1 사람과 에이전트의 작업 경계
 
@@ -55,7 +55,7 @@
 그 뒤 에이전트가 맡는 일:
 
 - 데모 서버 중지 여부와 H2 backup/checksum 확인
-- WORK-09A 이관 실행기 구현과 테스트
+- 이슈 #36(H2 이관) 이관 실행기 구현과 테스트
 - 로컬 PostgreSQL dry-run/apply/validate/reapply
 - 품질 리포트 분석
 - 개발 RDS endpoint/database/TLS/Flyway 상태의 read-only 사전 검사
@@ -72,10 +72,10 @@
 아래에서 `<H2_BACKUP_ABSOLUTE_PATH>`만 실제 경로로 바꾼다. 비밀번호나 API key는 넣지 않는다.
 
 ```text
-TARGET_WORK=WORK-09A+09B
+TARGET_ISSUES=#36+#38
 
 AGENTS.md와 docs/runbooks/rds-postgresql-bootstrap-and-migration.md 전체,
-docs/mvp/implementation-workpack.md의 WORK-09,
+docs/archive/implementation-workpack.md의 WORK-09(이력),
 .agents/skills/flyway-rds-sync/SKILL.md를 먼저 읽고 그대로 수행해라.
 
 개발 RDS와 local secret 설정은 준비되어 있다. 운영 RDS는 범위 밖이다.
@@ -208,9 +208,9 @@ Get-FileHash -Algorithm SHA256 -LiteralPath $backup
 
 필드 매핑의 최종 기준은 Java 엔티티가 아니라 **병합된 Flyway SQL**이다.
 
-## 6. Phase C — WORK-09A 이관 실행기 구현
+## 6. Phase C — 이슈 #36(H2 이관) 이관 실행기 구현
 
-WORK-00의 PostgreSQL/Flyway 기반은 이미 구현됐다. 이제 RDS를 만들기 전에 이관 실행기를 완성한다. 구현 에이전트에는 이 문서 전체와 `TARGET_WORK=WORK-09A`를 전달한다.
+WORK-00의 PostgreSQL/Flyway 기반은 이미 구현됐다. 이제 RDS를 만들기 전에 이관 실행기를 완성한다. 구현 에이전트에는 이 문서 전체와 `TARGET_WORK=이슈 #36(H2 이관)`를 전달한다.
 
 ### 6.1 생성해야 하는 공개 실행 명령
 
@@ -307,7 +307,7 @@ H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전�
 - 사용자·비밀번호·refresh/session/review/trip 데이터가 target에 들어오지 않음
 - production처럼 보이는 host 또는 `tripin_prod` DB는 명시적 allowlist가 없으면 거부
 
-### 6.7 WORK-09A 완료 gate
+### 6.7 이슈 #36(H2 이관) 완료 gate
 
 - [ ] 위 네 Gradle 명령이 `--help`와 함께 동작한다.
 - [ ] 로컬 PostgreSQL에서 dry-run/apply/validate/reapply를 완료했다.
@@ -326,7 +326,7 @@ docker compose up -d postgres
 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
 
-로그에서 Flyway V1 성공과 `Started BackendApplication`을 확인한 후 `Ctrl+C`로 서버를 멈춘다. 별도의 `flywayMigrate` task는 WORK-09C가 만들기 전까지 사용하지 않는다.
+로그에서 Flyway V1 성공과 `Started BackendApplication`을 확인한 후 `Ctrl+C`로 서버를 멈춘다. 별도의 `flywayMigrate` task는 이슈 #37(Flyway 자동화)가 만들기 전까지 사용하지 않는다.
 
 그 후 고정한 H2 백업을 source로 이관 도구를 실행한다.
 
@@ -614,7 +614,7 @@ health check 성공 후 dev 배포 완료
 
 PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이 아니며 별도 승인·snapshot·migration job이 필요하다.
 
-### 11.2 WORK-09C에서 구현할 migration 전용 명령
+### 11.2 이슈 #37(Flyway 자동화)에서 구현할 migration 전용 명령
 
 애플리케이션 전체를 띄우지 않고 `info → validate → migrate → info`를 수행하는 `rdsMigrate` Gradle task를 추가한다. Flyway Gradle plugin 또는 전용 JavaExec 중 하나로 구현하되 공개 인터페이스는 아래로 고정한다.
 
@@ -937,8 +937,8 @@ RDS PostgreSQL 15+는 기본적으로 TLS를 요구한다. JDBC/psql에 `sslmode
 
 ## Related
 
-- [MVP 데이터 이관·추천 설계](../mvp/data-and-recommendation.md)
-- [초기 세팅과 팀 실행 순서](../mvp/delivery.md)
-- [MVP 구현 작업서 WORK-00/09](../mvp/implementation-workpack.md)
+- [MVP 데이터 이관·추천 설계](../design/recommendation.md)
+- [초기 세팅과 팀 실행 순서(이력)](../archive/delivery.md)
+- [MVP 구현 작업서 WORK-00/09(이력)](../archive/implementation-workpack.md)
 - [Flyway/RDS 저장소 스킬](../../.agents/skills/flyway-rds-sync/SKILL.md)
 - [TourAPI 보강 저장소 스킬](../../.agents/skills/tourapi-detail-backfill/SKILL.md)

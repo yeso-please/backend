@@ -1,5 +1,6 @@
 package com.yeso.backend.auth.infrastructure;
 
+import com.yeso.backend.shared.config.AuthCookieProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -7,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 
 /**
- * refresh 토큰은 응답 body가 아니라 HttpOnly cookie로만 전달한다(WORK-01 계약) —
+ * refresh 토큰은 응답 body가 아니라 HttpOnly cookie로만 전달한다(docs/api/auth.md) —
  * 브라우저 스크립트가 원문을 읽을 수 없게 해 XSS로 인한 탈취 표면을 줄인다.
  */
 @Component

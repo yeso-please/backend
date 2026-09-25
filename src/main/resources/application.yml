@@ -66,4 +66,5 @@ embedding:
   timeout-millis: 5000
   max-attempts: 5
   retry-backoff-seconds: 30
+  retry-sweep-enabled: true
   retry-sweep-interval-ms: 30000

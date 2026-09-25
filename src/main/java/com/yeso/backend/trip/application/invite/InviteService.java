@@ -1,41 +1,36 @@
 package com.yeso.backend.trip.application.invite;
 
+import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.domain.User;
-import com.yeso.backend.trip.domain.GuestSession;
-import com.yeso.backend.trip.domain.GuestSessionInvalidException;
-import com.yeso.backend.trip.domain.InvalidDisplayNameException;
-import com.yeso.backend.trip.domain.InvalidExpiresInDaysException;
+import com.yeso.backend.auth.domain.UserNotFoundException;
+import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.trip.application.context.TripService;
+import com.yeso.backend.shared.token.InvalidExpiresInDaysException;
 import com.yeso.backend.trip.domain.InviteExpiredException;
 import com.yeso.backend.trip.domain.InviteNotFoundException;
 import com.yeso.backend.trip.domain.InviteRevokedException;
-import com.yeso.backend.trip.domain.SharePermission;
-import com.yeso.backend.trip.domain.TokenAudience;
+import com.yeso.backend.shared.token.TokenAudience;
 import com.yeso.backend.trip.domain.TripInvitation;
-import com.yeso.backend.trip.infrastructure.GuestSessionRepository;
-import com.yeso.backend.trip.infrastructure.OpaqueTokenGenerator;
+import com.yeso.backend.trip.domain.TripPlan;
+import com.yeso.backend.shared.token.OpaqueTokenGenerator;
 import com.yeso.backend.trip.infrastructure.TripInvitationRepository;
+import com.yeso.backend.trip.presentation.context.TripContextResponse;
 import com.yeso.backend.trip.presentation.invite.CreateInviteRequest;
 import com.yeso.backend.trip.presentation.invite.InvitePublicSummaryResponse;
 import com.yeso.backend.trip.presentation.invite.InviteResponse;
-import com.yeso.backend.trip.presentation.invite.InviteSummaryResponse;
-import com.yeso.backend.trip.presentation.invite.JoinInviteRequest;
-import com.yeso.backend.trip.presentation.invite.JoinInviteResponse;
-import com.yeso.backend.trip.presentation.invite.PatchInviteRequest;
-import com.yeso.backend.profile.application.OnboardingService;
-import com.yeso.backend.profile.presentation.OnboardingSubmissionRequest;
-import com.yeso.backend.profile.presentation.OnboardingSubmissionResponse;
-import com.yeso.backend.trip.application.TripService;
-import com.yeso.backend.trip.domain.TripParticipant;
-import com.yeso.backend.trip.domain.TripPlan;
-import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
+import com.yeso.backend.trip.presentation.invite.LinkSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
+/**
+ * 회원을 여행 참여자로 들이는 초대 링크(2026-09-24 정책). 참여자 누구나 발급·폐기하고, 받은 회원은
+ * 로그인과 최초 설문을 마친 뒤 수락한다. 수락자의 기존 여행과 날짜가 겹치면 수락할 수 없다.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -44,104 +39,69 @@ public class InviteService {
     private static final int DEFAULT_EXPIRES_IN_DAYS = 7;
     private static final int MIN_EXPIRES_IN_DAYS = 1;
     private static final int MAX_EXPIRES_IN_DAYS = 30;
-    private static final int GUEST_SESSION_TTL_DAYS = 30;
 
     private final TripInvitationRepository invitationRepository;
-    private final TripParticipantRepository participantRepository;
-    private final GuestSessionRepository guestSessionRepository;
+    private final UserRepository userRepository;
     private final TripService tripService;
-    private final OnboardingService onboardingService;
     private final OpaqueTokenGenerator tokenGenerator;
+    private final Clock clock;
 
-    public InviteResponse createInvite(Long ownerId, Long tripId, CreateInviteRequest request) {
-        TripPlan tripPlan = tripService.requireOwnedTrip(ownerId, tripId);
+    public InviteResponse createInvite(Long userId, Long tripId, CreateInviteRequest request) {
+        TripPlan tripPlan = tripService.requireParticipantTrip(userId, tripId);
+        tripService.requireNotEnded(tripPlan);
         int expiresInDays = resolveExpiresInDays(request.expiresInDays());
-        SharePermission permission = SharePermission.parseOrDefault(request.permission(), SharePermission.VIEW);
+        User inviter = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 
         String token = tokenGenerator.generate(TokenAudience.INVITE);
-        User owner = tripPlan.getOwnerUser();
         TripInvitation invitation = new TripInvitation(
-                tripPlan, tokenGenerator.hash(token), owner, permission,
-                LocalDateTime.now().plusDays(expiresInDays));
+                tripPlan, tokenGenerator.hash(token), inviter, LocalDateTime.now(clock).plusDays(expiresInDays));
         invitationRepository.save(invitation);
 
         return InviteResponse.of(invitation, token);
     }
 
     @Transactional(readOnly = true)
-    public List<InviteSummaryResponse> listInvites(Long ownerId, Long tripId) {
-        tripService.requireOwnedTrip(ownerId, tripId);
+    public List<LinkSummaryResponse> listInvites(Long userId, Long tripId) {
+        tripService.requireParticipantTrip(userId, tripId);
         return invitationRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).stream()
-                .map(InviteSummaryResponse::from)
+                .map(LinkSummaryResponse::from)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public InviteSummaryResponse getInvite(Long ownerId, Long tripId, Long inviteId) {
-        tripService.requireOwnedTrip(ownerId, tripId);
-        return InviteSummaryResponse.from(requireInviteOfTrip(tripId, inviteId));
-    }
-
-    public InviteSummaryResponse patchInvite(Long ownerId, Long tripId, Long inviteId, PatchInviteRequest request) {
-        tripService.requireOwnedTrip(ownerId, tripId);
-        TripInvitation invitation = requireInviteOfTrip(tripId, inviteId);
-        if (request.permission() != null) {
-            invitation.changePermission(SharePermission.parse(request.permission()));
+    public void revokeInvite(Long userId, Long tripId, Long inviteId) {
+        tripService.requireParticipantTrip(userId, tripId);
+        TripInvitation invitation = invitationRepository.findById(inviteId).orElseThrow(InviteNotFoundException::new);
+        if (!invitation.getTripPlan().getId().equals(tripId)) {
+            throw new InviteNotFoundException();
         }
-        if (Boolean.TRUE.equals(request.revoked())) {
-            invitation.revoke();
+        if (!invitation.isRevoked()) {
+            invitation.revoke(LocalDateTime.now(clock));
         }
-        return InviteSummaryResponse.from(invitation);
     }
 
     @Transactional(readOnly = true)
     public InvitePublicSummaryResponse publicSummary(String token) {
         TripInvitation invitation = requireActiveInvitation(token);
         TripPlan tripPlan = invitation.getTripPlan();
+        Region region = tripPlan.getRegion();
         return new InvitePublicSummaryResponse(
-                true, tripPlan.getStartDate(), tripPlan.getEndDate(), tripPlan.getOwnerUser().getNickname());
+                true,
+                tripPlan.getStartDate(),
+                tripPlan.getEndDate(),
+                region == null ? null : region.getProvince() + " " + region.getCity(),
+                invitation.getInvitedByUser().getNickname(),
+                tripService.countParticipants(tripPlan.getId()));
     }
 
-    public JoinInviteResponse join(String token, JoinInviteRequest request) {
+    /** 이미 참여 중이면 {@code joined=false}로 같은 결과를 돌려준다(멱등). 컨트롤러가 201/200을 고른다. */
+    public AcceptResult accept(Long userId, String token) {
         TripInvitation invitation = requireActiveInvitation(token);
-        String displayName = validateDisplayName(request.displayName());
-
-        TripParticipant participant = TripParticipant.guest(invitation.getTripPlan(), invitation.getId(), displayName);
-        participantRepository.save(participant);
-
-        String sessionToken = tokenGenerator.generate(TokenAudience.GUEST_SESSION);
-        guestSessionRepository.save(new GuestSession(
-                participant, tokenGenerator.hash(sessionToken), LocalDateTime.now().plusDays(GUEST_SESSION_TTL_DAYS)));
-
-        return new JoinInviteResponse(participant.getId(), sessionToken, displayName, participant.getStatus().name());
+        Long tripId = invitation.getTripPlan().getId();
+        boolean joined = tripService.joinAsMember(userId, tripId, invitation.getId());
+        return new AcceptResult(joined, tripService.contextOf(invitation.getTripPlan()));
     }
 
-    /** guest session의 참여자 본인만 자신의 온보딩을 제출할 수 있다. */
-    public OnboardingSubmissionResponse submitGuestOnboarding(
-            Long guestSessionParticipantId, Long pathParticipantId, OnboardingSubmissionRequest request) {
-        if (!guestSessionParticipantId.equals(pathParticipantId)) {
-            throw new GuestSessionInvalidException();
-        }
-        TripParticipant participant = participantRepository.findById(pathParticipantId)
-                .orElseThrow(GuestSessionInvalidException::new);
-
-        participant.startOnboarding();
-        UUID submissionId = onboardingService.submitForGuest(participant.getId(), request);
-        participant.completeOnboarding(submissionId);
-
-        return onboardingService.getSubmissionResponse(submissionId);
-    }
-
-    /** {@link com.yeso.backend.trip.presentation.invite.GuestSessionArgumentResolver}가 재사용한다. */
-    @Transactional(readOnly = true)
-    public Long resolveGuestParticipantId(String guestSessionToken) {
-        tokenGenerator.requireAudience(guestSessionToken, TokenAudience.GUEST_SESSION);
-        GuestSession session = guestSessionRepository.findByTokenHash(tokenGenerator.hash(guestSessionToken))
-                .orElseThrow(GuestSessionInvalidException::new);
-        if (!session.isActive(LocalDateTime.now())) {
-            throw new GuestSessionInvalidException();
-        }
-        return session.getParticipant().getId();
+    public record AcceptResult(boolean joined, TripContextResponse context) {
     }
 
     private TripInvitation requireActiveInvitation(String token) {
@@ -151,16 +111,8 @@ public class InviteService {
         if (invitation.isRevoked()) {
             throw new InviteRevokedException();
         }
-        if (!invitation.getExpiresAt().isAfter(LocalDateTime.now())) {
+        if (!invitation.getExpiresAt().isAfter(LocalDateTime.now(clock))) {
             throw new InviteExpiredException();
-        }
-        return invitation;
-    }
-
-    private TripInvitation requireInviteOfTrip(Long tripId, Long inviteId) {
-        TripInvitation invitation = invitationRepository.findById(inviteId).orElseThrow(InviteNotFoundException::new);
-        if (!invitation.getTripPlan().getId().equals(tripId)) {
-            throw new InviteNotFoundException();
         }
         return invitation;
     }
@@ -173,16 +125,5 @@ public class InviteService {
             throw new InvalidExpiresInDaysException();
         }
         return requested;
-    }
-
-    private static String validateDisplayName(String displayName) {
-        if (displayName == null) {
-            throw new InvalidDisplayNameException();
-        }
-        String trimmed = displayName.trim();
-        if (trimmed.isEmpty() || trimmed.length() > 30) {
-            throw new InvalidDisplayNameException();
-        }
-        return trimmed;
     }
 }

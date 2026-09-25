@@ -9,7 +9,7 @@ import static com.yeso.backend.profile.domain.OnboardingAxis.SN;
 import static com.yeso.backend.profile.domain.OnboardingAxis.TF;
 
 /**
- * `docs/mvp/onboarding-questionnaire.md`의 질문·글자 매핑·태그 사전을 그대로 옮긴 서버 상수다.
+ * `docs/api/profile.md 부록`의 질문·글자 매핑·태그 사전을 그대로 옮긴 서버 상수다.
  * 문구나 매핑을 바꾸면 이 클래스를 고치지 말고 새 {@code questionVersion}을 만든다.
  */
 public final class OnboardingQuestionBank {

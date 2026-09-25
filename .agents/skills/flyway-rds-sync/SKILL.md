@@ -9,7 +9,7 @@ Flyway migration이 스키마의 단일 출처다. Hibernate `ddl-auto`는 `vali
 
 ## 사전 점검
 
-1. `docs/mvp/decisions.md`, `docs/conventions/`, 현재 entity, repository query, 기존 `db/migration`을 읽는다.
+1. `docs/product.md`, `docs/conventions/`, 현재 entity, repository query, 기존 `db/migration`을 읽는다.
 2. git 상태를 확인하고 사용자 변경을 보존한다. 이미 공유 DB에 적용된 migration은 수정·재번호화하지 않는다.
 3. entity 변경과 실제 migration 차이를 표로 만든다: table/column/type/null/default/FK/unique/index/data backfill.
 4. 다음 Flyway version을 기존 파일에서 계산한다. 한 migration에는 하나의 논리적 변경을 담는다.

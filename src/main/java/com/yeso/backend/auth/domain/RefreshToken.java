@@ -21,7 +21,7 @@ import java.util.UUID;
  *
  * {@code familyId}는 최초 발급부터 이어지는 rotate 체인을 묶는다. 이미 폐기된
  * (rotate로 대체된) 토큰이 다시 제시되면 탈취로 간주해 같은 family의 미만료 토큰을
- * 전부 폐기한다(WORK-01 계약, docs/mvp/implementation-workpack.md).
+ * 전부 폐기한다(docs/adr/0003).
  */
 @Entity
 @Table(name = "refresh_tokens")

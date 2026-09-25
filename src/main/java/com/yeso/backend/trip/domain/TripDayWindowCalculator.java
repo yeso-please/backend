@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 당일은 12:00~20:00, 다일은 첫날 12:00~20:00·중간 09:00~20:00·마지막 날 09:00~17:00이다
- * (docs/mvp/implementation-workpack.md WORK-03).
+ * (docs/api/trip.md 3장 dayWindows).
  */
 public final class TripDayWindowCalculator {
 

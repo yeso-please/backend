@@ -1,242 +1,162 @@
-# 인증 API
+# 1. 인증
 
-- 상태: implemented (이메일 회원가입/로그인만 — 소셜 로그인은 미구현)
-- 갱신일: 2026-09-21
-- 관련 기능 명세: [회원가입/로그인/인증 모듈](../features/auth-login-signup.md)
+- 계약 상태: agreed
+- 모듈: `auth`
+- 범위: 이메일·비밀번호 로컬 로그인만. 소셜 로그인은 MVP 범위 밖이다.
 
-refresh 토큰은 응답 body에 담기지 않는다. `POST /api/auth/signup`, `/login`, `/refresh` 성공 시 서버가
-`refresh_token` HttpOnly cookie를 `Set-Cookie`로 내려주고, 클라이언트는 이후 `/api/auth/refresh`,
-`/api/auth/logout` 호출 시 브라우저가 자동으로 동봉하는 이 cookie만 있으면 된다.
+## 공통
 
-cookie 속성: `HttpOnly; SameSite=Lax; Path=/api/auth`, `Max-Age`는 refresh TTL(14일)과 동일하다. `Secure`는
-`app.auth.cookie-secure` profile 설정을 따른다 — local profile은 HTTP라 `false`, 그 외(운영/dev-rds 등
-HTTPS 환경)는 `true`다.
+refresh token은 응답 body에 담지 않는다. 가입·로그인·refresh 성공 시 서버가 `Set-Cookie`로 내려준다.
 
-## POST /api/auth/signup
-
-- 목적: 이메일/비밀번호로 신규 계정을 생성하고 즉시 로그인 처리한다.
-- 인증: 불필요
-
-### Request
-
-Headers:
-
-| 이름 | 값 | 필수 |
-|---|---|---|
-| Content-Type | application/json | O |
-
-Body:
-
-```json
-{
-  "email": "user@example.com",
-  "password": "password123",
-  "nickname": "tester"
-}
+```text
+Set-Cookie: refresh_token=...; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=1209600[; Secure]
 ```
 
-| 필드 | 타입 | 필수 | 제약 |
-|---|---|---|---|
-| email | string | O | trim+lowercase 정규화, 이메일 형식, 최대 190자, 정규화 후 중복 불가 |
-| password | string | O | 8~64자이며 UTF-8 기준 72byte 이하 (BCrypt 해시로만 저장) |
-| nickname | string | O | trim 후 1~30자 |
+`Secure`는 `app.auth.cookie-secure` 설정을 따른다. local(HTTP)은 `false`, 그 외 HTTPS 환경은 `true`다.
 
-### Responses
-
-##### 201 Created
-
-`Set-Cookie: refresh_token=...; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=1209600[; Secure]`
+**`AuthResponse`** — 가입·로그인·refresh의 공통 성공 응답
 
 ```json
 {
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "nickname": "tester",
-    "profileImage": null
-  },
-  "accessToken": "...",
+  "user": {"id": 1, "email": "user@example.com", "nickname": "tester", "profileImage": null},
+  "accessToken": "eyJhbGciOi...",
   "tokenType": "Bearer",
   "expiresInSeconds": 1800,
   "onboardingCompleted": false
 }
 ```
 
-##### 400 Bad Request
-
-형식이 올바르지 않다(이메일 형식, 비밀번호 길이/byte 초과, 닉네임 길이 등). 필드별 메시지를 한글로 반환한다.
-
-##### 409 Conflict
-
-정규화(trim+lowercase) 후 이미 사용 중인 이메일이다.
-
-#### Side effects
-
-- `users`에 1건을 생성한다.
-- `refresh_tokens`에 새 family로 발급된 refresh 토큰의 해시를 1건 저장한다.
-
-#### Related
-
-- [작업 명세](../features/auth-login-signup.md)
-- [API 응답 형식](../conventions/API-응답-형식.md)
-
----
-
-## POST /api/auth/login
-
-- 목적: 이메일/비밀번호로 로그인해 access 토큰(body) + refresh 토큰(cookie)을 발급한다.
-- 인증: 불필요
-
-### Request
-
-Body:
-
-```json
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-email은 signup과 동일하게 trim+lowercase로 정규화한 뒤 비교한다.
-
-### Responses
-
-##### 200 OK
-
-`POST /api/auth/signup`의 201 응답과 동일한 `AuthResponse` 형식 + `Set-Cookie`.
-
-##### 401 Unauthorized
-
-```json
-{
-  "status": 401,
-  "code": "AUTH_INVALID_CREDENTIALS",
-  "message": "이메일 또는 비밀번호가 올바르지 않습니다."
-}
-```
-
-이메일이 존재하지 않는 경우와 비밀번호가 틀린 경우 **동일한 메시지**를 반환한다(계정 존재 여부 비노출).
-
-#### Side effects
-
-- `refresh_tokens`에 새 family로 발급된 refresh 토큰의 해시를 1건 저장한다.
-
----
-
-## POST /api/auth/refresh
-
-- 목적: refresh 토큰으로 access 토큰을 재발급한다. refresh 토큰도 함께 rotate된다.
-- 인증: 불필요(`refresh_token` cookie 자체가 자격 증명)
-
-### Request
-
-Headers/Cookie: `Cookie: refresh_token=...` (브라우저가 자동 동봉)
-
-Body: 없음
-
-### Responses
-
-##### 200 OK
-
-새로 발급된 `AuthResponse` + rotate된 `Set-Cookie: refresh_token=...`(새 값). 이전 값은 응답과 동시에
-서버에서 폐기된다.
-
-##### 401 Unauthorized
-
-```json
-{
-  "status": 401,
-  "code": "AUTH_INVALID_REFRESH_TOKEN",
-  "message": "인증이 만료되었습니다. 다시 로그인해주세요."
-}
-```
-
-다음 중 하나라도 해당하면 401이다: cookie가 없음, 토큰이 DB에 없음(형식 오류/위조), 만료, 이미 폐기됨.
-
-**재사용 탐지**: 이미 rotate로 폐기된 토큰이 다시 제시되면 탈취로 간주해 같은 family(최초 로그인/가입부터
-이어진 rotate 체인)의 미만료 토큰을 전부 폐기한다 — 방금 발급된 최신 토큰도 함께 무효화되어 사용자는
-재로그인해야 한다.
-
-**동시 요청**: 같은 refresh 토큰으로 동시에 여러 요청이 들어오면 DB row lock으로 직렬화되어 정확히 하나만
-200을 받는다. 나머지는 rotate된 토큰을 재사용한 것으로 판정되어 401 + family 폐기가 적용된다.
-
-#### Side effects
-
-- 기존 refresh 토큰 row를 `revoked_at`으로 폐기하고 `replaced_by_token_id`로 새 row를 가리킨다.
-- 새 refresh 토큰의 해시를 같은 family로 `refresh_tokens`에 1건 저장한다.
-- 재사용 탐지 시: 같은 `family_id`의 미만료 row를 전부 폐기한다.
-
-#### 멱등성
-
-멱등하지 않다 — 같은 refresh 토큰으로 두 번째 호출하면 첫 번째 호출에서 이미 rotate되어 401 + family
-폐기를 반환한다.
-
----
-
-## POST /api/auth/logout
-
-- 목적: 보유 중인 refresh 토큰을 폐기하고 cookie를 지운다.
-- 인증: 불필요
-
-### Request
-
-Headers/Cookie: `Cookie: refresh_token=...` (없어도 된다)
-
-Body: 없음
-
-### Responses
-
-##### 204 No Content
-
-cookie가 있었는지, 토큰이 이미 폐기됐었는지 여부와 무관하게 항상 204를 반환한다.
-`Set-Cookie: refresh_token=; Max-Age=0; Path=/api/auth`로 cookie를 지운다.
-
----
-
-## GET /api/users/me
-
-- 목적: 로그인한 사용자 본인 정보와 온보딩 완료 여부를 조회한다.
-- 인증: Bearer JWT required
-- 권한: 본인 리소스
-
-### Request
-
-Headers:
-
-| 이름 | 값 | 필수 |
+| 필드 | 타입 | 설명 |
 |---|---|---|
-| Authorization | Bearer `{accessToken}` | O |
+| `user.profileImage` | `string?` | MVP에서는 항상 `null` |
+| `expiresInSeconds` | `number` | access token 수명(초) |
+| `onboardingCompleted` | `boolean` | 최신 완료 온보딩 제출이 있으면 `true`. 프론트는 이 값으로 첫 화면(온보딩/메인)을 정한다 |
 
-### Responses
+**오류 코드**
 
-##### 200 OK
+| code | HTTP | 상황 |
+|---|---:|---|
+| `AUTH_DUPLICATE_EMAIL` | 409 | 정규화 후 이미 사용 중인 이메일 |
+| `AUTH_INVALID_CREDENTIALS` | 401 | 이메일 없음 또는 비밀번호 불일치(구분하지 않음) |
+| `AUTH_INVALID_REFRESH_TOKEN` | 401 | refresh cookie 없음·위조·만료·폐기·재사용 |
+| `AUTH_UNAUTHENTICATED` | 401 | access token 없음·무효 |
+| `AUTH_USER_NOT_FOUND` | 404 | 토큰의 사용자가 삭제됨 |
 
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "nickname": "tester",
-  "profileImage": null,
-  "onboardingCompleted": false
-}
+---
+
+### 1-1. 회원가입
+
+> `호출: 공개` · `✅ 구현`
+
+```
+POST /api/auth/signup
 ```
 
-`onboardingCompleted`는 온보딩 모듈(WORK-02)이 아직 구현되지 않아 항상 `false`다.
-
-##### 401 Unauthorized
-
-인증 토큰이 없거나 유효하지 않다.
+**Request Body**
 
 ```json
-{
-  "status": 401,
-  "code": "AUTH_UNAUTHENTICATED",
-  "message": "로그인이 필요합니다."
-}
+{"email": "user@example.com", "password": "password123", "nickname": "tester"}
 ```
 
-#### Related
+| 필드 | 타입 | 필수 | 제약 |
+|---|---|---|---|
+| `email` | `string` | 예 | trim+lowercase 정규화, 이메일 형식, 최대 190자, 정규화 후 중복 불가 |
+| `password` | `string` | 예 | 8~64자이며 UTF-8 72byte 이하. BCrypt 해시로만 저장 |
+| `nickname` | `string` | 예 | trim 후 1~30자 |
 
-- [작업 명세](../features/auth-login-signup.md)
-- [사용자 정보 주입](../conventions/유저-정보-주입.md)
+**Response `201 Created`** — `AuthResponse` + refresh cookie
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 형식 오류(필드별 한글 메시지) | 400 | `COMMON_INVALID_REQUEST` |
+| 이메일 중복 | 409 | `AUTH_DUPLICATE_EMAIL` |
+
+**Side effects** — `users` 1건, 새 family의 `refresh_tokens` 해시 1건 생성.
+
+---
+
+### 1-2. 로그인
+
+> `호출: 공개` · `✅ 구현`
+
+```
+POST /api/auth/login
+```
+
+**Request Body**
+
+```json
+{"email": "user@example.com", "password": "password123"}
+```
+
+`email`은 가입과 같은 방식으로 정규화해 비교한다.
+
+**Response `200 OK`** — `AuthResponse` + refresh cookie
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 이메일 없음·비밀번호 불일치 | 401 | `AUTH_INVALID_CREDENTIALS` |
+
+두 경우 모두 같은 메시지 "이메일 또는 비밀번호가 올바르지 않습니다."를 반환해 계정 존재 여부를 숨긴다.
+
+**Side effects** — 새 family의 `refresh_tokens` 해시 1건 생성.
+
+---
+
+### 1-3. 토큰 갱신
+
+> `호출: refresh cookie` · `✅ 구현`
+
+```
+POST /api/auth/refresh
+```
+
+요청 body 없음. 브라우저가 `refresh_token` cookie를 자동으로 보낸다.
+
+**Response `200 OK`** — 새 `AuthResponse` + 회전된 refresh cookie. 이전 refresh token은 즉시 폐기된다.
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| cookie 없음·위조·만료·폐기 | 401 | `AUTH_INVALID_REFRESH_TOKEN` |
+
+- **재사용 탐지**: 이미 회전으로 폐기된 token이 다시 오면 탈취로 보고 같은 family의 미만료 token을 모두 폐기한다. 방금 발급된 최신 token도 무효가 되어 재로그인해야 한다.
+- **동시 요청**: 같은 token의 동시 요청은 row lock으로 직렬화된다. 정확히 하나만 200이고, 나머지는 재사용으로 판정되어 401과 family 폐기가 적용된다.
+- **멱등성**: 없다. 같은 token의 두 번째 호출은 401이다.
+- 프론트는 access 만료로 401을 받으면 이 API를 한 번 호출하고 원 요청을 재시도한다. 이 API도 401이면 로그인 화면으로 보낸다.
+
+**Side effects** — 기존 row에 `revoked_at`·`replaced_by_token_id` 기록, 같은 family로 새 row 1건 생성.
+
+---
+
+### 1-4. 로그아웃
+
+> `호출: 공개` · `✅ 구현`
+
+```
+POST /api/auth/logout
+```
+
+요청 body 없음. cookie가 없어도 된다.
+
+**Response `204 No Content`** — cookie 유무·폐기 여부와 관계없이 항상 204. `Set-Cookie: refresh_token=; Max-Age=0; Path=/api/auth`로 cookie를 지운다.
+
+---
+
+### 1-5. 내 정보
+
+> `호출: 회원` · `✅ 구현`
+
+```
+GET /api/users/me
+```
+
+**Response `200 OK`**
+
+```json
+{"id": 1, "email": "user@example.com", "nickname": "tester", "profileImage": null, "onboardingCompleted": true}
+```
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 토큰 없음·무효 | 401 | `AUTH_UNAUTHENTICATED` |
+| 토큰의 사용자가 없음 | 404 | `AUTH_USER_NOT_FOUND` |

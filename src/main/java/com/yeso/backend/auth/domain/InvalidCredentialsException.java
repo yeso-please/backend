@@ -4,7 +4,7 @@ import com.yeso.backend.shared.exception.ErrorCode;
 
 /**
  * 이메일 미존재와 비밀번호 불일치를 구분하지 않고 같은 메시지로 응답한다
- * (계정 존재 여부 노출 방지, docs/FEATURE-SPEC.md §1.2).
+ * (계정 존재 여부 노출 방지).
  */
 public class InvalidCredentialsException extends AuthException {
     public InvalidCredentialsException() {

@@ -3,6 +3,7 @@ package com.yeso.backend.profile.infrastructure;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ class HttpEmbeddingClientTest {
     }
 
     @Test
+    @DisplayName("서버가 500을 주면 HTTP_500 코드의 일시 장애 예외를 던진다")
     void embed_serverReturns500_throwsTransientExceptionWithHttpErrorCode() throws IOException {
         server.createContext("/embeddings", exchange -> {
             byte[] body = "{}".getBytes();
@@ -49,6 +51,7 @@ class HttpEmbeddingClientTest {
     }
 
     @Test
+    @DisplayName("서버가 400을 주면 HTTP_400 코드의 영구 실패 예외를 던진다")
     void embed_serverReturns400_throwsPermanentExceptionWithHttpErrorCode() throws IOException {
         server.createContext("/embeddings", exchange -> {
             byte[] body = "{}".getBytes();

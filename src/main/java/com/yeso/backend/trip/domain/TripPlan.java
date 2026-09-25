@@ -2,6 +2,7 @@ package com.yeso.backend.trip.domain;
 
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,11 +20,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 /**
- * 여행 방. 지역 추첨 전에는 region이 null인 DRAFT다(WORK-03). 확정(WORK-08) 이후에는
- * CONFIRMED로 바뀌고 context(날짜/이동수단/출발지) 수정이 잠긴다({@link #isMutable()}).
+ * 여행 방. 만드는 순간 기간을 차지하며 날짜는 바꿀 수 없다(2026-09-24 정책). 지역은 지역 정하기(API 3-7)가
+ * 정하기 전까지 null이다. {@code ownerUser}는 만든 사람이며 권한 차이는 없다 — 참여 여부는
+ * {@link TripParticipant}가 판정한다. 확정 단계가 없어 {@code status}는 항상 DRAFT로 남는다.
  *
  * {@code version}은 낙관적 잠금이다 — 동시에 두 PATCH가 들어오면 하나는
  * {@code TRIP_VERSION_CONFLICT}로 거부돼야 하므로 JPA {@link Version}을 그대로 쓴다.
@@ -33,7 +34,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TripPlan {
+public class TripPlan extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -70,15 +71,17 @@ public class TripPlan {
     @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
+    /** 지역을 정한 방식(RANDOM·CONDITIONAL·MANUAL). 지역 정하기(API 3-7)가 채운다. */
+    @Column(name = "region_selection", length = 20)
+    private String regionSelection;
+
+    /** 지역을 정할 때 쓴 일정 밀도(RELAXED·PACKED). 지역 정하기(API 3-7)가 채운다. */
+    @Column(name = "schedule_density", length = 20)
+    private String scheduleDensity;
+
     @Version
     @Column(nullable = false)
     private int version;
-
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
 
     public TripPlan(User ownerUser, LocalDate startDate, int nights, Transport transport, Double originLat, Double originLng) {
         this.ownerUser = ownerUser;
@@ -93,20 +96,22 @@ public class TripPlan {
         return (int) java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate);
     }
 
-    public boolean isMutable() {
-        return status == TripPlanStatus.DRAFT;
+    /** 종료일이 오늘보다 앞이면 끝난 여행이다(오늘이 종료일이면 아직 진행 중). */
+    public boolean isEnded(LocalDate today) {
+        return endDate.isBefore(today);
     }
 
-    public boolean isOwnedBy(Long userId) {
+    public boolean isCreatedBy(Long userId) {
         return ownerUser.getId().equals(userId);
     }
 
-    public void updateContext(LocalDate startDate, int nights, Transport transport, Double originLat, Double originLng) {
-        applyDates(startDate, nights);
-        this.transport = transport;
+    /** 날짜는 바꿀 수 없다. 이동수단은 null이면 유지하고, 출발지는 그대로 덮어쓴다(둘 다 null이면 삭제). */
+    public void updateTransportAndOrigin(Transport transport, Double originLat, Double originLng) {
+        if (transport != null) {
+            this.transport = transport;
+        }
         this.originLat = originLat;
         this.originLng = originLng;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public boolean overlaps(LocalDate otherStart, LocalDate otherEnd) {

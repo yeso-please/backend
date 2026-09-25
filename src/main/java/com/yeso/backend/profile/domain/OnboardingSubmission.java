@@ -22,9 +22,7 @@ import java.util.UUID;
 
 /**
  * 온보딩 제출은 immutable이다 — 재검사는 새 row를 만들고
- * {@link User#getLatestOnboardingSubmissionId()}(또는 guest participant의 pointer)만 바꾼다.
- * user 또는 guest participant 중 정확히 하나에 귀속하며(DB CHECK), 이번 범위는 user 소유만 다룬다
- * (guest는 WORK-04 invite 세션이 있어야 가능).
+ * {@link User#getLatestOnboardingSubmissionId()}만 바꾼다. 회원에게만 귀속한다.
  */
 @Entity
 @Table(name = "onboarding_submissions")
@@ -37,11 +35,8 @@ public class OnboardingSubmission {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-    @Column(name = "guest_participant_id")
-    private Long guestParticipantId;
 
     @Column(name = "question_version", nullable = false, length = 50)
     private String questionVersion;

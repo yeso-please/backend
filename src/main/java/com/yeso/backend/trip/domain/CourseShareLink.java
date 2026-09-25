@@ -3,8 +3,6 @@ package com.yeso.backend.trip.domain;
 import com.yeso.backend.auth.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,9 +17,8 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 확정 일정 공유 링크. "course"라는 별도 엔티티는 아직 없어(WORK-06/07/08 이전) 확정된
- * {@link TripPlan} 자체를 공유 대상으로 삼는다 — 표에 남은 컬럼명(`course_share_links`,
- * `trip_plan_id`)이 이 사실을 그대로 보여준다.
+ * 참여하지 않은 사람에게 코스를 읽기 전용으로 보여주는 링크. 코스는 여행의 일정이므로
+ * (course id = trip id) {@link TripPlan}을 공유 대상으로 삼는다.
  */
 @Entity
 @Table(name = "course_share_links")
@@ -41,9 +38,6 @@ public class CourseShareLink {
     @Column(name = "token_hash", nullable = false, unique = true)
     private String tokenHash;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private SharePermission permission;
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
@@ -59,12 +53,10 @@ public class CourseShareLink {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public CourseShareLink(
-            TripPlan tripPlan, String tokenHash, SharePermission permission,
-            LocalDateTime expiresAt, User createdByUser) {
+            TripPlan tripPlan, String tokenHash, LocalDateTime expiresAt, User createdByUser) {
         this.tripPlan = tripPlan;
         this.tokenHash = tokenHash;
-        this.permission = permission;
-        this.expiresAt = expiresAt;
+                this.expiresAt = expiresAt;
         this.createdByUser = createdByUser;
     }
 
@@ -76,11 +68,8 @@ public class CourseShareLink {
         return revokedAt != null;
     }
 
-    public void revoke() {
-        this.revokedAt = LocalDateTime.now();
+    public void revoke(LocalDateTime now) {
+        this.revokedAt = now;
     }
 
-    public void changePermission(SharePermission permission) {
-        this.permission = permission;
-    }
 }

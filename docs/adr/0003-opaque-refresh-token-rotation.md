@@ -3,12 +3,12 @@
 - 상태: accepted
 - 결정일: 2026-09-21
 - 결정자: 인증 모듈 WORK-01 정합화(claude)
-- 관련 작업: [회원가입/로그인/인증 모듈](../features/auth-login-signup.md)
+- 관련 작업: [회원가입/로그인/인증 모듈](../archive/features/auth-login-signup.md)
 - 대체 문서: [0001. Refresh 토큰: 서명된 JWT + 서버측 해시 대조로 rotate/revoke](0001-jwt-refresh-token-rotation.md)
 
 ## Context and Problem Statement
 
-[`docs/mvp/implementation-workpack.md`](../mvp/implementation-workpack.md)의 WORK-01은 refresh 토큰을
+[`docs/archive/implementation-workpack.md`](../archive/implementation-workpack.md)의 WORK-01은 refresh 토큰을
 "256 bit 이상 opaque token"으로, 전달 방식을 `refresh_token` HttpOnly cookie로 명시한다. 기존 구현(PR #8,
 ADR-0001)은 refresh도 access와 동일하게 서명된 JWT로 발급하고 body로 반환했다 — 작업서 계약과 두 지점에서
 어긋난다.

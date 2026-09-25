@@ -1,7 +1,7 @@
 package com.yeso.backend.profile.domain;
 
 /**
- * 여행 MBTI 4축. 동점 시 뒤 글자(second)를 채택한다(docs/mvp/onboarding-questionnaire.md).
+ * 여행 MBTI 4축. 동점 시 뒤 글자(second)를 채택한다(docs/api/profile.md 부록).
  * 최종 코드는 {@link #EI}+{@link #SN}+{@link #TF}+{@link #JP} 순서로 합성한다.
  */
 public enum OnboardingAxis {

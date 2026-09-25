@@ -1,29 +1,30 @@
 package com.yeso.backend.trip.application.invite;
 
+import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.auth.domain.UserNotFoundException;
+import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.trip.domain.CourseShareLink;
-import com.yeso.backend.trip.domain.InsufficientSharePermissionException;
-import com.yeso.backend.trip.domain.InvalidExpiresInDaysException;
+import com.yeso.backend.shared.token.InvalidExpiresInDaysException;
 import com.yeso.backend.trip.domain.ShareLinkExpiredException;
 import com.yeso.backend.trip.domain.ShareLinkNotFoundException;
 import com.yeso.backend.trip.domain.ShareLinkRevokedException;
-import com.yeso.backend.trip.domain.SharePermission;
 import com.yeso.backend.trip.domain.ShareSession;
 import com.yeso.backend.trip.domain.ShareSessionInvalidException;
-import com.yeso.backend.trip.domain.TokenAudience;
+import com.yeso.backend.shared.token.TokenAudience;
 import com.yeso.backend.trip.infrastructure.CourseShareLinkRepository;
-import com.yeso.backend.trip.infrastructure.OpaqueTokenGenerator;
+import com.yeso.backend.shared.token.OpaqueTokenGenerator;
 import com.yeso.backend.trip.infrastructure.ShareSessionRepository;
 import com.yeso.backend.trip.presentation.invite.CreateShareLinkRequest;
-import com.yeso.backend.trip.presentation.invite.PatchShareLinkRequest;
 import com.yeso.backend.trip.presentation.invite.ShareLinkResponse;
-import com.yeso.backend.trip.presentation.invite.ShareLinkSummaryResponse;
+import com.yeso.backend.trip.presentation.invite.LinkSummaryResponse;
 import com.yeso.backend.trip.presentation.invite.SharedCourseViewResponse;
-import com.yeso.backend.trip.application.TripService;
+import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPlan;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -38,41 +39,39 @@ public class ShareLinkService {
 
     private final CourseShareLinkRepository shareLinkRepository;
     private final ShareSessionRepository shareSessionRepository;
+    private final UserRepository userRepository;
     private final TripService tripService;
     private final OpaqueTokenGenerator tokenGenerator;
+    private final Clock clock;
 
-    public ShareLinkResponse create(Long ownerId, Long tripId, CreateShareLinkRequest request) {
-        TripPlan tripPlan = tripService.requireOwnedTrip(ownerId, tripId);
-        SharePermission permission = SharePermission.parse(request.permission());
+    public ShareLinkResponse create(Long userId, Long tripId, CreateShareLinkRequest request) {
+        TripPlan tripPlan = tripService.requireParticipantTrip(userId, tripId);
         int expiresInDays = resolveExpiresInDays(request.expiresInDays());
+        User creator = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 
         String token = tokenGenerator.generate(TokenAudience.SHARE_LINK);
         CourseShareLink link = new CourseShareLink(
-                tripPlan, tokenGenerator.hash(token), permission,
-                LocalDateTime.now().plusDays(expiresInDays), tripPlan.getOwnerUser());
+                tripPlan, tokenGenerator.hash(token), LocalDateTime.now(clock).plusDays(expiresInDays), creator);
         shareLinkRepository.save(link);
 
         return ShareLinkResponse.of(link, token);
     }
 
     @Transactional(readOnly = true)
-    public List<ShareLinkSummaryResponse> list(Long ownerId, Long tripId) {
-        tripService.requireOwnedTrip(ownerId, tripId);
+    public List<LinkSummaryResponse> list(Long userId, Long tripId) {
+        tripService.requireParticipantTrip(userId, tripId);
         return shareLinkRepository.findByTripPlanIdOrderByCreatedAtDesc(tripId).stream()
-                .map(ShareLinkSummaryResponse::from)
+                .map(LinkSummaryResponse::from)
                 .toList();
     }
 
-    public ShareLinkSummaryResponse patch(Long ownerId, Long tripId, Long linkId, PatchShareLinkRequest request) {
-        tripService.requireOwnedTrip(ownerId, tripId);
+    /** 폐기하면 이미 발급된 share session도 다음 요청부터 무효다. */
+    public void revoke(Long userId, Long tripId, Long linkId) {
+        tripService.requireParticipantTrip(userId, tripId);
         CourseShareLink link = requireLinkOfTrip(tripId, linkId);
-        if (request.permission() != null) {
-            link.changePermission(SharePermission.parse(request.permission()));
+        if (!link.isRevoked()) {
+            link.revoke(LocalDateTime.now(clock));
         }
-        if (Boolean.TRUE.equals(request.revoked())) {
-            link.revoke();
-        }
-        return ShareLinkSummaryResponse.from(link);
     }
 
     /** @return 발급한 share session opaque token(원문). 컨트롤러가 cookie로 감싼다. */
@@ -80,7 +79,7 @@ public class ShareLinkService {
         CourseShareLink link = requireActiveLink(token);
         String sessionToken = tokenGenerator.generate(TokenAudience.SHARE_SESSION);
         shareSessionRepository.save(new ShareSession(
-                link, tokenGenerator.hash(sessionToken), LocalDateTime.now().plusHours(2)));
+                link, tokenGenerator.hash(sessionToken), LocalDateTime.now(clock).plusHours(2)));
         return sessionToken;
     }
 
@@ -89,22 +88,8 @@ public class ShareLinkService {
         CourseShareLink link = requireActiveSessionLink(shareSessionToken);
         TripPlan tripPlan = link.getTripPlan();
         return new SharedCourseViewResponse(
-                tripPlan.getId(), link.getPermission().name(), tripPlan.getStatus().name(),
+                tripPlan.getId(), SharedCourseViewResponse.VIEWER,
                 tripPlan.getStartDate(), tripPlan.getEndDate(), List.of());
-    }
-
-    /**
-     * 공유 세션으로 편집을 시도할 때 쓰는 공개 계약이다. 장소·순서·식당 수정은 WORK-07/08이
-     * 구현하므로 여기서는 "이 세션이 그 수정을 해도 되는가"만 판정해 대상 trip을 돌려준다.
-     * 날짜·소유자·참여자·공유 권한 변경은 EDIT 세션으로도 불가하며 owner 전용 API만 다룬다.
-     */
-    @Transactional(readOnly = true)
-    public TripPlan requireEditableSession(String shareSessionToken) {
-        CourseShareLink link = requireActiveSessionLink(shareSessionToken);
-        if (!link.getPermission().allowsEdit()) {
-            throw new InsufficientSharePermissionException();
-        }
-        return link.getTripPlan();
     }
 
     /** 세션 자체의 유효성과 뒤에 있는 링크의 폐기·만료를 함께 본다 — 링크를 끊으면 세션도 죽는다. */
@@ -115,14 +100,14 @@ public class ShareLinkService {
         tokenGenerator.requireAudience(shareSessionToken, TokenAudience.SHARE_SESSION);
         ShareSession session = shareSessionRepository.findBySessionTokenHash(tokenGenerator.hash(shareSessionToken))
                 .orElseThrow(ShareSessionInvalidException::new);
-        if (!session.isActive(LocalDateTime.now())) {
+        if (!session.isActive(LocalDateTime.now(clock))) {
             throw new ShareSessionInvalidException();
         }
         CourseShareLink link = session.getShareLink();
         if (link.isRevoked()) {
             throw new ShareLinkRevokedException();
         }
-        if (!link.isActive(LocalDateTime.now())) {
+        if (!link.isActive(LocalDateTime.now(clock))) {
             throw new ShareLinkExpiredException();
         }
         return link;
@@ -135,7 +120,7 @@ public class ShareLinkService {
         if (link.isRevoked()) {
             throw new ShareLinkRevokedException();
         }
-        if (!link.isActive(LocalDateTime.now())) {
+        if (!link.isActive(LocalDateTime.now(clock))) {
             throw new ShareLinkExpiredException();
         }
         return link;

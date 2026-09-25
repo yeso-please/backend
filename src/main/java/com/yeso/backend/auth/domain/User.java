@@ -42,7 +42,7 @@ public class User extends BaseTimeEntity {
     @Column(name = "profile_image")
     private String profileImage;
 
-    /** 온보딩(WORK-02) 재검사 시 이 pointer만 최신 submission으로 바꾼다 — 이전 제출은 immutable로 남는다. */
+    /** 온보딩 재검사 시 이 pointer만 최신 submission으로 바꾼다 — 이전 제출은 immutable로 남는다. */
     @Column(name = "latest_onboarding_submission_id")
     private UUID latestOnboardingSubmissionId;
 
@@ -50,5 +50,10 @@ public class User extends BaseTimeEntity {
         this.email = email;
         this.passwordHash = passwordHash;
         this.nickname = nickname;
+    }
+
+    /** 최초 설문을 한 번이라도 제출했으면 true다(docs/api/auth.md 1-5). */
+    public boolean isOnboardingCompleted() {
+        return latestOnboardingSubmissionId != null;
     }
 }
