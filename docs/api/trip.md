@@ -555,7 +555,7 @@ POST /api/invites/{token}/accept
 
 ### 4-6. 친구 초대
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/trips/{tripId}/friend-invites
@@ -594,7 +594,7 @@ POST /api/trips/{tripId}/friend-invites
 
 ### 4-7. 받은 초대 목록
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/me/trip-invites
@@ -615,7 +615,7 @@ GET /api/me/trip-invites
 
 ### 4-8. 받은 초대 수락·거절
 
-> `호출: 회원(초대받은 사람)` · `⬜ 미구현`
+> `호출: 회원(초대받은 사람)` · `✅ 구현`
 
 ```
 POST /api/me/trip-invites/{id}/accept
@@ -757,7 +757,7 @@ GET /api/shared/courses
 
 ### 4-14. 보낸 친구 초대 목록
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/trips/{tripId}/friend-invites
@@ -782,7 +782,7 @@ GET /api/trips/{tripId}/friend-invites
 
 ### 4-15. 친구 초대 취소
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 DELETE /api/trips/{tripId}/friend-invites/{inviteId}

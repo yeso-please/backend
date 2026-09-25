@@ -198,16 +198,16 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [4-3](trip.md#4-3-초대-링크-폐기) | DELETE | `/trips/{tripId}/invites/{inviteId}` | 참여자 | 초대 링크 폐기 | MVP |
 | ✅ | [4-4](trip.md#4-4-초대-링크-미리보기) | GET | `/invites/{token}` | 공개 | 초대 미리보기 | MVP |
 | ✅ | [4-5](trip.md#4-5-초대-링크-수락) | POST | `/invites/{token}/accept` | 회원 | 초대 링크 수락 | MVP |
-| ⬜ | [4-6](trip.md#4-6-친구-초대) | POST | `/trips/{tripId}/friend-invites` | 참여자 | 친구 직접 초대 | MVP |
-| ⬜ | [4-7](trip.md#4-7-받은-초대-목록) | GET | `/me/trip-invites` | 회원 | 받은 초대 | MVP |
-| ⬜ | [4-8](trip.md#4-8-받은-초대-수락거절) | POST | `/me/trip-invites/{id}/accept`·`/decline` | 회원 | 받은 초대 수락·거절 | MVP |
+| ✅ | [4-6](trip.md#4-6-친구-초대) | POST | `/trips/{tripId}/friend-invites` | 참여자 | 친구 직접 초대 | MVP |
+| ✅ | [4-7](trip.md#4-7-받은-초대-목록) | GET | `/me/trip-invites` | 회원 | 받은 초대 | MVP |
+| ✅ | [4-8](trip.md#4-8-받은-초대-수락거절) | POST | `/me/trip-invites/{id}/accept`·`/decline` | 회원 | 받은 초대 수락·거절 | MVP |
 | ✅ | [4-9](trip.md#4-9-공유-링크-발급) | POST | `/courses/{tripId}/share-links` | 참여자 | 읽기 전용 공유 링크 | MVP |
 | ✅ | [4-10](trip.md#4-10-공유-링크-목록) | GET | `/courses/{tripId}/share-links` | 참여자 | 공유 링크 목록 | MVP |
 | ✅ | [4-11](trip.md#4-11-공유-링크-폐기) | DELETE | `/courses/{tripId}/share-links/{linkId}` | 참여자 | 공유 링크 폐기 | MVP |
 | ✅ | [4-12](trip.md#4-12-공유-링크-열기) | GET | `/shared/courses/{token}` | 공개 | cookie 교환·303 | MVP |
 | 🔧 | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) | MVP |
-| ⬜ | [4-14](trip.md#4-14-보낸-친구-초대-목록) | GET | `/trips/{tripId}/friend-invites` | 참여자 | 보낸 친구 초대 목록 | MVP |
-| ⬜ | [4-15](trip.md#4-15-친구-초대-취소) | DELETE | `/trips/{tripId}/friend-invites/{inviteId}` | 참여자 | 친구 초대 취소 | MVP |
+| ✅ | [4-14](trip.md#4-14-보낸-친구-초대-목록) | GET | `/trips/{tripId}/friend-invites` | 참여자 | 보낸 친구 초대 목록 | MVP |
+| ✅ | [4-15](trip.md#4-15-친구-초대-취소) | DELETE | `/trips/{tripId}/friend-invites/{inviteId}` | 참여자 | 친구 초대 취소 | MVP |
 | ⬜ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
 | ⬜ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
 | ⬜ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
