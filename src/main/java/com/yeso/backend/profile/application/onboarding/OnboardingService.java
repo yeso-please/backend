@@ -1,4 +1,4 @@
-package com.yeso.backend.profile.application;
+package com.yeso.backend.profile.application.onboarding;
 
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
@@ -29,12 +29,12 @@ import com.yeso.backend.profile.infrastructure.LikedTripRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingAnswerRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingSubmissionRepository;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
-import com.yeso.backend.profile.presentation.AnswerRequest;
-import com.yeso.backend.profile.presentation.LikedTripRequest;
-import com.yeso.backend.profile.presentation.OnboardingMeResponse;
-import com.yeso.backend.profile.presentation.OnboardingQuestionsResponse;
-import com.yeso.backend.profile.presentation.OnboardingSubmissionRequest;
-import com.yeso.backend.profile.presentation.OnboardingSubmissionResponse;
+import com.yeso.backend.profile.presentation.onboarding.AnswerRequest;
+import com.yeso.backend.profile.presentation.onboarding.LikedTripRequest;
+import com.yeso.backend.profile.presentation.onboarding.OnboardingMeResponse;
+import com.yeso.backend.profile.presentation.onboarding.OnboardingQuestionsResponse;
+import com.yeso.backend.profile.presentation.onboarding.OnboardingSubmissionRequest;
+import com.yeso.backend.profile.presentation.onboarding.OnboardingSubmissionResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;

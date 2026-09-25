@@ -50,6 +50,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/onboarding/questions").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/invites/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/friend-links/by-token/*").permitAll()
                         // share session은 HttpOnly cookie로 검증한다.
                         .requestMatchers(HttpMethod.GET, "/api/shared/courses/**").permitAll()
                         .anyRequest().authenticated())

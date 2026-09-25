@@ -1,4 +1,4 @@
-package com.yeso.backend.profile.application;
+package com.yeso.backend.profile.application.onboarding;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.profile.domain.UserTasteVector;

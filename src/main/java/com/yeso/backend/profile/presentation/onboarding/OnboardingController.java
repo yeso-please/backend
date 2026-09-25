@@ -1,9 +1,9 @@
-package com.yeso.backend.profile.presentation;
+package com.yeso.backend.profile.presentation.onboarding;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
-import com.yeso.backend.profile.application.OnboardingService;
+import com.yeso.backend.profile.application.onboarding.OnboardingService;
 import com.yeso.backend.shared.web.CurrentUserId;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

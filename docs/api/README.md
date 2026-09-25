@@ -177,13 +177,13 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [2-1](profile.md#2-1-온보딩-질문) | GET | `/onboarding/questions` | 공개 | 질문·태그 사전 | MVP |
 | ✅ | [2-2](profile.md#2-2-온보딩-제출) | POST | `/onboarding/submissions` | 회원 | 제출·재검사 | MVP |
 | ✅ | [2-3](profile.md#2-3-내-온보딩-결과) | GET | `/onboarding/me` | 회원 | 최신 제출 | MVP |
-| ⬜ | [2-4](profile.md#2-4-친구-초대-링크-발급) | POST | `/friend-links` | 회원 | 친구 초대 링크 발급 | MVP |
-| ⬜ | [2-5](profile.md#2-5-내-친구-초대-링크-목록) | GET | `/friend-links` | 회원 | 내 친구 초대 링크 목록 | MVP |
-| ⬜ | [2-6](profile.md#2-6-친구-초대-링크-폐기) | DELETE | `/friend-links/{id}` | 회원 | 링크 폐기 | MVP |
-| ⬜ | [2-7](profile.md#2-7-친구-초대-링크-미리보기) | GET | `/friend-links/by-token/{token}` | 공개 | 보낸 사람 미리보기 | MVP |
-| ⬜ | [2-8](profile.md#2-8-친구-초대-수락) | POST | `/friend-links/by-token/{token}/accept` | 회원 | 수락 → 바로 친구 | MVP |
-| ⬜ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 | MVP |
-| ⬜ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 | MVP |
+| ✅ | [2-4](profile.md#2-4-친구-초대-링크-발급) | POST | `/friend-links` | 회원 | 친구 초대 링크 발급 | MVP |
+| ✅ | [2-5](profile.md#2-5-내-친구-초대-링크-목록) | GET | `/friend-links` | 회원 | 내 친구 초대 링크 목록 | MVP |
+| ✅ | [2-6](profile.md#2-6-친구-초대-링크-폐기) | DELETE | `/friend-links/{id}` | 회원 | 링크 폐기 | MVP |
+| ✅ | [2-7](profile.md#2-7-친구-초대-링크-미리보기) | GET | `/friend-links/by-token/{token}` | 공개 | 보낸 사람 미리보기 | MVP |
+| ✅ | [2-8](profile.md#2-8-친구-초대-수락) | POST | `/friend-links/by-token/{token}/accept` | 회원 | 수락 → 바로 친구 | MVP |
+| ✅ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 | MVP |
+| ✅ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 | MVP |
 | ✅ | [3-1](trip.md#3-1-선택-불가-날짜) | GET | `/trips/unavailable-dates` | 회원 | 내 여행·참여 여행 날짜 | MVP |
 | 🔧 | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인·추첨 가능 지역 수 | MVP |
 | ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
