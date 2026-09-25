@@ -68,3 +68,15 @@ embedding:
   retry-backoff-seconds: 30
   retry-sweep-enabled: true
   retry-sweep-interval-ms: 30000
+
+# ----- 식당 추천·검색·선택(docs/api/trip.md 5-3·5-5·5-6) -----
+# 비밀값은 커밋하지 않는다. ./config/application-secret.yaml 또는 환경변수로 넣는다.
+# 비어 있어도 기동은 되고, 식당 선택 토큰 발급·검증과 카카오 검색만 실패한다.
+course:
+  restaurant:
+    selection-secret: ${COURSE_RESTAURANT_SELECTION_SECRET:}
+    kakao:
+      base-url: https://dapi.kakao.com
+      rest-api-key: ${KAKAO_REST_API_KEY:}
+      timeout-millis: 3000
+      default-retry-after-seconds: 60

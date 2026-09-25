@@ -1,6 +1,7 @@
 package com.yeso.backend.support;
 
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,12 +41,16 @@ public abstract class IntegrationTest {
     protected FakeEmbeddingClient fakeEmbeddingClient;
 
     @Autowired
+    protected FakeKakaoLocalClient fakeKakaoLocalClient;
+
+    @Autowired
     private DatabaseCleaner databaseCleaner;
 
     @AfterEach
     void resetSharedState() {
         databaseCleaner.truncateAll();
         fakeEmbeddingClient.reset();
+        fakeKakaoLocalClient.reset();
         clock.reset();
     }
 }

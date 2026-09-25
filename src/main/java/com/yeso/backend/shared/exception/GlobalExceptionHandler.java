@@ -1,6 +1,7 @@
 package com.yeso.backend.shared.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -29,9 +30,11 @@ public class GlobalExceptionHandler {
     ) {
         ErrorCode errorCode = exception.getErrorCode();
         log.warn("Domain exception code={}: {}", errorCode.code(), exception.getMessage());
-        return ResponseEntity.status(errorCode.status())
-                .body(ApiErrorResponse.of(
-                        errorCode, exception.getMessage(), request.getRequestURI(), exception.getDetails()));
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(errorCode.status());
+        exception.getRetryAfter().ifPresent(
+                retryAfter -> response.header(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfter.toSeconds())));
+        return response.body(ApiErrorResponse.of(
+                errorCode, exception.getMessage(), request.getRequestURI(), exception.getDetails()));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})

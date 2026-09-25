@@ -30,6 +30,31 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("재시도 시간이 있는 도메인 예외면 Retry-After 헤더(초)를 싣는다")
+    void domainException_withRetryAfter_setsRetryAfterHeader() {
+        DomainException exception = new TestDomainException(ErrorCode.COURSE_KAKAO_LOCAL_RATE_LIMITED, "호출 한도") {
+            @Override
+            public java.util.Optional<java.time.Duration> getRetryAfter() {
+                return java.util.Optional.of(java.time.Duration.ofSeconds(60));
+            }
+        };
+
+        var response = handler.handleDomainException(exception, request("/api/courses/1/restaurants/search"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("60");
+    }
+
+    @Test
+    @DisplayName("재시도 시간이 없으면 Retry-After 헤더가 없다")
+    void domainException_withoutRetryAfter_hasNoRetryAfterHeader() {
+        var response = handler.handleDomainException(
+                new TestDomainException(ErrorCode.USER_NOT_FOUND, "없음"), request("/api/example"));
+
+        assertThat(response.getHeaders().containsHeader("Retry-After")).isFalse();
+    }
+
+    @Test
     @DisplayName("검증 실패면 400 COMMON_INVALID_REQUEST와 fieldErrors를 담는다")
     void validationException_includesFieldErrors() {
         BeanPropertyBindingResult result = new BeanPropertyBindingResult(new Object(), "request");
