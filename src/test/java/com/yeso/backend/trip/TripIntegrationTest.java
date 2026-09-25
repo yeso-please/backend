@@ -120,7 +120,7 @@ class TripIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.scheduleDensity").isEmpty())
                     .andExpect(jsonPath("$.hasCourse").value(false))
                     .andExpect(jsonPath("$.version").value(0))
-                    .andExpect(jsonPath("$.dayWindows.length()").value(3))
+                    .andExpect(jsonPath("$.dayWindows").doesNotExist())
                     .andReturn();
 
             Long tripId = Long.valueOf(JsonPath.read(result.getResponse().getContentAsString(), "$.id").toString());

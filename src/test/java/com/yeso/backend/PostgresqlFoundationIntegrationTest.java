@@ -45,7 +45,7 @@ class PostgresqlFoundationIntegrationTest {
     Flyway flyway;
 
     @Test
-    @DisplayName("빈 PostgreSQL에 V1 전체 스키마를 생성하고 JPA 검증을 통과한다")
+    @DisplayName("빈 PostgreSQL에 전체 migration으로 핵심 테이블을 만들고 JPA 검증을 통과한다")
     void migration_emptyDatabase_createsWholeSchema() {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = true AND version = '1'", Integer.class);
@@ -56,7 +56,7 @@ class PostgresqlFoundationIntegrationTest {
                   AND table_name IN (
                     'users', 'regions', 'region_contents', 'attractions', 'attraction_images',
                     'official_courses', 'official_course_stops', 'trip_plans', 'trip_participants',
-                    'trip_stops', 'meal_stops', 'ingestion_runs', 'data_quality_issues'
+                    'course_items', 'course_meal_restaurants', 'ingestion_runs', 'data_quality_issues'
                   )
                 """, Integer.class);
 

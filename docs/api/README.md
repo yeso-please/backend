@@ -12,7 +12,7 @@
 | Content-Type | `application/json` (사진 업로드만 `multipart/form-data`) |
 | 성공 응답 | 래퍼 없이 데이터 직접 반환. 생성 `201`, 본문 없는 성공 `204` |
 | 오류 응답 | `{timestamp,status,code,message,path,fieldErrors?,details?}` ([공통 오류](#공통-오류)) |
-| 날짜·시각 | 날짜 `YYYY-MM-DD`, 일정 시각 `HH:mm`, 발급·만료·수정 시각 `YYYY-MM-DDTHH:mm:ss`. 모두 `Asia/Seoul` 기준이며 zone을 붙이지 않는다. 오류 응답의 `timestamp`만 UTC(`…Z`)다 |
+| 날짜·시각 | 날짜 `YYYY-MM-DD`, 발급·만료·수정 시각 `YYYY-MM-DDTHH:mm:ss`. 모두 `Asia/Seoul` 기준이며 zone을 붙이지 않는다. 오류 응답의 `timestamp`만 UTC(`…Z`)다 |
 | ID | 숫자 ID는 양의 정수. 문자열 ID: 지역 5자리 `SIG_CD`, 온보딩 제출 UUID, 코스 항목 `itemId`(`a-{n}`·`m-{n}`) |
 | 코스 식별자 | 코스는 여행의 일정이다. **course id = trip id** (`/courses/{tripId}`) |
 | 페이지네이션 | 지도 핀(7-3)은 cursor, 카카오 식당 검색(5-6)은 page. 나머지 목록은 전체 반환 |
@@ -119,7 +119,7 @@ Controller, validation, Security 계층이 모두 같은 모양을 쓴다. 구�
 3. `404` 존재·참여 여부 — `TRIP_NOT_FOUND`(비참여자에게는 존재를 숨긴다) → 하위 리소스(`COURSE_NOT_FOUND`, `COURSE_ITEM_NOT_FOUND`, `ATTRACTION_NOT_FOUND` 등)
 4. `409 TRIP_ENDED` — 종료된 여행의 변경
 5. `409 TRIP_VERSION_CONFLICT` — 버전 불일치
-6. 그 밖의 도메인 규칙 — `403`·`409`·`410`·`422` 등(예: `COURSE_CREATOR_ONLY`, `TRIP_CONTEXT_LOCKED`, `TRIP_REGION_NOT_SELECTED`, `COURSE_SCHEDULE_INFEASIBLE`)
+6. 그 밖의 도메인 규칙 — `403`·`409`·`410`·`422` 등(예: `COURSE_CREATOR_ONLY`, `TRIP_CONTEXT_LOCKED`, `TRIP_REGION_NOT_SELECTED`, `COURSE_INSUFFICIENT_CANDIDATES`)
 
 각 절의 오류 표는 이 순서로 정렬돼 있지 않을 수 있다. 표는 가능한 오류의 목록이고, 우선순위는 이 규칙을 따른다.
 
