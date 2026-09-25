@@ -330,7 +330,8 @@ class TripIntegrationTest extends IntegrationTest {
                                     """.formatted(base.plusDays(1))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.available").value(false))
-                    .andExpect(jsonPath("$.conflicts.length()").value(1));
+                    .andExpect(jsonPath("$.conflicts.length()").value(1))
+                    .andExpect(jsonPath("$.conflicts[0].title").value("10월 11일부터 3박 4일 여행"));
 
             mockMvc.perform(get("/api/trips").header("Authorization", ApiFixtures.bearer(token)))
                     .andExpect(jsonPath("$.length()").value(1));
@@ -561,11 +562,22 @@ class TripIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$[1].tripId").value(later))
                     .andExpect(jsonPath("$[0].participants.length()").value(1))
                     .andExpect(jsonPath("$[0].hasCourse").value(false))
-                    .andExpect(jsonPath("$[0].myDiaryId").isEmpty());
+                    .andExpect(jsonPath("$[0].myDiaryId").isEmpty())
+                    .andExpect(jsonPath("$[0].title").value("10월 31일부터 1박 2일 여행"));
 
             mockMvc.perform(get("/api/trips").param("period", "PAST").header("Authorization", ApiFixtures.bearer(token)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(0));
+        }
+
+        @Test
+        @DisplayName("코스 제목이 없는 당일치기 여행은 'M월 D일 당일 여행' 제목을 받는다")
+        void list_dayTripWithoutCourse_hasFallbackTitle() throws Exception {
+            String token = onboardedToken();
+            fixtures.createTrip(token, inDays(3), 0);
+
+            mockMvc.perform(get("/api/trips").header("Authorization", ApiFixtures.bearer(token)))
+                    .andExpect(jsonPath("$[0].title").value("10월 4일 당일 여행"));
         }
 
         @Test

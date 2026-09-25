@@ -86,6 +86,7 @@ public class InviteService {
         Region region = tripPlan.getRegion();
         return new InvitePublicSummaryResponse(
                 true,
+                tripPlan.displayTitle(),
                 tripPlan.getStartDate(),
                 tripPlan.getEndDate(),
                 region == null ? null : region.getProvince() + " " + region.getCity(),

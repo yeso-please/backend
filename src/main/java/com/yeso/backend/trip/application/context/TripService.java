@@ -14,6 +14,7 @@ import com.yeso.backend.trip.domain.TripDateOverlapException;
 import com.yeso.backend.trip.domain.TripDatesImmutableException;
 import com.yeso.backend.trip.domain.TripDayWindowCalculator;
 import com.yeso.backend.trip.domain.TripEndedException;
+import com.yeso.backend.trip.domain.TripFullException;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripParticipant;
 import com.yeso.backend.trip.domain.TripPeriod;
@@ -173,7 +174,7 @@ public class TripService {
     }
 
     /**
-     * 초대 수락이 재사용한다. 설문을 마친 회원만, 자기 여행과 날짜가 겹치지 않을 때 참여한다.
+     * 초대 수락이 재사용한다. 설문을 마친 회원만, 정원(8명) 미만이고 자기 여행과 날짜가 겹치지 않을 때 참여한다.
      *
      * @return 새로 참여했으면 true, 이미 참여 중이면 false(멱등)
      */
@@ -183,6 +184,10 @@ public class TripService {
         User user = lockOnboardedUser(userId);
         if (tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId)) {
             return false;
+        }
+        // 여행 행 잠금(lockById) 안에서 세므로 동시 수락으로 정원을 넘지 않는다.
+        if (tripParticipantRepository.countByTripPlanId(tripId) >= TripPlan.MAX_PARTICIPANTS) {
+            throw new TripFullException(tripId);
         }
         requireNoConflict(userId, tripPlan.getStartDate(), tripPlan.getEndDate());
         tripParticipantRepository.save(TripParticipant.member(tripPlan, user, invitationId));
