@@ -28,7 +28,7 @@ import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.LikedTripRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingAnswerRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingSubmissionRepository;
-import com.yeso.backend.profile.infrastructure.RegionRepository;
+import com.yeso.backend.attraction.infrastructure.RegionRepository;
 import com.yeso.backend.profile.presentation.AnswerRequest;
 import com.yeso.backend.profile.presentation.LikedTripRequest;
 import com.yeso.backend.profile.presentation.OnboardingMeResponse;
@@ -134,7 +134,7 @@ public class OnboardingService {
     @Transactional(readOnly = true)
     public OnboardingMeResponse getMe(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        if (user.getLatestOnboardingSubmissionId() == null) {
+        if (!user.isOnboardingCompleted()) {
             return OnboardingMeResponse.notSubmittedYet();
         }
         OnboardingSubmission submission = submissionRepository.findById(user.getLatestOnboardingSubmissionId())

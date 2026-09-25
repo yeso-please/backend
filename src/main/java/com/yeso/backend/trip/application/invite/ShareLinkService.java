@@ -4,26 +4,27 @@ import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.trip.domain.CourseShareLink;
-import com.yeso.backend.trip.domain.InvalidExpiresInDaysException;
+import com.yeso.backend.shared.token.InvalidExpiresInDaysException;
 import com.yeso.backend.trip.domain.ShareLinkExpiredException;
 import com.yeso.backend.trip.domain.ShareLinkNotFoundException;
 import com.yeso.backend.trip.domain.ShareLinkRevokedException;
 import com.yeso.backend.trip.domain.ShareSession;
 import com.yeso.backend.trip.domain.ShareSessionInvalidException;
-import com.yeso.backend.trip.domain.TokenAudience;
+import com.yeso.backend.shared.token.TokenAudience;
 import com.yeso.backend.trip.infrastructure.CourseShareLinkRepository;
-import com.yeso.backend.trip.infrastructure.OpaqueTokenGenerator;
+import com.yeso.backend.shared.token.OpaqueTokenGenerator;
 import com.yeso.backend.trip.infrastructure.ShareSessionRepository;
 import com.yeso.backend.trip.presentation.invite.CreateShareLinkRequest;
 import com.yeso.backend.trip.presentation.invite.ShareLinkResponse;
 import com.yeso.backend.trip.presentation.invite.LinkSummaryResponse;
 import com.yeso.backend.trip.presentation.invite.SharedCourseViewResponse;
-import com.yeso.backend.trip.application.TripService;
+import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPlan;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -41,6 +42,7 @@ public class ShareLinkService {
     private final UserRepository userRepository;
     private final TripService tripService;
     private final OpaqueTokenGenerator tokenGenerator;
+    private final Clock clock;
 
     public ShareLinkResponse create(Long userId, Long tripId, CreateShareLinkRequest request) {
         TripPlan tripPlan = tripService.requireParticipantTrip(userId, tripId);
@@ -49,7 +51,7 @@ public class ShareLinkService {
 
         String token = tokenGenerator.generate(TokenAudience.SHARE_LINK);
         CourseShareLink link = new CourseShareLink(
-                tripPlan, tokenGenerator.hash(token), LocalDateTime.now().plusDays(expiresInDays), creator);
+                tripPlan, tokenGenerator.hash(token), LocalDateTime.now(clock).plusDays(expiresInDays), creator);
         shareLinkRepository.save(link);
 
         return ShareLinkResponse.of(link, token);
@@ -68,7 +70,7 @@ public class ShareLinkService {
         tripService.requireParticipantTrip(userId, tripId);
         CourseShareLink link = requireLinkOfTrip(tripId, linkId);
         if (!link.isRevoked()) {
-            link.revoke();
+            link.revoke(LocalDateTime.now(clock));
         }
     }
 
@@ -77,7 +79,7 @@ public class ShareLinkService {
         CourseShareLink link = requireActiveLink(token);
         String sessionToken = tokenGenerator.generate(TokenAudience.SHARE_SESSION);
         shareSessionRepository.save(new ShareSession(
-                link, tokenGenerator.hash(sessionToken), LocalDateTime.now().plusHours(2)));
+                link, tokenGenerator.hash(sessionToken), LocalDateTime.now(clock).plusHours(2)));
         return sessionToken;
     }
 
@@ -98,14 +100,14 @@ public class ShareLinkService {
         tokenGenerator.requireAudience(shareSessionToken, TokenAudience.SHARE_SESSION);
         ShareSession session = shareSessionRepository.findBySessionTokenHash(tokenGenerator.hash(shareSessionToken))
                 .orElseThrow(ShareSessionInvalidException::new);
-        if (!session.isActive(LocalDateTime.now())) {
+        if (!session.isActive(LocalDateTime.now(clock))) {
             throw new ShareSessionInvalidException();
         }
         CourseShareLink link = session.getShareLink();
         if (link.isRevoked()) {
             throw new ShareLinkRevokedException();
         }
-        if (!link.isActive(LocalDateTime.now())) {
+        if (!link.isActive(LocalDateTime.now(clock))) {
             throw new ShareLinkExpiredException();
         }
         return link;
@@ -118,7 +120,7 @@ public class ShareLinkService {
         if (link.isRevoked()) {
             throw new ShareLinkRevokedException();
         }
-        if (!link.isActive(LocalDateTime.now())) {
+        if (!link.isActive(LocalDateTime.now(clock))) {
             throw new ShareLinkExpiredException();
         }
         return link;

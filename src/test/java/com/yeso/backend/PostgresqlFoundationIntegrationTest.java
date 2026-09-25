@@ -9,7 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -20,12 +20,15 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers(disabledWithoutDocker = true)
+/**
+ * migration 자체를 검증한다. {@code flyway.clean()}으로 스키마를 지우고 V1부터 다시 올리는 테스트가 있어서
+ * 공용 컨테이너({@code support.IntegrationTest})를 쓰면 다른 테스트의 스키마를 깨뜨린다 — 그래서 이 클래스만
+ * 전용 컨테이너를 쓰는 예외다(docs/conventions/테스트.md "예외"). 새 통합 테스트는 이 형태를 따라 하지 않는다.
+ * Docker가 없으면 건너뛰지 않고 실패한다.
+ */
+@Testcontainers
 @SpringBootTest
-@TestPropertySource(properties = {
-        "jwt.secret=test-only-secret-not-used-outside-automated-tests",
-        "spring.jpa.properties.hibernate.default_schema=app"
-})
+@ActiveProfiles("test")
 class PostgresqlFoundationIntegrationTest {
 
     @Container

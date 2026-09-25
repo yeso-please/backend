@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,10 +30,19 @@ public interface TripParticipantRepository extends JpaRepository<TripParticipant
     List<TripPlan> findOverlappingTrips(
             @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
+    /** 내 여행 목록용. 지역까지 한 번에 읽는다. */
     @Query("""
-            select p.tripPlan from TripParticipant p
+            select t from TripParticipant p join p.tripPlan t left join fetch t.region
             where p.user.id = :userId
-            order by p.tripPlan.startDate, p.tripPlan.id
+            order by t.startDate, t.id
             """)
     List<TripPlan> findTripsOf(@Param("userId") Long userId);
+
+    /** 여러 여행의 참여자를 회원 정보와 함께 한 번에 읽는다(내 여행 목록의 N+1 방지). */
+    @Query("""
+            select p from TripParticipant p join fetch p.user
+            where p.tripPlan.id in :tripIds
+            order by p.createdAt, p.id
+            """)
+    List<TripParticipant> findWithUserByTripPlanIdIn(@Param("tripIds") Collection<Long> tripIds);
 }

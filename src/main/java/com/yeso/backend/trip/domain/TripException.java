@@ -5,7 +5,7 @@ import com.yeso.backend.shared.exception.ErrorCode;
 
 import java.util.Map;
 
-/** trip 도메인 베이스 예외(docs/conventions/예외-처리.md). */
+/** trip 도메인 베이스 예외(docs/conventions/코드.md). */
 public abstract class TripException extends DomainException {
 
     protected TripException(ErrorCode errorCode, String message) {

@@ -1,6 +1,6 @@
 package com.yeso.backend.trip.infrastructure;
 
-import com.yeso.backend.auth.infrastructure.AuthCookieProperties;
+import com.yeso.backend.shared.config.AuthCookieProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -16,8 +16,8 @@ import java.time.Duration;
 public class ShareSessionCookieFactory {
 
     public static final String COOKIE_NAME = "share_session";
-    // EDIT 공유 소지자가 코스 편집·관광지 API도 같은 세션으로 호출하므로 /api 전체에 싣는다.
-    private static final String COOKIE_PATH = "/api";
+    // 비회원 공유 열람자는 /api/shared/** 만 호출한다(docs/api/trip.md 4-12, 2026-09-25 결정).
+    private static final String COOKIE_PATH = "/api/shared";
     private static final Duration SESSION_TTL = Duration.ofHours(2);
 
     private final AuthCookieProperties cookieProperties;

@@ -1,4 +1,4 @@
-package com.yeso.backend.trip.presentation;
+package com.yeso.backend.trip.presentation.context;
 
 import com.yeso.backend.trip.domain.TripPlan;
 
@@ -17,12 +17,12 @@ public record MyTripResponse(
         LocalDate startDate,
         LocalDate endDate,
         int nights,
-        List<UserSummary> participants,
+        List<ParticipantSummaryResponse> participants,
         boolean hasCourse,
         Long myDiaryId,
         LocalDateTime updatedAt
 ) {
-    public static MyTripResponse of(TripPlan tripPlan, List<UserSummary> participants, boolean hasCourse) {
+    public static MyTripResponse of(TripPlan tripPlan, List<ParticipantSummaryResponse> participants, boolean hasCourse) {
         var region = tripPlan.getRegion();
         return new MyTripResponse(
                 tripPlan.getId(),

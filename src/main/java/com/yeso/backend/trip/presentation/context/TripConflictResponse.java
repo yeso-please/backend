@@ -1,4 +1,4 @@
-package com.yeso.backend.trip.presentation;
+package com.yeso.backend.trip.presentation.context;
 
 import com.yeso.backend.trip.domain.TripConflict;
 

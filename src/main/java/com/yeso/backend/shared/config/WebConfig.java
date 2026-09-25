@@ -10,8 +10,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.List;
 
 /**
- * 도메인별 argument resolver를 MVC에 연결하는 web 계층 배선이다 — shared가 도메인 로직을 갖는 게
- * 아니라, 각 도메인이 만든 resolver를 등록만 한다(docs/conventions/모듈-의존성.md).
+ * 인증 사용자 argument resolver(shared/web)를 MVC에 연결하는 web 계층 배선이다.
  */
 @Configuration
 @RequiredArgsConstructor

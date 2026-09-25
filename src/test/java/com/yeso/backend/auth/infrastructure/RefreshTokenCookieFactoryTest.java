@@ -1,5 +1,6 @@
 package com.yeso.backend.auth.infrastructure;
 
+import com.yeso.backend.shared.config.AuthCookieProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseCookie;

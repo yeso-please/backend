@@ -3,25 +3,19 @@ package com.yeso.backend.auth;
 import com.jayway.jsonpath.JsonPath;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.support.ApiFixtures;
+import com.yeso.backend.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockCookie;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import jakarta.servlet.http.Cookie;
+import java.time.LocalDateTime;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,31 +33,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 각 테스트는 운영과 같은 PostgreSQL 스키마를 Testcontainers로 구성하고
- * @Transactional로 자동 롤백한다. refresh 토큰은 body가 아니라 HttpOnly cookie로 오간다.
+ * 회원가입·로그인·토큰 재발급·로그아웃·내 정보. refresh 토큰은 body가 아니라 HttpOnly cookie로 오간다.
+ * 매 테스트 후 {@link IntegrationTest}가 모든 테이블을 비우므로 고정 이메일을 써도 충돌하지 않는다.
  */
-@Testcontainers
-@SpringBootTest
-@AutoConfigureMockMvc
-@Transactional
-@TestPropertySource(properties = {
-        "jwt.secret=test-only-secret-not-used-outside-automated-tests",
-        "spring.jpa.properties.hibernate.default_schema=app"
-})
-class AuthIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
-            .withDatabaseName("tripin_auth_test")
-            .withUsername("tripin_test")
-            .withPassword("tripin_test");
-
-    @Autowired
-    private MockMvc mockMvc;
+class AuthIntegrationTest extends IntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private static String signupBody(String email, String password, String nickname) {
         return """
@@ -72,10 +51,7 @@ class AuthIntegrationTest {
     }
 
     private MvcResult signup(String email, String password, String nickname) throws Exception {
-        return mockMvc.perform(post("/api/auth/signup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(signupBody(email, password, nickname)))
-                .andReturn();
+        return fixtures.signupResult(email, password, nickname);
     }
 
     private static Cookie refreshCookieOf(MvcResult result) {
@@ -259,6 +235,17 @@ class AuthIntegrationTest {
         }
 
         @Test
+        @DisplayName("최초 설문을 제출한 뒤에는 onboardingCompleted=true를 반환한다")
+        void me_afterOnboardingSubmission_returnsOnboardingCompleted() throws Exception {
+            ApiFixtures.Member member = fixtures.onboardedMember();
+
+            mockMvc.perform(get("/api/users/me").header("Authorization", member.bearer()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(member.userId()))
+                    .andExpect(jsonPath("$.onboardingCompleted").value(true));
+        }
+
+        @Test
         @DisplayName("토큰이 없으면 401을 반환한다")
         void me_withoutToken() throws Exception {
             mockMvc.perform(get("/api/users/me"))
@@ -283,6 +270,22 @@ class AuthIntegrationTest {
 
             mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + refreshCookie.getValue()))
                     .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Nested
+    @DisplayName("공통 오류")
+    class CommonErrors {
+
+        @Test
+        @DisplayName("유효한 토큰으로 없는 경로를 부르면 404 COMMON_NOT_FOUND를 반환한다")
+        void unknownPath_withValidToken_returnsNotFound() throws Exception {
+            ApiFixtures.Member member = fixtures.signup();
+
+            mockMvc.perform(get("/api/no-such-endpoint").header("Authorization", member.bearer()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"))
+                    .andExpect(jsonPath("$.path").value("/api/no-such-endpoint"));
         }
     }
 
@@ -339,9 +342,6 @@ class AuthIntegrationTest {
 
         @Test
         @DisplayName("동시에 같은 refresh 토큰으로 두 번 요청하면 정확히 하나만 성공한다")
-        // 클래스 레벨 @Transactional은 테스트 스레드에만 바인딩된다 — 실제 동시성(별도 커넥션의 row lock)을
-        // 검증하려면 이 테스트만 트랜잭션 밖에서 실행해 signup 데이터가 즉시 커밋되게 해야 한다.
-        @Transactional(propagation = Propagation.NOT_SUPPORTED)
         void refresh_concurrentRequestsWithSameToken_onlyOneSucceeds() throws Exception {
             MvcResult signup = signup("concurrent1@example.com", "password123", "tester");
             Cookie refreshCookie = refreshCookieOf(signup);
@@ -415,20 +415,20 @@ class AuthIntegrationTest {
         @Test
         @DisplayName("생성·수정 시각을 서버가 자동으로 기록한다")
         void userTimestamps_areManagedByJpaAuditing() throws Exception {
-            mockMvc.perform(post("/api/auth/signup")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(signupBody("audit@example.com", "password123", "before")));
+            signup("audit@example.com", "password123", "before");
 
             User user = userRepository.findByEmail("audit@example.com").orElseThrow();
             assertThat(user.getCreatedAt()).isNotNull();
             assertThat(user.getUpdatedAt()).isNotNull();
-            var initialUpdatedAt = user.getUpdatedAt();
 
-            Thread.sleep(5);
-            user.setNickname("after");
-            userRepository.saveAndFlush(user);
+            // JPA auditing은 시스템 시계를 쓴다. 기다리는 대신 updated_at을 과거로 돌려 놓고 갱신 여부를 본다.
+            LocalDateTime past = LocalDateTime.of(2000, 1, 1, 0, 0);
+            jdbcTemplate.update("UPDATE app.users SET updated_at = ? WHERE id = ?", past, user.getId());
+            User reloaded = userRepository.findByEmail("audit@example.com").orElseThrow();
+            reloaded.setNickname("after");
+            User saved = userRepository.saveAndFlush(reloaded);
 
-            assertThat(user.getUpdatedAt()).isAfter(initialUpdatedAt);
+            assertThat(saved.getUpdatedAt()).isAfter(past);
         }
     }
 

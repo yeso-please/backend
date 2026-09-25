@@ -1,9 +1,9 @@
-package com.yeso.backend.trip.presentation;
+package com.yeso.backend.trip.presentation.context;
 
 import java.time.LocalDate;
 import java.util.List;
 
-public record TripContextCheckResponse(
+public record CheckTripContextResponse(
         boolean available,
         LocalDate endDate,
         List<TripConflictResponse> conflicts,

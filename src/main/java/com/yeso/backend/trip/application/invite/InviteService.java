@@ -4,17 +4,17 @@ import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
-import com.yeso.backend.trip.application.TripService;
-import com.yeso.backend.trip.domain.InvalidExpiresInDaysException;
+import com.yeso.backend.trip.application.context.TripService;
+import com.yeso.backend.shared.token.InvalidExpiresInDaysException;
 import com.yeso.backend.trip.domain.InviteExpiredException;
 import com.yeso.backend.trip.domain.InviteNotFoundException;
 import com.yeso.backend.trip.domain.InviteRevokedException;
-import com.yeso.backend.trip.domain.TokenAudience;
+import com.yeso.backend.shared.token.TokenAudience;
 import com.yeso.backend.trip.domain.TripInvitation;
 import com.yeso.backend.trip.domain.TripPlan;
-import com.yeso.backend.trip.infrastructure.OpaqueTokenGenerator;
+import com.yeso.backend.shared.token.OpaqueTokenGenerator;
 import com.yeso.backend.trip.infrastructure.TripInvitationRepository;
-import com.yeso.backend.trip.presentation.TripContextResponse;
+import com.yeso.backend.trip.presentation.context.TripContextResponse;
 import com.yeso.backend.trip.presentation.invite.CreateInviteRequest;
 import com.yeso.backend.trip.presentation.invite.InvitePublicSummaryResponse;
 import com.yeso.backend.trip.presentation.invite.InviteResponse;
@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -43,15 +44,17 @@ public class InviteService {
     private final UserRepository userRepository;
     private final TripService tripService;
     private final OpaqueTokenGenerator tokenGenerator;
+    private final Clock clock;
 
     public InviteResponse createInvite(Long userId, Long tripId, CreateInviteRequest request) {
         TripPlan tripPlan = tripService.requireParticipantTrip(userId, tripId);
+        tripService.requireNotEnded(tripPlan);
         int expiresInDays = resolveExpiresInDays(request.expiresInDays());
         User inviter = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 
         String token = tokenGenerator.generate(TokenAudience.INVITE);
         TripInvitation invitation = new TripInvitation(
-                tripPlan, tokenGenerator.hash(token), inviter, LocalDateTime.now().plusDays(expiresInDays));
+                tripPlan, tokenGenerator.hash(token), inviter, LocalDateTime.now(clock).plusDays(expiresInDays));
         invitationRepository.save(invitation);
 
         return InviteResponse.of(invitation, token);
@@ -72,7 +75,7 @@ public class InviteService {
             throw new InviteNotFoundException();
         }
         if (!invitation.isRevoked()) {
-            invitation.revoke();
+            invitation.revoke(LocalDateTime.now(clock));
         }
     }
 
@@ -108,7 +111,7 @@ public class InviteService {
         if (invitation.isRevoked()) {
             throw new InviteRevokedException();
         }
-        if (!invitation.getExpiresAt().isAfter(LocalDateTime.now())) {
+        if (!invitation.getExpiresAt().isAfter(LocalDateTime.now(clock))) {
             throw new InviteExpiredException();
         }
         return invitation;

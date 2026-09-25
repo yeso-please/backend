@@ -1,4 +1,4 @@
-package com.yeso.backend.trip.application;
+package com.yeso.backend.trip.application.context;
 
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
@@ -13,6 +13,7 @@ import com.yeso.backend.trip.domain.TripContextLockedException;
 import com.yeso.backend.trip.domain.TripDateOverlapException;
 import com.yeso.backend.trip.domain.TripDatesImmutableException;
 import com.yeso.backend.trip.domain.TripDayWindowCalculator;
+import com.yeso.backend.trip.domain.TripEndedException;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripParticipant;
 import com.yeso.backend.trip.domain.TripPeriod;
@@ -21,24 +22,28 @@ import com.yeso.backend.trip.domain.TripVersionConflictException;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import com.yeso.backend.trip.infrastructure.TripStopRepository;
-import com.yeso.backend.trip.presentation.CreateTripRequest;
-import com.yeso.backend.trip.presentation.DayWindowResponse;
-import com.yeso.backend.trip.presentation.MyTripResponse;
-import com.yeso.backend.trip.presentation.ParticipantResponse;
-import com.yeso.backend.trip.presentation.TripConflictResponse;
-import com.yeso.backend.trip.presentation.TripContextCheckRequest;
-import com.yeso.backend.trip.presentation.TripContextCheckResponse;
-import com.yeso.backend.trip.presentation.TripContextResponse;
-import com.yeso.backend.trip.presentation.UnavailableDateRangeResponse;
-import com.yeso.backend.trip.presentation.UpdateTripContextRequest;
-import com.yeso.backend.trip.presentation.UserSummary;
+import com.yeso.backend.trip.presentation.context.CreateTripRequest;
+import com.yeso.backend.trip.presentation.context.DayWindowResponse;
+import com.yeso.backend.trip.presentation.context.MyTripResponse;
+import com.yeso.backend.trip.presentation.context.ParticipantResponse;
+import com.yeso.backend.trip.presentation.context.TripConflictResponse;
+import com.yeso.backend.trip.presentation.context.CheckTripContextRequest;
+import com.yeso.backend.trip.presentation.context.CheckTripContextResponse;
+import com.yeso.backend.trip.presentation.context.TripContextResponse;
+import com.yeso.backend.trip.presentation.context.UnavailableDateRangeResponse;
+import com.yeso.backend.trip.presentation.context.UpdateTripContextRequest;
+import com.yeso.backend.trip.presentation.context.ParticipantSummaryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 여행 context·날짜 중복 차단·참여·탈퇴(2026-09-24 정책). 여행은 만드는 순간 기간을 차지하고,
@@ -53,15 +58,16 @@ public class TripService {
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final TripStopRepository tripStopRepository;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
-    public TripContextCheckResponse checkContext(Long userId, TripContextCheckRequest request) {
+    public CheckTripContextResponse checkContext(Long userId, CheckTripContextRequest request) {
         LocalDate startDate = validateStartDate(request.startDate());
         int nights = validateNights(request.nights());
         LocalDate endDate = startDate.plusDays(nights);
 
         List<TripConflict> conflicts = findConflicts(userId, startDate, endDate);
-        return new TripContextCheckResponse(
+        return new CheckTripContextResponse(
                 conflicts.isEmpty(),
                 endDate,
                 conflicts.stream().map(TripConflictResponse::from).toList(),
@@ -97,6 +103,7 @@ public class TripService {
             throw new TripDatesImmutableException();
         }
         TripPlan tripPlan = requireParticipantTrip(userId, tripId);
+        requireNotEnded(tripPlan);
         if (!request.version().equals(tripPlan.getVersion())) {
             throw new TripVersionConflictException();
         }
@@ -124,11 +131,23 @@ public class TripService {
 
     @Transactional(readOnly = true)
     public List<MyTripResponse> listMyTrips(Long userId, TripPeriod period) {
-        LocalDate today = LocalDate.now();
-        return tripParticipantRepository.findTripsOf(userId).stream()
-                .filter(trip -> period == null
-                        || (period == TripPeriod.UPCOMING) == !trip.getEndDate().isBefore(today))
-                .map(trip -> MyTripResponse.of(trip, participantSummaries(trip.getId()), hasCourse(trip.getId())))
+        LocalDate today = LocalDate.now(clock);
+        List<TripPlan> trips = tripParticipantRepository.findTripsOf(userId).stream()
+                .filter(trip -> period == null || (period == TripPeriod.PAST) == trip.isEnded(today))
+                .toList();
+        if (trips.isEmpty()) {
+            return List.of();
+        }
+        List<Long> tripIds = trips.stream().map(TripPlan::getId).toList();
+        Map<Long, List<ParticipantSummaryResponse>> participantsByTrip = tripParticipantRepository
+                .findWithUserByTripPlanIdIn(tripIds).stream()
+                .collect(Collectors.groupingBy(
+                        participant -> participant.getTripPlan().getId(),
+                        Collectors.mapping(participant -> ParticipantSummaryResponse.from(participant.getUser()), Collectors.toList())));
+        Set<Long> tripsWithCourse = tripStopRepository.findTripPlanIdsWithStops(tripIds);
+        return trips.stream()
+                .map(trip -> MyTripResponse.of(
+                        trip, participantsByTrip.getOrDefault(trip.getId(), List.of()), tripsWithCourse.contains(trip.getId())))
                 .toList();
     }
 
@@ -160,6 +179,7 @@ public class TripService {
      */
     public boolean joinAsMember(Long userId, Long tripId, Long invitationId) {
         TripPlan tripPlan = tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
+        requireNotEnded(tripPlan);
         User user = lockOnboardedUser(userId);
         if (tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId)) {
             return false;
@@ -184,6 +204,13 @@ public class TripService {
         return tripPlan;
     }
 
+    /** 종료일이 지난 여행은 읽기 전용이다. 여행을 바꾸는 유스케이스가 먼저 호출한다. */
+    public void requireNotEnded(TripPlan tripPlan) {
+        if (tripPlan.isEnded(LocalDate.now(clock))) {
+            throw new TripEndedException(tripPlan.getId());
+        }
+    }
+
     @Transactional(readOnly = true)
     public long countParticipants(Long tripId) {
         return tripParticipantRepository.countByTripPlanId(tripId);
@@ -191,7 +218,7 @@ public class TripService {
 
     private User lockOnboardedUser(Long userId) {
         User user = tripPlanRepository.lockUser(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        if (user.getLatestOnboardingSubmissionId() == null) {
+        if (!user.isOnboardingCompleted()) {
             throw new OnboardingRequiredException();
         }
         return user;
@@ -210,18 +237,12 @@ public class TripService {
                 .toList();
     }
 
-    private List<UserSummary> participantSummaries(Long tripId) {
-        return tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId).stream()
-                .map(participant -> UserSummary.from(participant.getUser()))
-                .toList();
-    }
-
     private boolean hasCourse(Long tripId) {
         return tripStopRepository.existsByTripPlanId(tripId);
     }
 
-    private static LocalDate validateStartDate(LocalDate startDate) {
-        if (startDate == null || !startDate.isAfter(LocalDate.now())) {
+    private LocalDate validateStartDate(LocalDate startDate) {
+        if (startDate == null || !startDate.isAfter(LocalDate.now(clock))) {
             throw new InvalidStartDateException();
         }
         return startDate;

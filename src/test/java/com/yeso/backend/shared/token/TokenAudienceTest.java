@@ -1,4 +1,4 @@
-package com.yeso.backend.trip.domain;
+package com.yeso.backend.shared.token;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

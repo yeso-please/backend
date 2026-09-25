@@ -1,5 +1,6 @@
 package com.yeso.backend.shared.exception;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -15,6 +16,7 @@ class GlobalExceptionHandlerTest {
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
     @Test
+    @DisplayName("도메인 예외면 그 예외의 고정 code와 요청 path를 담는다")
     void domainException_includesItsStableCodeAndRequestPath() {
         MockHttpServletRequest request = request("/api/example");
 
@@ -28,6 +30,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("검증 실패면 400 COMMON_INVALID_REQUEST와 fieldErrors를 담는다")
     void validationException_includesFieldErrors() {
         BeanPropertyBindingResult result = new BeanPropertyBindingResult(new Object(), "request");
         result.addError(new FieldError("request", "email", "이메일 형식이 올바르지 않습니다."));
@@ -43,6 +46,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("지원하지 않는 메서드면 405 COMMON_METHOD_NOT_ALLOWED다")
     void methodNotAllowed_usesDedicatedCommonCode() {
         var response = handler.handleMethodNotSupported(
                 new HttpRequestMethodNotSupportedException("POST"), request("/api/users/me"));
@@ -52,6 +56,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("예상 못 한 예외면 500 COMMON_INTERNAL_ERROR이고 내부 메시지를 숨긴다")
     void unexpectedException_hidesInternalMessage() {
         var response = handler.handleUnexpected(
                 new IllegalStateException("database password leaked"), request("/api/example"));

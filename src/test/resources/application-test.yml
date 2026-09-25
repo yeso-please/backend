@@ -1,0 +1,7 @@
+# IntegrationTest(@ActiveProfiles("test")) 전용 설정. 테스트 클래스에 @TestPropertySource를 붙이지 말고 여기에 둔다.
+jwt:
+  secret: test-only-secret-not-used-outside-automated-tests
+
+embedding:
+  # 30초마다 도는 재시도 sweeper는 테스트 데이터·매 테스트 후 TRUNCATE와 경합한다. 테스트에서는 끈다.
+  retry-sweep-enabled: false

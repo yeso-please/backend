@@ -1,6 +1,7 @@
 package com.yeso.backend.trip.domain;
 
 import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,7 +16,6 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 
 /**
  * 회원 한 명의 여행 참여. 만든 사람(OWNER)과 초대를 수락한 사람(MEMBER)은 동등한 권한이다.
@@ -26,7 +26,7 @@ import java.time.LocalDateTime;
 @Table(name = "trip_participants")
 @Getter
 @NoArgsConstructor
-public class TripParticipant {
+public class TripParticipant extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,12 +46,6 @@ public class TripParticipant {
 
     @Column(name = "trip_invitation_id")
     private Long tripInvitationId;
-
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
 
     private TripParticipant(TripPlan tripPlan, User user, TripParticipantType participantType, Long tripInvitationId) {
         this.tripPlan = tripPlan;

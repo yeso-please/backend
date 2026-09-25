@@ -71,7 +71,7 @@ public class TripInvitation {
         return revokedAt != null;
     }
 
-    public void revoke() {
-        this.revokedAt = LocalDateTime.now();
+    public void revoke(LocalDateTime now) {
+        this.revokedAt = now;
     }
 }

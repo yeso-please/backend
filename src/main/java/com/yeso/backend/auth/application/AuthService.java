@@ -56,7 +56,7 @@ public class AuthService {
     /**
      * refresh row를 lock한 뒤 판정한다: 폐기된(이미 rotate된) 토큰이 다시 제시되면 탈취로 간주해
      * 같은 family를 통째로 무효화하고, 동시에 들어온 나머지 요청은 이 잠금 때문에 순서대로만
-     * 처리돼 정확히 하나만 성공한다(WORK-01 계약).
+     * 처리돼 정확히 하나만 성공한다(docs/adr/0003).
      */
     // 재사용 탐지 시 family를 폐기한 뒤 401을 던지므로, 이 예외로는 롤백하지 않아야 폐기가 커밋된다.
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
@@ -96,8 +96,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public UserMeResponse getMe(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        // 온보딩 상태(WORK-02)는 아직 구현되지 않아 항상 false를 반환한다.
-        return UserMeResponse.of(user, false);
+        return UserMeResponse.of(user, user.isOnboardingCompleted());
     }
 
     private IssuedTokens issueNewFamily(User user) {
@@ -110,9 +109,9 @@ public class AuthService {
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(jwtProperties.getRefreshTokenTtlDays());
         RefreshToken saved = refreshTokenRepository.save(
                 new RefreshToken(user, jwtTokenProvider.hash(refreshToken), familyId, expiresAt));
-        // 온보딩 상태(WORK-02)는 아직 구현되지 않아 항상 false를 반환한다.
         return new IssuedTokens(
-                user, saved.getId(), accessToken, refreshToken, jwtTokenProvider.accessTokenTtlSeconds(), false);
+                user, saved.getId(), accessToken, refreshToken, jwtTokenProvider.accessTokenTtlSeconds(),
+                user.isOnboardingCompleted());
     }
 
     public record IssuedTokens(

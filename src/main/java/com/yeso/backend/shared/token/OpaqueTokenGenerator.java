@@ -1,7 +1,5 @@
-package com.yeso.backend.trip.infrastructure;
+package com.yeso.backend.shared.token;
 
-import com.yeso.backend.trip.domain.TokenAudience;
-import com.yeso.backend.trip.domain.TokenAudienceMismatchException;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -12,8 +10,8 @@ import java.util.Base64;
 import java.util.HexFormat;
 
 /**
- * invite/share/guest session 토큰 공통 생성·해시 유틸. 256bit URL-safe CSPRNG 본문을 만들고
- * DB에는 SHA-256 hash만 저장한다(WORK-01 refresh token과 같은 원칙).
+ * 초대·공유·친구 링크 토큰 공통 생성·해시 유틸. 256bit URL-safe CSPRNG 본문을 만들고
+ * DB에는 SHA-256 hash만 저장한다(refresh token과 같은 원칙, docs/adr/0003).
  * 용도 접두사({@link TokenAudience})를 포함한 원문 전체를 해시하므로, 접두사만 바꿔치기해도
  * 다른 용도의 레코드와 겹치지 않는다.
  */

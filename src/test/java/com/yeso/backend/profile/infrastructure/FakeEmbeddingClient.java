@@ -2,7 +2,10 @@ package com.yeso.backend.profile.infrastructure;
 
 import java.util.Base64;
 
-/** 테스트 전용 stub. 운영 코드는 절대 이 클래스를 참조하지 않는다(운영 profile에서 fake vector 금지). */
+/**
+ * 테스트 전용 stub. 운영 코드는 절대 이 클래스를 참조하지 않는다(운영 profile에서 fake vector 금지).
+ * {@code support.TestInfraConfig}가 {@code @Primary} bean으로 등록하고, 테스트는 {@link #setMode}로 장애를 흉내 낸다.
+ */
 public class FakeEmbeddingClient implements EmbeddingClient {
 
     public enum Mode { SUCCESS, TRANSIENT, PERMANENT, DIMENSION_MISMATCH }
@@ -11,6 +14,11 @@ public class FakeEmbeddingClient implements EmbeddingClient {
 
     public void setMode(Mode mode) {
         this.mode = mode;
+    }
+
+    /** IntegrationTest가 매 테스트 후 호출한다 — 한 테스트가 바꾼 모드가 다음 테스트로 새지 않게. */
+    public void reset() {
+        this.mode = Mode.SUCCESS;
     }
 
     @Override
