@@ -1,3 +1,5 @@
+> **이력 문서** — 현재 기준이 아니다. [docs/archive/README.md](README.md) 참고.
+
 # MVP 에이전트 구현 작업서 — 단독 실행 계약
 
 - 상태: ready

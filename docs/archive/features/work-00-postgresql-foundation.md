@@ -3,7 +3,7 @@
 - 상태: implemented
 - 담당 범위: PostgreSQL, Flyway V1, Testcontainers, CI, 공통 오류, 인증 사용자 주입
 - 마지막 갱신일: 2026-09-20
-- 관련: [MVP 구현 작업서](../mvp/implementation-workpack.md), [ADR-0002](../adr/0002-postgresql-flyway-schema-source.md), [RDS 런북](../runbooks/rds-postgresql-bootstrap-and-migration.md)
+- 관련: [MVP 구현 작업서(이력)](../implementation-workpack.md), [ADR-0002](../../adr/0002-postgresql-flyway-schema-source.md), [RDS 런북](../../runbooks/rds-postgresql-bootstrap-and-migration.md)
 
 ## 목표
 

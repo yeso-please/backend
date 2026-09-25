@@ -1,14 +1,14 @@
 # 7. 지역·관광지
 
-- 계약 상태: draft
+- 계약 상태: agreed
 - 모듈: `attraction/region`
-- 정책 소스: [지역·관광지 품질](../mvp/decisions.md#지역관광지-품질), [지역 소개 콘텐츠](../mvp/data-and-recommendation.md#4-지역-소개-콘텐츠)
+- 정책 소스: [지역·관광지 품질](../product.md#지역관광지-품질), [지역 소개 콘텐츠](../design/recommendation.md#4-지역-소개-콘텐츠)
 
-**호출 주체** — 7-1은 회원. 7-2~7-4는 공공 관광 정보이므로 인증된 주체 누구나(회원, 공유 링크 share session) 호출할 수 있다. 특정 여행에 대한 권한은 확인하지 않는다.
+**호출 주체** — 7-1~7-4 모두 회원. 특정 여행에 대한 권한은 확인하지 않는다. 공유 링크 소지자(share session)는 호출할 수 없다. 비회원 뷰어는 [4-13](trip.md#4-13-공유-코스-조회) 응답만으로 코스 화면을 그린다(2026-09-25).
 
 **추천 가능 관광지** — 유효한 지역·좌표, 공백이 아닌 상세 설명, 검증된(`VALID`) 이미지 1장 이상, 차단성 품질 이슈 없음을 모두 만족하는 장소. 이 판정은 수집 결과에서 파생하며 사람이 수동으로 켜지 않는다.
 
-**추첨 가능 지역** — 승인된(`APPROVED`) 최신 소개문, 검증된 대표 이미지, 추천 가능 관광지 `days × 밀도 상한 + min(days, 3)`개 이상(RELAXED 상한 4, PACKED 6).
+**추첨 가능 지역** — 승인된(`APPROVED`) 최신 소개문, 검증된 대표 이미지, 추천 가능 관광지 `days × 밀도 상한 + min(days, 3)`개 이상(RELAXED 상한 4, PACKED 6). MVP에서는 승인 도구 없이 시연 지역 10~20곳만 시드로 승인한다(이슈 #51). 시드 지역은 가장 긴 여행인 **6박(7일) RELAXED를 충족**하는 곳(추천 가능 관광지 7×4+3 = 31개 이상)으로 고른다. 그래도 적격 지역이 없는 기간은 3-2 `eligibleRegionCount`로 미리 경고한다.
 
 **관광지 유형 `category`**
 
@@ -20,14 +20,30 @@
 | `WALK_REST` | 산책·휴식 |
 | `ETC` | 기타 |
 
-원천 분류(TourAPI `contentTypeId`·분류 코드)에서 `category`와 기본 체류시간(60·90·120분)을 정하는 매핑 표는 [결정 필요 A-1](#결정-필요)이다. 5장 코스와 이 장이 같은 표를 쓴다.
+**원천 분류 → `category`·기본 체류시간** — TourAPI 분류코드(대분류 `cat1`, 중분류 `cat2`)로 정한다. 데이터 보강 때 이 코드를 함께 수집한다. 5장 코스와 이 장이 같은 표를 쓴다.
+
+| TourAPI 분류 | `category` | 기본 체류 |
+|---|---|---:|
+| 자연(`A01`) | `NATURE` | 90분 |
+| 역사관광지(`A0201`) | `HISTORY_CULTURE` | 90분 |
+| 건축·조형물(`A0205`) | `HISTORY_CULTURE` | 60분 |
+| 문화시설(`A0206`, contentType 14) | `HISTORY_CULTURE` | 120분 |
+| 휴양관광지(`A0202`) | `WALK_REST` | 90분 |
+| 체험관광지(`A0203`) | `ACTIVITY` | 90분 |
+| 레포츠(`A03`, contentType 28) | `ACTIVITY` | 120분 |
+| 산업관광지(`A0204`), 분류 없음 | `ETC` | 90분 |
+| 쇼핑(contentType 38), 숙박(contentType 32) | 코스 후보가 아니다 | — |
+| 음식점(contentType 39) | 관광지가 아니라 식당 원천 | — |
+
+- 제외 조건 `물놀이`는 해수욕장·계곡(자연 소분류)과 수상 레포츠(`A0302`)를 뜻한다.
+- TourAPI가 신규 분류 체계로 바뀌면 같은 의미의 코드로 대응한다.
 
 **오류 코드**
 
 | code | HTTP | 상황 |
 |---|---:|---|
 | `REGION_INVALID_DAYS` | 400 | `days`가 1~7 밖 |
-| `MAP_BOUNDS_INVALID` | 400 | `bbox` 형식 오류, 최소가 최대보다 큼, 한국 범위 밖 |
+| `ATTRACTION_INVALID_BOUNDS` | 400 | `bbox` 형식 오류, 최소가 최대보다 큼, 한국 범위 밖 |
 | `REGION_NOT_FOUND` | 404 | 없는 `SIG_CD` |
 | `ATTRACTION_NOT_FOUND` | 404 | 없는 관광지 |
 | `REGION_CONTENT_NOT_READY` | 422 | 승인된 소개문이나 검증된 대표 이미지가 없음 |
@@ -40,12 +56,15 @@
 
 ```
 GET /api/regions?days=3&scheduleDensity=RELAXED
+GET /api/regions
 ```
+
+`days` 없이 부르면 추첨 가능 여부를 계산하지 않고 지역 목록만 준다. 여행이 없는 온보딩(2-2)의 좋았던 여행지 선택 화면이 이 형태를 쓴다.
 
 | Query | 필수 | 설명 |
 |---|---|---|
-| `days` | 예 | 1~7. 여행 일수 |
-| `scheduleDensity` | 아니오 | `RELAXED` \| `PACKED`. 생략하면 호출자의 최신 온보딩 값, 없으면 `RELAXED` |
+| `days` | 아니오 | 1~7. 여행 일수. 생략하면 추첨 가능 여부를 계산하지 않는다 |
+| `scheduleDensity` | 아니오 | `RELAXED` \| `PACKED`. `days`가 있을 때만 쓴다. 생략하면 호출자의 최신 온보딩 값, 설문 전이면 `RELAXED` |
 
 **Response `200 OK`** — 전국 지도에 그릴 250개 지역 전체
 
@@ -69,15 +88,17 @@ GET /api/regions?days=3&scheduleDensity=RELAXED
 
 추첨 불가 지역도 지도에는 표시한다. 인기·별점 순위는 제공하지 않는다.
 
+`days`를 생략하면 응답 모양은 같고 `days`·`scheduleDensity`·`eligibleCount`와 각 지역의 `drawEligible`·`ineligibleReasons`가 `null`이다(필드를 빼지 않는다).
+
 | 오류 | HTTP | code |
 |---|---:|---|
-| 일수 오류 | 400 | `REGION_INVALID_DAYS` |
+| `days`를 보냈는데 1~7 밖 | 400 | `REGION_INVALID_DAYS` |
 
 ---
 
 ### 7-2. 지역 카드
 
-> `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/regions/{sigCd}/card
@@ -101,6 +122,8 @@ GET /api/regions/{sigCd}/card
 }
 ```
 
+**구현 메모(2026-09-25 기술 결정)** — 이 필드들은 attraction 트랙(#40·#51)이 추가하는 새 migration으로 저장한다. `region_contents`에 `characteristics`(jsonb 문자열 배열), `landmarks`(jsonb `{attractionId, order}` 배열), `sources`(jsonb `{title, url}` 배열, 응답의 `name`은 `title`), `hero_image_source_name`을 더한다. `introduction`은 `TEXT` 그대로 두고 API가 빈 줄(`\n\n`)로 나눠 문단 배열로 준다. `historyHighlights`는 기존 `history_tags`, `heroImage.sourceUrl`·`license`는 기존 `hero_image_source_url`·`hero_image_license_note`다.
+
 | 필드 | 설명 |
 |---|---|
 | `introduction` | 2~4문단. 검증된 사실·대표 관광지·출처로만 쓰고 사람이 승인한 문장 |
@@ -119,7 +142,7 @@ GET /api/regions/{sigCd}/card
 
 ### 7-3. 지도 관광지 핀
 
-> `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/regions/{sigCd}/attractions?bbox=129.15,35.78,129.30,35.90&category=NATURE&cursor=&limit=100
@@ -149,14 +172,15 @@ GET /api/regions/{sigCd}/attractions?bbox=129.15,35.78,129.30,35.90&category=NAT
 
 | 오류 | HTTP | code |
 |---|---:|---|
-| bbox 오류 | 400 | `MAP_BOUNDS_INVALID` |
+| bbox 오류 | 400 | `ATTRACTION_INVALID_BOUNDS` |
+| `category`가 목록 밖, `limit`가 1~200 밖, `cursor` 위조 | 400 | `COMMON_INVALID_REQUEST` |
 | 없는 지역 | 404 | `REGION_NOT_FOUND` |
 
 ---
 
 ### 7-4. 관광지 상세
 
-> `호출: 인증된 주체` · `⬜ 미구현`
+> `호출: 회원` · `⬜ 미구현`
 
 ```
 GET /api/attractions/{attractionId}
@@ -195,12 +219,3 @@ GET /api/attractions/{attractionId}
 | 오류 | HTTP | code |
 |---|---:|---|
 | 없는 관광지 | 404 | `ATTRACTION_NOT_FOUND` |
-
----
-
-## 결정 필요
-
-| ID | 항목 | 현재 초안 |
-|---|---|---|
-| A-1 | 원천 분류 → `category`·기본 체류시간 매핑 | 적재된 관광지 데이터의 분류 값을 확인한 뒤 표로 확정한다. 초안: 자연 → `NATURE`, 역사·건축·문화시설 → `HISTORY_CULTURE`(문화시설 120분), 레포츠·체험 → `ACTIVITY`(레포츠 120분), 휴양·공원 → `WALK_REST`, 그 외 `ETC`. 포토·전망 성격 장소 60분, 나머지 90분 |
-| A-2 | 지역 소개 승인 방식 | 승인 도구를 미뤘다. 승인된 소개문이 하나도 없으면 모든 지역이 추첨 불가다. MVP 시연 지역을 어떤 방식으로 승인해 둘지 정해야 한다 |

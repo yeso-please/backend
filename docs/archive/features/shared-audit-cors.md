@@ -4,7 +4,7 @@
 - 담당 범위: shared, auth security, JPA entities
 - 작성일: 2026-09-21
 - 갱신일: 2026-09-21
-- 관련 API: [CORS 정책](../conventions/CORS.md)
+- 관련 API: [CORS 정책](../../conventions/설정.md)
 
 ## 목표
 

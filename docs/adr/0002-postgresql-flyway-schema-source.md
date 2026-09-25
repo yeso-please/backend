@@ -2,7 +2,7 @@
 
 - 상태: accepted
 - 결정일: 2026-09-20
-- 관련: [WORK-00](../features/work-00-postgresql-foundation.md)
+- 관련: [WORK-00](../archive/features/work-00-postgresql-foundation.md)
 
 ## Context
 

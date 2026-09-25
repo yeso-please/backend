@@ -1,9 +1,11 @@
+> **이력 문서** — 현재 기준이 아니다. [docs/archive/README.md](README.md) 참고.
+
 # 초기 세팅과 3인 팀 실행 순서
 
 - 상태: proposed — MVP 작업 배치·선행 계약 기준, 구현 완료 목록 아님
 - 담당 범위: WORK별 구현 위치, 담당 분배, 테이블 소유권과 통합 순서
 - 갱신일: 2026-09-21
-- 기준: [제품 결정](decisions.md), [구현 작업서](implementation-workpack.md), [데이터 설계](data-and-recommendation.md), [모듈·의존성](../conventions/모듈-의존성.md)
+- 기준: [제품 결정](../product.md), [구현 작업서](implementation-workpack.md), [데이터 설계](../design/recommendation.md), [모듈·의존성](../conventions/모듈-의존성.md)
 
 ## 사용자가 먼저 구현할 범위
 
@@ -29,7 +31,7 @@ WORK-09의 빌드·CI·개발 RDS 환경은 초기 세팅 담당이 협업한다
 
 ## WORK별 구현 위치
 
-모듈 경계와 분할 이유는 [모듈·의존성](../conventions/모듈-의존성.md), 라벨 기준은 [이슈 라벨](../conventions/issue-labels.md)을 따른다. 경로의 `…`는 `application`과 HTTP 진입점이 있는 `presentation`이다. 엔티티·규칙은 각 모듈의 `domain`, Repository·외부 adapter는 `infrastructure`에 둔다. 하나의 WORK가 여러 모듈을 수정할 수 있으며 URL 접두사와 모듈 이름은 일치할 필요가 없다.
+모듈 경계와 분할 이유는 [모듈·의존성](../conventions/모듈-의존성.md), 라벨 기준은 [이슈 라벨](../conventions/협업.md)을 따른다. 경로의 `…`는 `application`과 HTTP 진입점이 있는 `presentation`이다. 엔티티·규칙은 각 모듈의 `domain`, Repository·외부 adapter는 `infrastructure`에 둔다. 하나의 WORK가 여러 모듈을 수정할 수 있으며 URL 접두사와 모듈 이름은 일치할 필요가 없다.
 
 | WORK | 구현 위치 | 영역 라벨 | 담당 |
 |---|---|---|---|

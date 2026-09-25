@@ -5,7 +5,7 @@
 - 작성일: 2026-09-21
 - 갱신일: 2026-09-24
 - 관련 이슈: #12 (WORK-02), #32 (profile 모듈 통합)
-- 관련 API: [온보딩 API](../api/profile.md#온보딩)
+- 관련 API: [온보딩 API](../../api/profile.md)
 
 ## 목표
 
@@ -13,8 +13,8 @@
 임베딩 입력 텍스트(profileText)를 만들고, Python 임베딩 서비스를 트랜잭션 밖에서 비동기로 호출해 취향
 벡터(user_taste_vectors)를 준비한다. 임베딩이 실패해도 온보딩 자체는 항상 완료된다.
 
-계약 원문: [`docs/mvp/onboarding-questionnaire.md`](../mvp/onboarding-questionnaire.md),
-[`docs/mvp/implementation-workpack.md`](../mvp/implementation-workpack.md) WORK-02.
+계약 원문: [`docs/mvp/onboarding-questionnaire.md`](../../api/profile.md),
+[`docs/archive/implementation-workpack.md`](../implementation-workpack.md) WORK-02.
 
 ## 범위
 

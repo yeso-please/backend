@@ -5,12 +5,12 @@
 - 작성일: 2026-09-18
 - 갱신일: 2026-09-21
 - 관련 이슈: #11 (WORK-01)
-- 관련 API: [Auth API](../api/auth.md)
+- 관련 API: [Auth API](../../api/auth.md)
 
 ## 목표
 
 이메일/비밀번호로 회원가입·로그인하고, 발급된 access JWT + opaque refresh 토큰(HttpOnly cookie)으로 이후 요청을
-인증할 수 있다. [`docs/mvp/implementation-workpack.md`](../mvp/implementation-workpack.md)의 WORK-01 계약을
+인증할 수 있다. [`docs/archive/implementation-workpack.md`](../implementation-workpack.md)의 WORK-01 계약을
 따른다.
 
 ## 범위
@@ -31,7 +31,7 @@
 
 ### 제외 (후속)
 
-- 소셜 로그인(카카오/구글 인가코드 교환) — API-DESIGN-DRAFT §1 설계는 되어 있으나 미구현
+- 소셜 로그인(카카오/구글 인가코드 교환) — MVP 범위 밖
 - 로그인된 상태에서 소셜 계정 추가 연결(MVP 포함 아님)
 - 비밀번호 재설정(찾기) — 메일 발송 인프라, 1회용 재설정 토큰 테이블, rate limit 정책이 필요한 별도 작업
 - 온보딩(WORK-02) — `/users/me`의 `onboardingCompleted`는 온보딩 모듈이 없어 항상 `false`다
@@ -91,7 +91,7 @@
 ## 결정과 미해결 사항
 
 - **refresh 토큰을 opaque로 전환**: PR #8/ADR-0001은 refresh도 서명된 JWT로 발급했으나, WORK-01 계약이 256bit
-  이상 opaque 토큰을 요구해 [ADR-0003](../adr/0003-opaque-refresh-token-rotation.md)로 이를 대체했다.
+  이상 opaque 토큰을 요구해 [ADR-0003](../../adr/0003-opaque-refresh-token-rotation.md)로 이를 대체했다.
   ADR-0001은 `superseded`로 표시했다.
 - **refresh 토큰을 body가 아닌 HttpOnly cookie로 전달**: XSS로 인한 JS 접근을 차단하기 위해서다. 대신 CSRF는
   `SameSite=Lax` + 상태 변경 요청이 모두 POST라는 점으로 완화한다(별도 CSRF 토큰은 이번 범위에 포함하지 않음).
