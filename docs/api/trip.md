@@ -1204,7 +1204,7 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 
 ### 5-6. 식당 검색
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=5000&page=1
