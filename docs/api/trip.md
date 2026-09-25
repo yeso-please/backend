@@ -34,12 +34,7 @@
   "regionSelection": null,
   "scheduleDensity": null,
   "hasCourse": false,
-  "version": 0,
-  "dayWindows": [
-    {"dayIndex": 0, "date": "2026-10-10", "windowStart": "12:00", "windowEnd": "20:00"},
-    {"dayIndex": 1, "date": "2026-10-11", "windowStart": "09:00", "windowEnd": "20:00"},
-    {"dayIndex": 2, "date": "2026-10-12", "windowStart": "09:00", "windowEnd": "17:00"}
-  ]
+  "version": 0
 }
 ```
 
@@ -49,7 +44,6 @@
 | `regionSigCd`, `regionSelection`, `scheduleDensity` | 지역을 정하기(3-7) 전에는 `null`. `regionSelection`은 `RANDOM` \| `CONDITIONAL` \| `MANUAL`. `scheduleDensity`는 3-7에서 정하고, 코스가 생긴 뒤에는 5-1에서만 바뀐다 |
 | `hasCourse` | 코스에 일정 항목이 있는지. 3-7 `replaceCourse`로 비운 코스는 `false` |
 | `version` | 여행의 낙관적 잠금 값(`trip_plans.version`). context 수정(3-5), 지역 정하기(3-7), 코스 생성·재생성(5-1)·편집(5-3)이 모두 이 값 하나를 올린다. 5장 `Course.version`과 같은 수다 |
-| `dayWindows` | 날짜별 기본 가용 시간. 당일치기 12:00~20:00, 여러 날이면 첫날 12:00~20:00·중간 09:00~20:00·마지막 날 09:00~17:00 |
 
 **오류 코드**
 
@@ -127,7 +121,6 @@ POST /api/trips/context/check
   "available": false,
   "endDate": "2026-10-12",
   "conflicts": [{"tripId": 1, "title": "10월 1일부터 3박 4일 여행", "startDate": "2026-10-01", "endDate": "2026-10-04"}],
-  "dayWindows": ["...TripContext.dayWindows와 같음"],
   "eligibleRegionCount": 12
 }
 ```
@@ -202,7 +195,7 @@ GET /api/trips/{tripId}/context
 PATCH /api/trips/{tripId}/context
 ```
 
-시작일·종료일은 바꿀 수 없다. 이동수단과 출발지는 코스가 있어도 바꿀 수 있다. 코스가 있으면 5-3 편집 뒤처럼 서버가 모든 날의 이동시간·시작 시각을 다시 계산한다. 다시 계산한 결과가 가용 시간을 넘기면 `422 COURSE_SCHEDULE_INFEASIBLE`로 거부하고 아무것도 바꾸지 않는다.
+시작일·종료일은 바꿀 수 없다. 이동수단과 출발지는 코스가 있어도 바꿀 수 있다. 코스가 있으면 서버가 모든 날의 이동시간(참고용)만 다시 계산한다. 코스의 항목·순서는 바뀌지 않는다.
 
 **Request Body**
 
@@ -226,7 +219,6 @@ PATCH /api/trips/{tripId}/context
 | 입력 규칙 위반 | 400 | `TRIP_INVALID_*`, `COMMON_INVALID_REQUEST` |
 | 없거나 참여자가 아님 | 404 | `TRIP_NOT_FOUND` |
 | 버전 불일치 | 409 | `TRIP_VERSION_CONFLICT` |
-| 코스 재계산 결과가 가용 시간 초과 | 422 | `COURSE_SCHEDULE_INFEASIBLE` |
 
 **구현과의 차이** — 코스가 있으면 `409 TRIP_CONTEXT_LOCKED`로 거부한다. 계약은 변경을 허용하고 코스 이동시간을 다시 계산한다.
 
@@ -280,7 +272,7 @@ POST /api/trips/{tripId}/region
 
 랜덤 추첨, 조건 추첨, 지도에서 직접 선택이 모두 이 API다. 다시 뽑기도 같은 요청을 다시 보낸다. 이전 결과를 제외하지 않으므로 같은 지역이 연속으로 나올 수 있다.
 
-**코스가 있으면(`hasCourse: true`) `replaceCourse: true`를 보내야 한다.** 없으면 `409 TRIP_CONTEXT_LOCKED`다. 프론트는 먼저 "코스를 비우고 다시 만들어요"로 확인을 받고 `replaceCourse: true`로 다시 보낸다. 이때 지역·밀도를 바꾸고 코스를 **비운다**(일정 항목·식당 선택 삭제). 코스 기록과 최초 생성 완료 표시는 남으므로 다음 5-1은 재생성이며 참여자 누구나 할 수 있다.
+**코스가 있으면(`hasCourse: true`) `replaceCourse: true`를 보내야 한다.** 없으면 `409 TRIP_CONTEXT_LOCKED`다. 프론트는 먼저 "코스를 비우고 다시 만들어요"로 확인을 받고 `replaceCourse: true`로 다시 보낸다. 이때 지역·밀도를 바꾸고 코스를 **비운다**(일정 항목·식당 선택·코스 제목과 추천 모드 삭제). 최초 생성 완료 표시(`course_first_generated_at`)는 남으므로 다음 5-1은 재생성이며 참여자 누구나 할 수 있다.
 
 **Request Body**
 
@@ -741,7 +733,7 @@ GET /api/shared/courses
 |---|---|
 | `tripId`, `myRole`, `startDate`, `endDate`, `version` | 값 있음. `version`은 여행 버전(숫자) |
 | `regionSigCd`, `regionName`, `scheduleDensity` | 지역을 정했으면 값, 정하기 전이면 `null` |
-| `title`, `titleSource`, `recommendationMode`, `assumptions`, `tasteBasis`, `updatedBy`, `updatedAt` | `null` |
+| `title`, `titleSource`, `recommendationMode`, `tasteBasis`, `updatedBy`, `updatedAt` | `null` |
 | `days`, `warnings` | `[]` |
 
 | 오류 | HTTP | code |
@@ -821,7 +813,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 - 계약 상태: agreed
 - 정책 소스: [결정](../product.md#코스와-편집), [코스 조립](../design/recommendation.md#7-코스-조립)
 
-**코스란** — 여행의 날짜별 일정표(어디를 몇 시에 가는지)다. 여행마다 코스는 하나이며 **course id = trip id**다. 확정 단계는 없다. 만든 뒤 참여자 누구나 계속 고친다.
+**코스란** — 여행의 날짜별 방문 순서 목록이다. 하루마다 관광지와 식사(점심·저녁)를 한 목록에 순서대로 둔다. **시각은 없다**(2026-09-25). 항목마다 체류시간과 앞 항목에서의 이동시간을 참고용으로만 보여 준다. 여행마다 코스는 하나이며 **course id = trip id**다. 확정 단계는 없다. 만든 뒤 참여자 누구나 계속 고친다.
 
 ```text
 3-7 지역 정하기 → 5-1 코스 생성(요청자 취향, 서버 저장)
@@ -829,12 +821,12 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
              → 5-1 재생성(누른 사람 취향, 기존 편집을 덮어씀)
 ```
 
-- 모든 편집은 `version`을 보내고, 서버가 일정 전체의 시간·이동·식사·밀도 상한을 다시 계산한다. 클라이언트가 보낸 시간·거리는 믿지 않는다.
+- 모든 편집은 `version`을 보내고, 서버가 이동시간을 다시 계산한다. 클라이언트가 보낸 시간·거리는 믿지 않는다. 가용 시간·시각 검사는 없으므로 편집이 "항목이 너무 많음"·"시간 초과"로 실패하지 않는다.
 - `version`은 코스 전용 값이 아니라 **여행의 `trip_plans.version` 하나**다. 여행 context 수정(3-5), 지역 정하기(3-7), 코스 생성·재생성(5-1), 편집(5-3)이 모두 같은 값을 올리고, 요청·응답의 `version`은 모두 이 수를 가리킨다. 재생성해도 계속 증가하며 1로 돌아가지 않는다. 불일치는 `409 TRIP_VERSION_CONFLICT`이고, 예전 화면의 요청은 이것으로 걸러진다.
 - 이 장은 **밖에서 관찰되는 동작**만 정한다. 후보 점수식, 날짜 배정·순서 알고리즘, 폴백 세부, 제목 프롬프트는 [데이터·추천·코스 설계](../design/recommendation.md) §5~§8을 따른다. 5장을 구현하는 사람은 그 문서를 함께 읽는다.
 - 코스는 여행이 삭제될 때만 함께 삭제된다. 3-7 `replaceCourse: true`로 지역·밀도를 바꾸면 코스가 **비워진다**(항목·식당 선택 삭제, 코스 기록과 최초 생성 완료 표시는 유지). 비운 코스는 5-2~5-6에서 코스가 없는 것과 같다(`404 COURSE_NOT_FOUND`, 4-13은 `days: []`). 다음 5-1은 재생성이다.
 - 이동수단·출발지(3-5)는 코스가 있어도 바꿀 수 있고, 서버가 이동시간을 다시 계산한다.
-- 밀도(RELAXED 4·PACKED 6)는 **자동 생성의 목표**다. 수동 편집(5-3)은 밀도 상한을 넘겨 추가할 수 있고 가용 시간만 검사한다.
+- 밀도(RELAXED 4·PACKED 6)는 **자동 생성이 하루에 배치할 관광지 수의 목표**다. 수동 편집(5-3)은 개수 제한 없이 추가할 수 있다.
 
 **`Course`**
 
@@ -852,22 +844,19 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
   "titleSource": "RULE",
   "recommendationMode": "PERSONALIZED",
   "tasteBasis": {"userId": 1, "nickname": "만든사람"},
-  "assumptions": {
-    "regionArrivalTime": "12:00",
-    "regionDepartureTime": "17:00",
-    "mealPreferences": {"lunchStart": "12:00", "dinnerStart": "18:00", "durationMinutes": 60}
-  },
   "days": [
     {
       "dayIndex": 0,
       "date": "2026-10-10",
-      "windowStart": "12:00",
-      "windowEnd": "20:00",
       "items": [
-        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "startTime": "12:00", "durationMinutes": 60, "restaurant": null},
         {"itemId": "a-101", "type": "ATTRACTION", "attractionId": 5012, "name": "대릉원", "category": "HISTORY_CULTURE",
-         "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "startTime": "13:25", "durationMinutes": 90,
-         "travelFromPreviousMinutes": 25, "estimated": true, "source": "RECOMMEND", "reason": "역사 선호와 맞아요"}
+         "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "durationMinutes": 90,
+         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "역사 선호와 맞아요"},
+        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null},
+        {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
+         "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
+         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연·산책 선호와 맞아요"},
+        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null}
       ]
     }
   ],
@@ -883,25 +872,25 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `myRole` | `PARTICIPANT`(수정 가능) \| `VIEWER`(공유 링크, 읽기 전용). 프론트는 이것으로 편집 UI를 켠다 |
 | `titleSource` | `RULE` \| `LLM`. MVP 기본은 규칙 제목 `{지역명}, {대표 테마}를 따라 걷는 {일수}일`(`RULE`)이다. LLM 제목은 서버 설정으로 켰을 때만 시도하고(`LLM`), 실패·timeout이면 `RULE`로 대신한다 |
 | `recommendationMode` | `PERSONALIZED`(취향 반영) \| `TOUR_OFFICIAL`(임베딩 장애 → TourAPI 공식 코스) \| `RULE_BASED`(취향 없는 규칙 코스) |
-| `assumptions` | 코스 계산에 쓴 고정 기본값(지역 도착·출발 시각, 점심·저녁 시작 시각, 식사 길이). 사용자가 바꾸는 값이 아니며 표시용이다 |
 | `tasteBasis` | 이 코스를 생성·재생성할 때 취향·제외 조건을 쓴 사람. `myRole: VIEWER`면 `null` |
+| `days[].items` | 그날의 방문 순서. **배열 순서가 방문 순서**이며 따로 순서 필드는 없다. 관광지와 식사가 한 목록에 섞인다. 시각 필드는 없다 |
 | `items[].itemId` | 서버가 부여하는 안정적 ID. 관광지 `a-{n}`, 식사 `m-{n}`. 편집 대상 지정에 쓴다. 재생성하면 모두 새 ID가 된다 |
 | `items[].type` | `ATTRACTION` \| `MEAL`. 아래 타입별 필드 표 참고 |
 | `items[].category` | `NATURE`(자연) \| `HISTORY_CULTURE`(역사·문화) \| `ACTIVITY`(체험·레포츠) \| `WALK_REST`(산책·휴식) \| `ETC`(기타) |
-| `items[].durationMinutes` | 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분). 실측이 아니므로 `estimated: true` |
-| `items[].travelFromPreviousMinutes` | 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 첫 항목은 `null` |
+| `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
+| `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
-| `items[].restaurant` | 식사 슬롯에 고른 식당 스냅샷(`RestaurantSnapshot`). 없으면 `null` |
+| `items[].restaurant` | 식사 슬롯에 고른 식당 스냅샷(`RestaurantSnapshot`). 없으면 `null`이고 화면에는 "미정"으로 보인다 |
 | `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
 
 **항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
 
 | 필드 | ATTRACTION | MEAL |
 |---|---|---|
-| `itemId`, `type`, `startTime`, `durationMinutes` | 필수 | 필수 |
+| `itemId`, `type`, `durationMinutes` | 필수 | 필수(`durationMinutes`는 60) |
 | `attractionId`, `name`, `category`, `thumbnailUrl`, `address`, `lat`, `lng` | 필수(`thumbnailUrl`·`address`는 nullable) | — |
-| `travelFromPreviousMinutes` | 그날 첫 항목이면 `null` | — (식당 이동은 계산하지 않는다) |
+| `travelFromPreviousMinutes` | 그날 앞에 관광지가 없으면 `null` | 항상 `null`(식당 이동은 계산하지 않는다) |
 | `estimated`, `source`, `reason` | 필수(`reason`은 nullable) | — |
 | `meal` | — | `LUNCH` \| `DINNER` |
 | `restaurant` | — | `RestaurantSnapshot` 또는 `null` |
@@ -934,8 +923,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | code | 뜻 |
 |---|---|
 | `ROUTE_TIME_ESTIMATED` | 이동시간이 직선거리 추정이다. 실제 도로 시간이 아니라고 표시한다. MVP에서는 항상 붙는다 |
-| `DENSITY_TARGET_NOT_MET` | 시간·식사 제약 또는 지역 후보 부족 때문에 밀도 상한보다 적게 배치됨. `dayIndex` 포함 |
-| `MEAL_SKIPPED_OUTSIDE_WINDOW` | 식사 슬롯이 가용 시간 밖이라 넣지 않음 |
+| `DENSITY_TARGET_NOT_MET` | 지역 후보 부족으로 밀도 목표보다 적게 배치됨. `dayIndex` 포함 |
 | `PERSONALIZATION_FALLBACK` | 취향 임베딩을 쓸 수 없어 `TOUR_OFFICIAL`·`RULE_BASED`로 만듦 |
 | `TITLE_GENERATION_FAILED` | LLM 제목을 켰는데 실패·timeout이라 규칙 제목을 사용함. LLM을 끈 기본 설정에서는 붙지 않는다 |
 | `ATTRACTION_NO_LONGER_RECOMMENDABLE` | 품질 기준에서 빠진 장소가 일정에 있음. `itemId` 포함. 항목은 그대로 두고 다른 편집을 막지 않는다. 프론트는 교체(5-4)를 제안한다. 공유 화면(4-13)도 그대로 보여준다 |
@@ -957,7 +945,6 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `COURSE_INSUFFICIENT_CANDIDATES` | 422 | 폴백까지 거쳐도 관광지를 하루 최소 1곳 배치하지 못하는 날이 있음. `details.days[]` |
 | `ATTRACTION_NOT_RECOMMENDABLE` | 422 | 좌표·설명·검증 이미지가 없는 장소 |
 | `ATTRACTION_REGION_MISMATCH` | 422 | 다른 지역의 장소 |
-| `COURSE_SCHEDULE_INFEASIBLE` | 422 | 편집·재계산 결과가 가용 시간을 넘기거나 식사 시간을 침범함. `details.dayIndex`, `details.reason` |
 | `COURSE_RESTAURANT_SELECTION_INVALID` | 422 | 식당 `selectionToken`의 형식·서명이 틀렸거나(위조), 만료(30분)됐거나, `tripId`·`itemId`가 이 슬롯과 다름 |
 | `COURSE_KAKAO_LOCAL_UNAVAILABLE` | 502 | 카카오 Local 장애·timeout·잘못된 응답 |
 | `COURSE_KAKAO_LOCAL_RATE_LIMITED` | 503 | 카카오 호출 한도. `Retry-After` 헤더 포함 |
@@ -994,15 +981,13 @@ POST /api/courses/{tripId}/generate
 
 **생성 규칙**
 
-- 시각은 사용자가 정하지 않는다(2026-09-25). 날짜별 가용 시간은 `TripContext.dayWindows`(첫날 12:00, 마지막 날 17:00, 당일치기 12:00~20:00), 식사는 점심 12:00·저녁 18:00 시작, 60분으로 고정해 계산한다. 사용자는 5-3 수동 편집으로만 코스를 조정한다.
-
+- 코스는 시각 없는 날짜별 순서 목록이다(2026-09-25). 자동 생성은 날짜별로 **관광지를 몇 곳 둘지**(밀도 목표 RELAXED 4·PACKED 6)와 **순서**만 정한다. 사용자는 5-3 수동 편집으로 코스를 조정한다.
+- 식사: 여행의 **모든 날에 점심(`LUNCH`)과 저녁(`DINNER`)을 하나씩** 넣는다(첫날·마지막 날·당일치기도 같다). 점심은 그날 관광지의 대략 절반 뒤, 저녁은 그날 맨 끝에 둔다. 정확한 위치 규칙은 #49 설계를 따른다.
 - 후보: 같은 지역의 추천 가능 관광지(좌표·설명·검증 이미지 보유). **요청자**의 제외 조건 중 판정할 수 있는 것만 적용한다.
   - `물놀이`: 물놀이 성격의 관광지 분류(해수욕장·계곡·수상 레포츠 등)를 후보에서 뺀다.
-  - `야간 이동`: 모든 날의 가용 시간이 20:00 전에 끝나므로 기본 규칙으로 지켜진다.
-  - `계단·경사 많은 곳`, `오래 걷기`: 판정할 데이터가 없어 MVP에서는 저장만 하고 코스에 쓰지 않는다.
+  - `계단·경사 많은 곳`, `오래 걷기`, `야간 이동`: 판정할 데이터가 없거나(앞의 둘) 코스가 시각을 다루지 않아(`야간 이동`) MVP에서는 저장만 하고 코스에 쓰지 않는다.
 - 취향: 요청자의 최신 온보딩 취향 벡터. 다른 참여자 취향은 쓰지 않는다.
-- 식사 슬롯이 가용 시간에 완전히 들어갈 때만 식사를 넣는다.
-- 중복·식사 침범·밀도 상한은 어길 수 없다. 운영시간·휴무는 원천이 자유 문장이라 MVP에서는 배치에 쓰지 않는다(관광지 상세 7-4에 원문만 보여 준다). 채우지 못하면 적게 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다.
+- 중복·밀도 목표 초과는 하지 않는다. 운영시간·휴무는 원천이 자유 문장이라 MVP에서는 배치에 쓰지 않는다(관광지 상세 7-4에 원문만 보여 준다). 채우지 못하면 적게 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다.
 - 바꾼 밀도에 지역의 후보가 모자라도(7-1 기준 추첨 불가여도) 거부하지 않는다. 들어가는 만큼 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다. `422 COURSE_INSUFFICIENT_CANDIDATES`는 폴백까지 거쳐도 **하루 최소 1곳**을 채우지 못하는 날이 있을 때만이다.
 - 폴백: 취향 벡터 → `PERSONALIZED`, 없으면 같은 지역 TourAPI 공식 코스 → `TOUR_OFFICIAL`, 부족하면 규칙 코스 → `RULE_BASED`. 모두 실패하면 422.
 - 제목은 장소·순서가 정해진 뒤 만든다. MVP는 규칙 제목(`RULE`)이다. LLM 제목은 선택 기능으로 서버 설정(예: `course.title.llm-enabled`, 기본 `false`)으로 켜며, 실패·timeout이면 규칙 제목으로 대신하고 코스 생성은 성공한다. MVP에 LLM 제공자 계약은 필요 없다.
@@ -1024,7 +1009,7 @@ POST /api/courses/{tripId}/generate
 {"days": [{"dayIndex": 1, "required": 1, "available": 0}]}
 ```
 
-**Side effects** — 기존 항목을 지우고 `trip_stops`·`meal_stops`에 새 항목, 가정값, 추천 모드, 요청자 취향 스냅샷, 제목을 저장한다. `scheduleDensity`를 보냈으면 `trip_plans.schedule_density`도 바꾼다. 임베딩 서버를 요청마다 재시도하지 않는다.
+**Side effects** — 기존 항목을 지우고 `course_items`(관광지·식사 순서 목록)에 새 항목을 저장한다. 고른 식당(`course_meal_restaurants`)도 함께 지워진다. 제목·추천 모드·취향 기준 회원은 `trip_plans`에 저장하고, 첫 생성이면 `course_first_generated_at`을 기록한다. `scheduleDensity`를 보냈으면 `trip_plans.schedule_density`도 바꾼다. 임베딩 서버를 요청마다 재시도하지 않는다.
 
 ---
 
@@ -1073,22 +1058,22 @@ PATCH /api/courses/{tripId}/schedule
 
 | op | 필드 | 뜻 |
 |---|---|---|
-| `ADD` | `dayIndex`, `position?`, `attractionId` | 관광지 추가. `position`은 그날 관광지 순서(0부터), 생략하면 맨 뒤 |
+| `ADD` | `dayIndex`, `position?`, `attractionId` | 관광지 추가. `position`은 그날 목록(관광지·식사 포함)에서의 위치(0부터), 생략하면 맨 뒤 |
 | `REPLACE` | `itemId`, `attractionId` | 관광지 교체 |
-| `REMOVE` | `itemId` | 관광지 삭제. 식사 슬롯은 삭제하지 않는다 |
-| `MOVE` | `itemId`, `dayIndex`, `position` | 관광지를 다른 순서·날짜로 이동 |
+| `REMOVE` | `itemId` | 관광지 삭제. 식사는 삭제할 수 없다 |
+| `MOVE` | `itemId`, `dayIndex`, `position` | 관광지는 다른 순서·날짜로, 식사는 같은 날 안에서 다른 순서로 이동. 날마다 점심·저녁은 하나씩이라 식사를 다른 날로 옮길 수 없다 |
 | `SET_RESTAURANT` | `itemId`(식사), `selectionToken` | 5-5·5-6 결과의 식당을 식사 슬롯에 지정·교체. 토큰은 받은 그대로 body에 넣는다(1~2KB, query string 금지). 서버는 서명·만료·`tripId`·`itemId`를 검증하고 토큰 안의 스냅샷을 저장한다 |
 | `CLEAR_RESTAURANT` | `itemId`(식사) | 식당 선택 해제 |
 
 - `operations`는 1~20개, 앞에서부터 차례로 적용한 결과를 검증한다.
-- `REMOVE`·`REPLACE`·`MOVE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 다른 타입이나 범위 밖 `dayIndex`·`position`은 `400 COURSE_INVALID_OPERATION`이다.
+- `MOVE`는 관광지·식사 항목 모두에, `REMOVE`·`REPLACE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 식사 `itemId`에 `REMOVE`·`REPLACE`를 보내는 등 다른 타입이나 범위 밖 `dayIndex`·`position`, 식사를 다른 날로 옮기는 `MOVE`는 `400 COURSE_INVALID_OPERATION`이다. 식사를 추가하는 operation은 없다.
 - `REPLACE`는 `itemId`를 유지하고 장소만 바꾼다. `ADD`는 새 `itemId`를 만든다.
 - 추가·교체 대상은 같은 지역의 추천 가능 관광지여야 하고 이미 일정에 없어야 한다.
-- 적용 뒤 서버가 모든 날의 시작 시각·이동시간·식사 위치를 다시 계산한다. 가용 시간을 넘기면 422로 거부하고 아무것도 바꾸지 않는다.
-- 밀도 상한은 검사하지 않는다. `ADD`로 상한보다 많이 넣어도 그날 가용 시간 안이면 된다(밀도는 자동 생성의 목표일 뿐이다).
-- 관광지가 0곳인 날도 허용한다. 식당을 고르지 않은 식사 슬롯은 화면에서 "미정"으로 보인다. 식사를 건너뛰는 operation은 없다.
+- 적용 뒤 서버가 이동시간(참고용)만 다시 계산한다. 식사 위치는 사용자가 정한 순서 그대로 두고 옮기지 않는다.
+- 개수·시간 검사는 없다. `ADD`로 밀도 목표보다 많이 넣어도 된다(밀도는 자동 생성의 목표일 뿐이다).
+- 관광지가 0곳인 날도 허용한다. 식당을 고르지 않은 식사 슬롯은 화면에서 "미정"으로 보인다. 식사를 건너뛰거나 삭제하는 operation은 없다.
 - 일정에 이미 있는 추천 불가 장소(`ATTRACTION_NO_LONGER_RECOMMENDABLE`)는 다른 편집을 막지 않는다. 추천 가능 여부는 `ADD`·`REPLACE`로 새로 넣는 장소에만 검사한다.
-- 날짜·지역·밀도·시각(도착·출발·식사)은 이 API로 바꾸지 않는다. 밀도는 재생성(5-1), 지역은 3-7(`replaceCourse`)이다. 시각은 고정 기본값이며 사용자가 바꾸지 않는다.
+- 날짜·지역·밀도는 이 API로 바꾸지 않는다. 밀도는 재생성(5-1), 지역은 3-7(`replaceCourse`)이다. 코스에는 시각이 없다.
 
 **Response `200 OK`** — 갱신된 `Course`, `version` +1, `updatedBy`는 요청자.
 
@@ -1102,10 +1087,7 @@ PATCH /api/courses/{tripId}/schedule
 | 버전 불일치 | 409 | `TRIP_VERSION_CONFLICT` |
 | 중복 장소 | 409 | `ATTRACTION_ALREADY_IN_COURSE` |
 | 추천 불가·타지역 장소 | 422 | `ATTRACTION_NOT_RECOMMENDABLE`, `ATTRACTION_REGION_MISMATCH` |
-| 가용 시간 초과·식사 침범 | 422 | `COURSE_SCHEDULE_INFEASIBLE` |
 | 식당 `selectionToken` 위조·만료·다른 슬롯 | 422 | `COURSE_RESTAURANT_SELECTION_INVALID` |
-
-`COURSE_SCHEDULE_INFEASIBLE`의 `details`는 `{"dayIndex": 1, "reason": "…"}`이며 `reason`은 `WINDOW_EXCEEDED`(가용 시간 초과), `MEAL_OVERLAP`(식사 시간 침범) 중 하나다.
 
 **동시성** — 두 사람이 같은 `version`으로 보내면 먼저 도착한 하나만 성공한다. 나머지는 `409 TRIP_VERSION_CONFLICT`를 받고, 5-2로 최신본을 다시 받아 적용한다. 이 `version`은 3-5·3-7과 같은 여행 버전이므로 그 사이 다른 참여자가 이동수단·지역을 바꿔도 409다.
 
@@ -1171,7 +1153,7 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 | `itemId` | 예 | 식사 슬롯 |
 | `radius` | 아니오 | 미터. 기본 5000, 최대 20000 |
 
-검색 기준점은 그 식사 **바로 앞 관광지**다. 그날 첫 항목이면 지역 중심 좌표를 쓴다.
+검색 기준점은 그날 순서에서 그 식사보다 앞에 있는 관광지 중 **가장 가까운(마지막) 관광지**다. 사이에 다른 식사가 있으면 건너뛴다. 그날 식사 앞에 관광지가 없으면 지역 중심 좌표를 쓴다.
 
 **후보 조건**
 

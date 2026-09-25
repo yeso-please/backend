@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * 여행 방. 만드는 순간 기간을 차지하며 날짜는 바꿀 수 없다(2026-09-24 정책). 지역은 지역 정하기(API 3-7)가
@@ -79,6 +80,32 @@ public class TripPlan extends BaseTimeEntity {
     @Column(name = "schedule_density", length = 20)
     private String scheduleDensity;
 
+    // ---- 코스 정보(docs/api/trip.md 5장). 항목은 CourseItem에 있다. ----
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "title_source", length = 20)
+    private CourseTitleSource titleSource;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recommendation_mode", length = 20)
+    private RecommendationMode recommendationMode;
+
+    /** 코스를 생성·재생성할 때 취향·제외 조건을 쓴 사람. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "taste_basis_user_id")
+    private User tasteBasisUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_updated_by_user_id")
+    private User courseUpdatedBy;
+
+    @Column(name = "course_updated_at")
+    private LocalDateTime courseUpdatedAt;
+
+    /** 코스를 처음 만든 시각. 코스를 비워도 남아서, 다음 생성은 재생성(참여자 누구나)이 된다. */
+    @Column(name = "course_first_generated_at")
+    private LocalDateTime courseFirstGeneratedAt;
+
     @Version
     @Column(nullable = false)
     private int version;
@@ -128,6 +155,24 @@ public class TripPlan extends BaseTimeEntity {
         }
         this.originLat = originLat;
         this.originLng = originLng;
+    }
+
+    /** 한 번이라도 코스를 만든 적이 있으면 true다. 첫 생성은 여행을 만든 사람만 한다(5-1). */
+    public boolean hasGeneratedCourse() {
+        return courseFirstGeneratedAt != null;
+    }
+
+    /**
+     * 코스 정보를 비운다(3-7 replaceCourse). 항목 삭제는 호출하는 쪽이 한다.
+     * {@code courseFirstGeneratedAt}은 남긴다.
+     */
+    public void clearCourseInfo() {
+        this.title = null;
+        this.titleSource = null;
+        this.recommendationMode = null;
+        this.tasteBasisUser = null;
+        this.courseUpdatedBy = null;
+        this.courseUpdatedAt = null;
     }
 
     public boolean overlaps(LocalDate otherStart, LocalDate otherEnd) {

@@ -12,7 +12,6 @@ import com.yeso.backend.trip.domain.TripConflict;
 import com.yeso.backend.trip.domain.TripContextLockedException;
 import com.yeso.backend.trip.domain.TripDateOverlapException;
 import com.yeso.backend.trip.domain.TripDatesImmutableException;
-import com.yeso.backend.trip.domain.TripDayWindowCalculator;
 import com.yeso.backend.trip.domain.TripEndedException;
 import com.yeso.backend.trip.domain.TripFullException;
 import com.yeso.backend.trip.domain.TripNotFoundException;
@@ -22,9 +21,8 @@ import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripVersionConflictException;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
-import com.yeso.backend.trip.infrastructure.TripStopRepository;
+import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import com.yeso.backend.trip.presentation.context.CreateTripRequest;
-import com.yeso.backend.trip.presentation.context.DayWindowResponse;
 import com.yeso.backend.trip.presentation.context.MyTripResponse;
 import com.yeso.backend.trip.presentation.context.ParticipantResponse;
 import com.yeso.backend.trip.presentation.context.TripConflictResponse;
@@ -58,7 +56,7 @@ public class TripService {
 
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
-    private final TripStopRepository tripStopRepository;
+    private final CourseItemRepository courseItemRepository;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -71,10 +69,7 @@ public class TripService {
         return new CheckTripContextResponse(
                 conflicts.isEmpty(),
                 endDate,
-                conflicts.stream().map(TripConflictResponse::from).toList(),
-                TripDayWindowCalculator.calculate(startDate, nights).stream()
-                        .map(DayWindowResponse::from)
-                        .toList());
+                conflicts.stream().map(TripConflictResponse::from).toList());
     }
 
     public TripContextResponse createTrip(Long userId, CreateTripRequest request) {
@@ -145,7 +140,7 @@ public class TripService {
                 .collect(Collectors.groupingBy(
                         participant -> participant.getTripPlan().getId(),
                         Collectors.mapping(participant -> ParticipantSummaryResponse.from(participant.getUser()), Collectors.toList())));
-        Set<Long> tripsWithCourse = tripStopRepository.findTripPlanIdsWithStops(tripIds);
+        Set<Long> tripsWithCourse = courseItemRepository.findTripPlanIdsWithItems(tripIds);
         return trips.stream()
                 .map(trip -> MyTripResponse.of(
                         trip, participantsByTrip.getOrDefault(trip.getId(), List.of()), tripsWithCourse.contains(trip.getId())))
@@ -243,7 +238,7 @@ public class TripService {
     }
 
     private boolean hasCourse(Long tripId) {
-        return tripStopRepository.existsByTripPlanId(tripId);
+        return courseItemRepository.existsByTripPlanId(tripId);
     }
 
     private LocalDate validateStartDate(LocalDate startDate) {

@@ -1,10 +1,8 @@
 package com.yeso.backend.trip.presentation.context;
 
-import com.yeso.backend.trip.domain.TripDayWindowCalculator;
 import com.yeso.backend.trip.domain.TripPlan;
 
 import java.time.LocalDate;
-import java.util.List;
 
 public record TripContextResponse(
         Long id,
@@ -18,15 +16,9 @@ public record TripContextResponse(
         String regionSelection,
         String scheduleDensity,
         boolean hasCourse,
-        int version,
-        List<DayWindowResponse> dayWindows
+        int version
 ) {
     public static TripContextResponse of(TripPlan tripPlan, boolean hasCourse) {
-        List<DayWindowResponse> dayWindows = TripDayWindowCalculator
-                .calculate(tripPlan.getStartDate(), tripPlan.getNights())
-                .stream()
-                .map(DayWindowResponse::from)
-                .toList();
         return new TripContextResponse(
                 tripPlan.getId(),
                 tripPlan.getStartDate(),
@@ -39,7 +31,6 @@ public record TripContextResponse(
                 tripPlan.getRegionSelection(),
                 tripPlan.getScheduleDensity(),
                 hasCourse,
-                tripPlan.getVersion(),
-                dayWindows);
+                tripPlan.getVersion());
     }
 }
