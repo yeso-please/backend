@@ -141,7 +141,7 @@ POST /api/trips/context/check
 |---|---:|---|
 | 시작일·박수 규칙 위반 | 400 | `TRIP_INVALID_START_DATE`, `TRIP_INVALID_NIGHTS` |
 
-**구현과의 차이** — `eligibleRegionCount`가 없고, 코스 제목이 없는 여행의 `conflicts[].title`이 대체 제목이 아니라 `null`이다.
+**구현과의 차이** — `eligibleRegionCount`가 없다(#41).
 
 ---
 
@@ -234,7 +234,7 @@ PATCH /api/trips/{tripId}/context
 
 ### 3-6. 내 여행 목록
 
-> `호출: 회원` · `🔧 변경 필요`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/trips?period=UPCOMING
@@ -267,8 +267,6 @@ GET /api/trips?period=UPCOMING
 - `title`은 코스 제목이다. 코스 제목이 없으면 서버가 대체 제목 `M월 D일부터 N박 N+1일 여행`(당일치기는 `M월 D일 당일 여행`)을 준다(예: `10월 10일부터 2박 3일 여행`). `null`이 아니다.
 - `myDiaryId`는 이 여행에 내가 쓴 여행기 ID, 없으면 `null`이다([6장](#6-여행기사진-지도)).
 - `period`: `UPCOMING`은 `endDate >= 오늘`, `PAST`는 `endDate < 오늘`(Asia/Seoul).
-
-**구현과의 차이** — 코스 제목이 없으면 `title`이 대체 제목이 아니라 `null`이다.
 
 ---
 
@@ -505,7 +503,7 @@ DELETE /api/trips/{tripId}/invites/{inviteId}
 
 ### 4-4. 초대 링크 미리보기
 
-> `호출: 공개` · `🔧 변경 필요`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/invites/{token}
@@ -527,13 +525,11 @@ GET /api/invites/{token}
 | 없는 token | 404 | `INVITE_NOT_FOUND` |
 | 만료·폐기 | 410 | `INVITE_EXPIRED`, `INVITE_REVOKED` |
 
-**구현과의 차이** — `title` 필드가 없다.
-
 ---
 
 ### 4-5. 초대 링크 수락
 
-> `호출: 회원` · `🔧 변경 필요`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/invites/{token}/accept
@@ -554,8 +550,6 @@ POST /api/invites/{token}/accept
 | 만료·폐기 | 410 | `INVITE_EXPIRED`, `INVITE_REVOKED` |
 
 **Side effects** — `trip_participants`에 1건. 같은 사용자의 동시 수락·여행 생성은 직렬화되어 겹치는 두 여행에 동시에 들어가지 않는다. 정원 검사는 여행 단위로 직렬화해 동시 수락으로 8명을 넘지 않는다.
-
-**구현과의 차이** — 참여자 정원(8명) 검사와 `TRIP_FULL`이 없다.
 
 ---
 

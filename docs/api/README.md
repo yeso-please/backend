@@ -189,15 +189,15 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
 | ✅ | [3-4](trip.md#3-4-여행-context-조회) | GET | `/trips/{tripId}/context` | 참여자 | context 조회 | MVP |
 | 🔧 | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지(코스 있어도, 이동시간 재계산) | MVP |
-| 🔧 | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 | MVP |
+| ✅ | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 | MVP |
 | ⬜ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
 | ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 | MVP |
 | ✅ | [3-9](trip.md#3-9-여행-탈퇴) | DELETE | `/trips/{tripId}/participants/me` | 참여자 | 탈퇴(마지막이면 여행 삭제) | MVP |
 | ✅ | [4-1](trip.md#4-1-초대-링크-발급) | POST | `/trips/{tripId}/invites` | 참여자 | 초대 링크 발급 | MVP |
 | ✅ | [4-2](trip.md#4-2-초대-링크-목록) | GET | `/trips/{tripId}/invites` | 참여자 | 초대 링크 목록 | MVP |
 | ✅ | [4-3](trip.md#4-3-초대-링크-폐기) | DELETE | `/trips/{tripId}/invites/{inviteId}` | 참여자 | 초대 링크 폐기 | MVP |
-| 🔧 | [4-4](trip.md#4-4-초대-링크-미리보기) | GET | `/invites/{token}` | 공개 | 초대 미리보기 | MVP |
-| 🔧 | [4-5](trip.md#4-5-초대-링크-수락) | POST | `/invites/{token}/accept` | 회원 | 초대 링크 수락 | MVP |
+| ✅ | [4-4](trip.md#4-4-초대-링크-미리보기) | GET | `/invites/{token}` | 공개 | 초대 미리보기 | MVP |
+| ✅ | [4-5](trip.md#4-5-초대-링크-수락) | POST | `/invites/{token}/accept` | 회원 | 초대 링크 수락 | MVP |
 | ⬜ | [4-6](trip.md#4-6-친구-초대) | POST | `/trips/{tripId}/friend-invites` | 참여자 | 친구 직접 초대 | MVP |
 | ⬜ | [4-7](trip.md#4-7-받은-초대-목록) | GET | `/me/trip-invites` | 회원 | 받은 초대 | MVP |
 | ⬜ | [4-8](trip.md#4-8-받은-초대-수락거절) | POST | `/me/trip-invites/{id}/accept`·`/decline` | 회원 | 받은 초대 수락·거절 | MVP |

@@ -6,6 +6,6 @@ import java.time.LocalDate;
 public record TripConflict(Long tripId, String title, LocalDate startDate, LocalDate endDate) {
 
     public static TripConflict from(TripPlan tripPlan) {
-        return new TripConflict(tripPlan.getId(), tripPlan.getTitle(), tripPlan.getStartDate(), tripPlan.getEndDate());
+        return new TripConflict(tripPlan.getId(), tripPlan.displayTitle(), tripPlan.getStartDate(), tripPlan.getEndDate());
     }
 }

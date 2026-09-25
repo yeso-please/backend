@@ -101,6 +101,22 @@ public class TripPlan extends BaseTimeEntity {
         return endDate.isBefore(today);
     }
 
+    /** 참여자 정원. 가득 차면 초대를 수락할 수 없다(docs/api/trip.md 4장). */
+    public static final int MAX_PARTICIPANTS = 8;
+
+    /**
+     * 화면에 보일 여행 이름. 코스 제목이 없으면 "M월 D일부터 N박 N+1일 여행"(당일은 "M월 D일 당일 여행")이다
+     * (docs/api/trip.md 3-6).
+     */
+    public String displayTitle() {
+        if (title != null && !title.isBlank()) {
+            return title;
+        }
+        String start = startDate.getMonthValue() + "월 " + startDate.getDayOfMonth() + "일";
+        int nights = getNights();
+        return nights == 0 ? start + " 당일 여행" : start + "부터 " + nights + "박 " + (nights + 1) + "일 여행";
+    }
+
     public boolean isCreatedBy(Long userId) {
         return ownerUser.getId().equals(userId);
     }

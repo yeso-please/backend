@@ -26,7 +26,7 @@ public record MyTripResponse(
         var region = tripPlan.getRegion();
         return new MyTripResponse(
                 tripPlan.getId(),
-                tripPlan.getTitle(),
+                tripPlan.displayTitle(),
                 region == null ? null : region.getSigCd(),
                 region == null ? null : region.getProvince() + " " + region.getCity(),
                 tripPlan.getStartDate(),

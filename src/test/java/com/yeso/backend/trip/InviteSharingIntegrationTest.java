@@ -21,7 +21,13 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -256,6 +262,7 @@ class InviteSharingIntegrationTest extends IntegrationTest {
             mockMvc.perform(get("/api/invites/{token}", inviteToken(token, tripId)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.valid").value(true))
+                    .andExpect(jsonPath("$.title").value("10월 11일부터 2박 3일 여행"))
                     .andExpect(jsonPath("$.startDate").value(startDate.toString()))
                     .andExpect(jsonPath("$.inviterNickname").value("만든사람"))
                     .andExpect(jsonPath("$.participantCount").value(1))
@@ -277,6 +284,58 @@ class InviteSharingIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$[1].isCreator").value(false));
             mockMvc.perform(get("/api/trips").header("Authorization", ApiFixtures.bearer(trip.friend())))
                     .andExpect(jsonPath("$[0].tripId").value(trip.tripId()));
+        }
+
+        @Test
+        @DisplayName("참여자가 7명이면 수락되고, 8명이면 409 TRIP_FULL이며 기존 참여자의 재수락은 200이다")
+        void accept_whenFull_returnsTripFull() throws Exception {
+            String creator = creatorToken();
+            Long tripId = createTrip(creator);
+            String raw = inviteToken(creator, tripId);
+            for (int i = 2; i <= 7; i++) {
+                assertThat(accept(member("참여자" + i), raw).getResponse().getStatus()).isEqualTo(201);
+            }
+
+            String eighth = member("여덟째");
+            assertThat(accept(eighth, raw).getResponse().getStatus()).isEqualTo(201);
+
+            mockMvc.perform(post("/api/invites/{token}/accept", raw)
+                            .header("Authorization", ApiFixtures.bearer(member("아홉째"))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("TRIP_FULL"));
+            assertThat(accept(eighth, raw).getResponse().getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("7명인 여행에 두 명이 동시에 수락하면 한 명만 들어가 8명을 넘지 않는다")
+        void accept_concurrentWhenOneSeatLeft_admitsOnlyOne() throws Exception {
+            String creator = creatorToken();
+            Long tripId = createTrip(creator);
+            String raw = inviteToken(creator, tripId);
+            for (int i = 2; i <= 7; i++) {
+                accept(member("참여자" + i), raw);
+            }
+            List<String> contenders = List.of(member("동시1"), member("동시2"));
+
+            ExecutorService executor = Executors.newFixedThreadPool(contenders.size());
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<Integer>> results = new ArrayList<>();
+            for (String token : contenders) {
+                results.add(executor.submit(() -> {
+                    start.await();
+                    return accept(token, raw).getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> result : results) {
+                statuses.add(result.get(30, TimeUnit.SECONDS));
+            }
+            executor.shutdown();
+
+            assertThat(statuses).containsExactlyInAnyOrder(201, 409);
+            mockMvc.perform(get("/api/trips/{id}/participants", tripId).header("Authorization", ApiFixtures.bearer(creator)))
+                    .andExpect(jsonPath("$.length()").value(8));
         }
 
         @Test

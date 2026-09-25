@@ -7,6 +7,6 @@ import java.util.Map;
 
 public class TripDateOverlapException extends TripException {
     public TripDateOverlapException(List<TripConflict> conflicts) {
-        super(ErrorCode.TRIP_DATE_OVERLAP, "이미 확정된 여행과 날짜가 겹칩니다.", Map.of("conflicts", conflicts));
+        super(ErrorCode.TRIP_DATE_OVERLAP, "참여 중인 여행과 날짜가 겹칩니다.", Map.of("conflicts", conflicts));
     }
 }
