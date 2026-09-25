@@ -185,6 +185,25 @@ public class ApiFixtures {
         assertThat(result.getResponse().getStatus()).as("accept friend link status").isEqualTo(201);
     }
 
+    // ---------- friend invite ----------
+
+    public MvcResult friendInviteResult(String accessToken, Long tripId, Long friendUserId) throws Exception {
+        return mockMvc.perform(post("/api/trips/{tripId}/friend-invites", tripId)
+                        .header("Authorization", bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"friendUserId":%d}
+                                """.formatted(friendUserId)))
+                .andReturn();
+    }
+
+    /** 친구에게 여행 초대를 보내고 초대 id를 돌려준다. 새 초대(201)가 아니면 실패한다. */
+    public Long friendInviteId(String accessToken, Long tripId, Long friendUserId) throws Exception {
+        MvcResult result = friendInviteResult(accessToken, tripId, friendUserId);
+        assertThat(result.getResponse().getStatus()).as("friend invite status").isEqualTo(201);
+        return ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
+    }
+
     // ---------- share link ----------
 
     public String shareLinkToken(String accessToken, Long tripId, String body) throws Exception {

@@ -13,6 +13,7 @@ import com.yeso.backend.shared.token.TokenAudience;
 import com.yeso.backend.trip.domain.TripInvitation;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.shared.token.OpaqueTokenGenerator;
+import com.yeso.backend.trip.infrastructure.TripFriendInvitationRepository;
 import com.yeso.backend.trip.infrastructure.TripInvitationRepository;
 import com.yeso.backend.trip.presentation.context.TripContextResponse;
 import com.yeso.backend.trip.presentation.invite.CreateInviteRequest;
@@ -41,6 +42,7 @@ public class InviteService {
     private static final int MAX_EXPIRES_IN_DAYS = 30;
 
     private final TripInvitationRepository invitationRepository;
+    private final TripFriendInvitationRepository friendInvitationRepository;
     private final UserRepository userRepository;
     private final TripService tripService;
     private final OpaqueTokenGenerator tokenGenerator;
@@ -99,6 +101,8 @@ public class InviteService {
         TripInvitation invitation = requireActiveInvitation(token);
         Long tripId = invitation.getTripPlan().getId();
         boolean joined = tripService.joinAsMember(userId, tripId, invitation.getId());
+        // 링크로 먼저 참여하면 대기 중인 친구 초대는 수락된 것으로 보고 받은 초대함에서 뺀다(4-6).
+        friendInvitationRepository.acceptPending(tripId, userId, LocalDateTime.now(clock));
         return new AcceptResult(joined, tripService.contextOf(invitation.getTripPlan()));
     }
 

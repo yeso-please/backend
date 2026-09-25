@@ -211,6 +211,17 @@ public class TripService {
         }
     }
 
+    /** 받은 친구 초대 목록(4-7)의 {@code dateConflict}. 이 기간이 회원의 참여 중인 여행과 겹치면 true. */
+    @Transactional(readOnly = true)
+    public boolean hasDateConflict(Long userId, LocalDate startDate, LocalDate endDate) {
+        return !findConflicts(userId, startDate, endDate).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isParticipant(Long userId, Long tripId) {
+        return tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId);
+    }
+
     @Transactional(readOnly = true)
     public long countParticipants(Long tripId) {
         return tripParticipantRepository.countByTripPlanId(tripId);
