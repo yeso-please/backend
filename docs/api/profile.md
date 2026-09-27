@@ -320,6 +320,54 @@ DELETE /api/friends/{userId}
 
 ---
 
+## 설정
+
+- 계약 상태: agreed
+- 목적: 코스를 만들 때 취향을 반영할지의 **기본값**을 프로필에 저장한다. 코스를 만들 때마다 고르지 않게 해 사용자의 고민을 줄인다(2026-09-27 팀 회의).
+- `courseTasteMode`: `TASTE`(취향 반영 랜덤, 기본) \| `RANDOM`(완전 랜덤). 코스 생성(5-1)은 요청에 `tasteMode`가 없으면 **요청한 사람**의 이 설정을 쓴다.
+
+### 2-11. 내 설정
+
+> `호출: 회원` · `✅ 구현`
+
+```
+GET /api/me/preferences
+```
+
+**Response `200 OK`** — 설정을 바꾼 적이 없으면 기본값이다.
+
+```json
+{"courseTasteMode": "TASTE"}
+```
+
+---
+
+### 2-12. 설정 바꾸기
+
+> `호출: 회원` · `✅ 구현`
+
+```
+PATCH /api/me/preferences
+```
+
+**Request Body**
+
+```json
+{"courseTasteMode": "RANDOM"}
+```
+
+| 필드 | 타입 | 필수 | 제약 |
+|---|---|---|---|
+| `courseTasteMode` | `string` | 예 | `TASTE` \| `RANDOM` |
+
+**Response `200 OK`** — 바뀐 설정(2-11과 같은 모양)
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 값이 없거나 `TASTE`·`RANDOM`이 아님 | 400 | `COMMON_INVALID_REQUEST` (`fieldErrors`) |
+
+---
+
 ## 부록. 설문 문항과 채점 (`demo-mbti-v1`)
 
 이 부록이 질문·선택지·채점의 단일 기준이다. 질문 문구나 글자 매핑을 바꾸면 새 version을 만들고 기존 제출을 재해석하지 않는다.

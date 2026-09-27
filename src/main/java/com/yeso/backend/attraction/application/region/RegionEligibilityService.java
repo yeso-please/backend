@@ -103,10 +103,11 @@ public class RegionEligibilityService {
         if (days < MIN_DAYS || days > MAX_DAYS) {
             throw new RegionInvalidDaysException(days);
         }
-        return days * dailyCap(scheduleDensity) + Math.min(days, 3);
+        return days * dailyTarget(scheduleDensity) + Math.min(days, 3);
     }
 
-    private static int dailyCap(String scheduleDensity) {
+    /** 하루 관광지 목표 수. 추첨 판정과 코스 생성(trip 5-1)이 같이 쓴다. */
+    public static int dailyTarget(String scheduleDensity) {
         return switch (scheduleDensity) {
             case "RELAXED" -> 4;
             case "PACKED" -> 6;

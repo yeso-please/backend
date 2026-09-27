@@ -17,7 +17,8 @@ import com.yeso.backend.trip.infrastructure.ShareSessionRepository;
 import com.yeso.backend.trip.presentation.invite.CreateShareLinkRequest;
 import com.yeso.backend.trip.presentation.invite.ShareLinkResponse;
 import com.yeso.backend.trip.presentation.invite.LinkSummaryResponse;
-import com.yeso.backend.trip.presentation.invite.SharedCourseViewResponse;
+import com.yeso.backend.trip.application.course.CourseService;
+import com.yeso.backend.trip.presentation.course.CourseResponse;
 import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPlan;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class ShareLinkService {
     private final ShareSessionRepository shareSessionRepository;
     private final UserRepository userRepository;
     private final TripService tripService;
+    private final CourseService courseService;
     private final OpaqueTokenGenerator tokenGenerator;
     private final Clock clock;
 
@@ -84,12 +86,9 @@ public class ShareLinkService {
     }
 
     @Transactional(readOnly = true)
-    public SharedCourseViewResponse view(String shareSessionToken) {
+    public CourseResponse view(String shareSessionToken) {
         CourseShareLink link = requireActiveSessionLink(shareSessionToken);
-        TripPlan tripPlan = link.getTripPlan();
-        return new SharedCourseViewResponse(
-                tripPlan.getId(), SharedCourseViewResponse.VIEWER,
-                tripPlan.getStartDate(), tripPlan.getEndDate(), List.of());
+        return courseService.sharedView(link.getTripPlan());
     }
 
     /** 세션 자체의 유효성과 뒤에 있는 링크의 폐기·만료를 함께 본다 — 링크를 끊으면 세션도 죽는다. */
