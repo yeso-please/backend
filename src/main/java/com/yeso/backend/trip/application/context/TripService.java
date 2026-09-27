@@ -10,7 +10,7 @@ import com.yeso.backend.trip.domain.InvalidTransportException;
 import com.yeso.backend.trip.domain.OnboardingRequiredException;
 import com.yeso.backend.trip.domain.Transport;
 import com.yeso.backend.trip.domain.TripConflict;
-import com.yeso.backend.trip.domain.TripContextLockedException;
+import com.yeso.backend.trip.application.course.CourseStorage;
 import com.yeso.backend.trip.domain.TripDateOverlapException;
 import com.yeso.backend.trip.domain.TripDatesImmutableException;
 import com.yeso.backend.trip.domain.TripEndedException;
@@ -58,6 +58,7 @@ public class TripService {
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
+    private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final Clock clock;
 
@@ -102,24 +103,28 @@ public class TripService {
         if (request.startDate() != null || request.nights() != null) {
             throw new TripDatesImmutableException();
         }
-        TripPlan tripPlan = requireParticipantTrip(userId, tripId);
+        Transport transport = request.transport() == null ? null : validateTransport(request.transport());
+        validateOrigin(request.originLat(), request.originLng());
+        if (!tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId)) {
+            throw new TripNotFoundException(tripId);
+        }
+        TripPlan tripPlan = tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
         requireNotEnded(tripPlan);
         if (!request.version().equals(tripPlan.getVersion())) {
             throw new TripVersionConflictException();
         }
-        if (hasCourse(tripId)) {
-            throw new TripContextLockedException();
-        }
-        Transport transport = request.transport() == null ? null : validateTransport(request.transport());
-        validateOrigin(request.originLat(), request.originLng());
-
+        boolean hasCourse = hasCourse(tripId);
+        boolean transportChanged = transport != null && transport != tripPlan.getTransport();
         tripPlan.updateTransportAndOrigin(transport, request.originLat(), request.originLng());
+        if (hasCourse && transportChanged) {
+            courseStorage.recalculateTravel(tripPlan);
+        }
         try {
             tripPlanRepository.saveAndFlush(tripPlan);
         } catch (ObjectOptimisticLockingFailureException e) {
             throw new TripVersionConflictException();
         }
-        return TripContextResponse.of(tripPlan, false);
+        return TripContextResponse.of(tripPlan, hasCourse);
     }
 
     @Transactional(readOnly = true)
