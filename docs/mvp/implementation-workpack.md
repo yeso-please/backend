@@ -349,11 +349,11 @@ Migration: optimistic `version`, 필요한 snapshot/reason/mode/titleSource, ide
 | 09B | 개발 RDS bootstrap runbook 검증, 최초 Flyway·데이터 적재 결과와 snapshot 기록 | dev만 수동 승인 |
 | 09C | `rdsMigrationInfo/Validate/Migrate`, CI migration 검증, dev 배포 시 자동 Flyway | dev 배포만 |
 
-반드시 `$flyway-rds-sync`와 `$tourapi-detail-backfill` repository skill을 사용한다. 운영 RDS는 변경 금지다. 현재 저장소에는 WORK-09 이관 runner와 migration 전용 Gradle task가 아직 없으므로, 문서에 적힌 명령이 구현되기 전 RDS 이관을 시작하지 않는다.
+반드시 `$flyway-rds-sync`와 `$tourapi-detail-backfill` repository skill을 사용한다. 운영 RDS는 변경 금지다. 2026-09-27 기준 WORK-09A `demoMigration` runner와 개발 RDS의 스냅샷·최초 이관(09B)은 완료됐지만 WORK-09C의 별도 Flyway task와 자동 배포는 아직 준비되지 않았다.
 
 역할 경계는 “사람이 RDS와 접근 secret 준비, 에이전트가 이관 A~Z 수행”이다. 사람은 비밀번호를 prompt에 붙이지 않고 로컬 secret/환경변수로만 준비한다. 에이전트는 H2 checksum부터 로컬 리허설, dev RDS Flyway·이관·검증·재실행·리포트까지 담당한다. 그대로 전달할 handoff prompt는 위 RDS runbook 0.2절을 사용한다.
 
-이관 대상: `region→regions`, `attraction→attractions+images`, `travel_course→official_courses`, `course_point→official_course_stops`. 사용자/비밀번호/session/token/후기/업로드/개인 일정·온보딩은 제외한다. 데모 `aiSummary`는 승인 근거가 없어 APPROVED로 이관하지 않는다.
+이관 대상: `region→regions`, `attraction→attractions+images`, TourAPI `food_place(39)→restaurants+restaurant_sources`, `travel_course→official_courses`, `course_point→official_course_stops`. 사용자/비밀번호/session/token/후기/업로드/개인 일정·온보딩, 착한가격업소·특산물은 제외한다. 데모 `aiSummary`는 승인 근거가 없어 APPROVED로 이관하지 않는다. 2026-09-27 기준 09A 로컬 리허설과 개발 RDS 09B 최초 이관은 완료했다. 단, 이후 `main`에 다른 Flyway V2~V11이 추가돼 현재 개발 RDS의 V2~V4와 버전 충돌이 발생했다. 이력을 임의 수정하지 말고 별도 동기화 계획을 확정하기 전에는 병합·추가 배포하지 않는다.
 
 데모 서버 중지→H2 복사→SHA-256 manifest→read-only source. H2 dependency는 별도 tool source set/profile에만 둔다.
 
