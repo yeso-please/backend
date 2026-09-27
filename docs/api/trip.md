@@ -1,4 +1,4 @@
-# 여행 API
+    # 여행 API
 
 `trip` 모듈이 노출하는 API다. 절은 `presentation` 하위 패키지(`context`, `invite`, `course`, `diary`)를 따른다. 호출 주체 표기는 [README](README.md#호출-주체와-인증)를 따른다.
 
@@ -719,7 +719,7 @@ Set-Cookie: share_session=ss_...; HttpOnly; SameSite=Lax; Path=/api/shared; Max-
 
 ### 4-13. 공유 코스 조회
 
-> `호출: 공유 링크 소지자` · `🔧 변경 필요`
+> `호출: 공유 링크 소지자` · `✅ 구현`
 
 ```
 GET /api/shared/courses
@@ -742,8 +742,6 @@ GET /api/shared/courses
 | 링크가 그 사이 만료·폐기됨 | 410 | `SHARE_LINK_EXPIRED`, `SHARE_LINK_REVOKED` |
 
 여행이 삭제되면(마지막 참여자 탈퇴) 공유 링크와 share session이 함께 삭제되므로 `401 SHARE_SESSION_INVALID`다. 링크 원문으로 다시 열면 4-12가 `404 SHARE_LINK_NOT_FOUND`를 준다. 프론트는 둘 다 "더 이상 열 수 없는 링크"로 보여준다.
-
-**구현과의 차이** — 코스 저장이 아직 없어 `{tripId, myRole, startDate, endDate, days: []}`만 반환한다.
 
 ---
 
@@ -871,7 +869,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `version` | 여행 버전(`TripContext.version`과 같은 수). 다음 5-1·5-3·3-5·3-7 요청에 그대로 보낸다 |
 | `myRole` | `PARTICIPANT`(수정 가능) \| `VIEWER`(공유 링크, 읽기 전용). 프론트는 이것으로 편집 UI를 켠다 |
 | `titleSource` | `RULE` \| `LLM`. MVP 기본은 규칙 제목 `{지역명}, {대표 테마}를 따라 걷는 {일수}일`(`RULE`)이다. LLM 제목은 서버 설정으로 켰을 때만 시도하고(`LLM`), 실패·timeout이면 `RULE`로 대신한다 |
-| `recommendationMode` | `PERSONALIZED`(취향 반영) \| `TOUR_OFFICIAL`(임베딩 장애 → TourAPI 공식 코스) \| `RULE_BASED`(취향 없는 규칙 코스) |
+| `recommendationMode` | `PERSONALIZED`(취향 반영) \| `TOUR_OFFICIAL`(임베딩 장애 → TourAPI 공식 코스) \| `RULE_BASED`(취향 없는 규칙 코스) \| `RANDOM`(사용자가 완전 랜덤을 고름) |
 | `tasteBasis` | 이 코스를 생성·재생성할 때 취향·제외 조건을 쓴 사람. `myRole: VIEWER`면 `null` |
 | `days[].items` | 그날의 방문 순서. **배열 순서가 방문 순서**이며 따로 순서 필드는 없다. 관광지와 식사가 한 목록에 섞인다. 시각 필드는 없다 |
 | `items[].itemId` | 서버가 부여하는 안정적 ID. 관광지 `a-{n}`, 식사 `m-{n}`. 편집 대상 지정에 쓴다. 재생성하면 모두 새 ID가 된다 |
@@ -882,6 +880,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
 | `items[].restaurant` | 식사 슬롯에 고른 식당 스냅샷(`RestaurantSnapshot`). 없으면 `null`이고 화면에는 "미정"으로 보인다 |
+| 관광지 표시 정보 | 관광지 항목의 `name`·`category`·`thumbnailUrl`·`address`·`lat`·`lng`는 코스를 볼 때마다 현재 관광지 데이터로 채운다(생성 당시 복사가 아니다, 2026-09-27). 추천 대상에서 빠졌으면 `ATTRACTION_NO_LONGER_RECOMMENDABLE` 경고를 붙인다 |
 | `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
 
 **항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
@@ -923,8 +922,8 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | code | 뜻 |
 |---|---|
 | `ROUTE_TIME_ESTIMATED` | 이동시간이 직선거리 추정이다. 실제 도로 시간이 아니라고 표시한다. MVP에서는 항상 붙는다 |
-| `DENSITY_TARGET_NOT_MET` | 지역 후보 부족으로 밀도 목표보다 적게 배치됨. `dayIndex` 포함 |
-| `PERSONALIZATION_FALLBACK` | 취향 임베딩을 쓸 수 없어 `TOUR_OFFICIAL`·`RULE_BASED`로 만듦 |
+| `DENSITY_TARGET_NOT_MET` | 지역 후보 부족으로 밀도 목표보다 적게 배치됨. `dayIndex` 포함. 생성·재생성 응답(5-1)에만 있고 조회(5-2)에는 없다 |
+| `PERSONALIZATION_FALLBACK` | 취향 임베딩을 쓸 수 없어 `TOUR_OFFICIAL`·`RULE_BASED`로 만듦. 사용자가 완전 랜덤(`RANDOM`)을 골랐을 때는 붙지 않는다 |
 | `TITLE_GENERATION_FAILED` | LLM 제목을 켰는데 실패·timeout이라 규칙 제목을 사용함. LLM을 끈 기본 설정에서는 붙지 않는다 |
 | `ATTRACTION_NO_LONGER_RECOMMENDABLE` | 품질 기준에서 빠진 장소가 일정에 있음. `itemId` 포함. 항목은 그대로 두고 다른 편집을 막지 않는다. 프론트는 교체(5-4)를 제안한다. 공유 화면(4-13)도 그대로 보여준다 |
 
@@ -953,7 +952,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 
 ### 5-1. 코스 생성·재생성
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/courses/{tripId}/generate
@@ -978,6 +977,7 @@ POST /api/courses/{tripId}/generate
 |---|---|---|---|
 | `scheduleDensity` | `string` | 아니오 | `RELAXED`(하루 최대 4곳) \| `PACKED`(최대 6곳). 기본은 여행의 현재 `scheduleDensity`(없으면 요청자의 최신 온보딩 값). 보내면 여행의 밀도(`trip_plans.schedule_density`, `TripContext.scheduleDensity`)도 이 값으로 바뀐다 |
 | `version` | `number` | 예 | 직전에 받은 여행 `version`(`TripContext`·`Course` 공통). 다르면 409. 코스가 없는데 두 사람이 같은 `version`으로 동시에 만들면 먼저 끝난 하나만 성공하고 나머지는 409다 |
+| `tasteMode` | `string` | 아니오 | `TASTE`(취향 반영 랜덤) \| `RANDOM`(완전 랜덤). 생략하면 **요청한 사람**의 프로필 설정([2-11](profile.md#2-11-내-설정), 기본 `TASTE`). `RANDOM`이면 취향과 공식 코스를 쓰지 않고 유형만 섞어 무작위로 고른다. 다른 값이면 `400 COMMON_INVALID_REQUEST` |
 
 **생성 규칙**
 
@@ -990,6 +990,7 @@ POST /api/courses/{tripId}/generate
 - 중복·밀도 목표 초과는 하지 않는다. 운영시간·휴무는 원천이 자유 문장이라 MVP에서는 배치에 쓰지 않는다(관광지 상세 7-4에 원문만 보여 준다). 채우지 못하면 적게 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다.
 - 바꾼 밀도에 지역의 후보가 모자라도(7-1 기준 추첨 불가여도) 거부하지 않는다. 들어가는 만큼 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다. `422 COURSE_INSUFFICIENT_CANDIDATES`는 폴백까지 거쳐도 **하루 최소 1곳**을 채우지 못하는 날이 있을 때만이다.
 - 폴백: 취향 벡터 → `PERSONALIZED`, 없으면 같은 지역 TourAPI 공식 코스 → `TOUR_OFFICIAL`, 부족하면 규칙 코스 → `RULE_BASED`. 모두 실패하면 422.
+- **같은 조건으로 다시 생성해도 다른 코스가 나온다.** 점수 상위 후보(필요한 관광지 수의 3배) 안에서 무작위로 고른다. 점수가 높을수록 뽑힐 확률이 높고, 직전 코스에 있던 곳도 다시 나올 수 있다. 랜덤 여행이 서비스 컨셉이다(2026-09-27).
 - 제목은 장소·순서가 정해진 뒤 만든다. MVP는 규칙 제목(`RULE`)이다. LLM 제목은 선택 기능으로 서버 설정(예: `course.title.llm-enabled`, 기본 `false`)으로 켜며, 실패·timeout이면 규칙 제목으로 대신하고 코스 생성은 성공한다. MVP에 LLM 제공자 계약은 필요 없다.
 
 **Response `201 Created`** — `Course` (`version`은 요청의 `version` + 1)
@@ -1015,7 +1016,7 @@ POST /api/courses/{tripId}/generate
 
 ### 5-2. 코스 조회
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/courses/{tripId}
@@ -1099,6 +1100,7 @@ PATCH /api/courses/{tripId}/schedule
 
 ```
 GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
+GET /api/courses/{tripId}/alternatives?itemId=a-101&q=월정
 ```
 
 | Query | 필수 | 설명 |
@@ -1106,8 +1108,9 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
 | `itemId` | 아니오 | 교체할 관광지. 주면 그 자리의 앞뒤 이동시간을 반영해 정렬한다. 생략하면 추가용 후보 |
 | `category` | 아니오 | `NATURE` \| `HISTORY_CULTURE` \| `ACTIVITY` \| `WALK_REST` \| `ETC`. 생략하면 전 유형 |
 | `limit` | 아니오 | 유형별 개수. 기본 10, 최대 30 |
+| `q` | 아니오 | 관광지 이름 검색어(1~50자, 공백 제거 후). 주면 이름에 검색어가 들어간 후보만 준다. 교체(`itemId` 있음)·추가(`itemId` 없음) 모두 쓴다 |
 
-`category`가 목록 밖이거나 `limit`가 1~30 밖이면 `400 COMMON_INVALID_REQUEST`다. `itemId`가 식사 항목이면 `400 COURSE_INVALID_OPERATION`이다.
+`category`가 목록 밖이거나 `limit`가 1~30 밖이거나 `q`가 1~50자 밖이면 `400 COMMON_INVALID_REQUEST`다. `itemId`가 식사 항목이면 `400 COURSE_INVALID_OPERATION`이다.
 
 **Response `200 OK`**
 
@@ -1128,12 +1131,12 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
 }
 ```
 
-후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다.
+후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다. `q`를 주면 이 조건에 이름 검색을 더한다. 검색은 이 서비스의 관광지(같은 지역) 안에서만 하며, 카카오 같은 외부 장소는 관광지로 쓰지 않는다. 화면은 교체를 누르면 검색창과 추천 목록을 함께 보여준다(2026-09-27).
 
 | 오류 | HTTP | code |
 |---|---:|---|
 | 여행 종료일이 지남 | 409 | `TRIP_ENDED` |
-| `category`·`limit` 오류 | 400 | `COMMON_INVALID_REQUEST` |
+| `category`·`limit`·`q` 오류 | 400 | `COMMON_INVALID_REQUEST` |
 | 식사 항목을 지정 | 400 | `COURSE_INVALID_OPERATION` |
 | 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
 | 없는 항목·코스 | 404 | `COURSE_ITEM_NOT_FOUND`, `COURSE_NOT_FOUND` |

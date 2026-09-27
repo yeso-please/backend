@@ -184,6 +184,8 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [2-8](profile.md#2-8-친구-초대-수락) | POST | `/friend-links/by-token/{token}/accept` | 회원 | 수락 → 바로 친구 | MVP |
 | ✅ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 | MVP |
 | ✅ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 | MVP |
+| ✅ | [2-11](profile.md#2-11-내-설정) | GET | `/me/preferences` | 회원 | 코스 취향 반영 기본값 | MVP |
+| ✅ | [2-12](profile.md#2-12-설정-바꾸기) | PATCH | `/me/preferences` | 회원 | 코스 취향 반영 기본값 바꾸기 | MVP |
 | ✅ | [3-1](trip.md#3-1-선택-불가-날짜) | GET | `/trips/unavailable-dates` | 회원 | 내 여행·참여 여행 날짜 | MVP |
 | ✅ | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인·추첨 가능 지역 수 | MVP |
 | ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
@@ -205,13 +207,13 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [4-10](trip.md#4-10-공유-링크-목록) | GET | `/courses/{tripId}/share-links` | 참여자 | 공유 링크 목록 | MVP |
 | ✅ | [4-11](trip.md#4-11-공유-링크-폐기) | DELETE | `/courses/{tripId}/share-links/{linkId}` | 참여자 | 공유 링크 폐기 | MVP |
 | ✅ | [4-12](trip.md#4-12-공유-링크-열기) | GET | `/shared/courses/{token}` | 공개 | cookie 교환·303 | MVP |
-| 🔧 | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) | MVP |
+| ✅ | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) | MVP |
 | ✅ | [4-14](trip.md#4-14-보낸-친구-초대-목록) | GET | `/trips/{tripId}/friend-invites` | 참여자 | 보낸 친구 초대 목록 | MVP |
 | ✅ | [4-15](trip.md#4-15-친구-초대-취소) | DELETE | `/trips/{tripId}/friend-invites/{inviteId}` | 참여자 | 친구 초대 취소 | MVP |
-| ⬜ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
-| ⬜ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
+| ✅ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
+| ✅ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
 | ⬜ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
-| ⬜ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지 | MVP |
+| ⬜ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
 | ⬜ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
 | ⬜ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |

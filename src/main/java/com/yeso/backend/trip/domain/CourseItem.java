@@ -56,6 +56,10 @@ public class CourseItem {
     @JoinColumn(name = "attraction_id")
     private Attraction attraction;
 
+    /** 읽기 전용. 코스를 볼 때 관광지를 로드하지 않고 ID만 쓴다. */
+    @Column(name = "attraction_id", insertable = false, updatable = false)
+    private Long attractionId;
+
     /** 식사 항목만 있다. */
     @Enumerated(EnumType.STRING)
     @Column(name = "meal_type", length = 20)
@@ -82,6 +86,7 @@ public class CourseItem {
             Integer travelMinutesFromPrevious, CourseItemSource source, String reason) {
         CourseItem item = new CourseItem(tripPlan, dayIndex, orderIndex, CourseItemKind.ATTRACTION, stayMinutes);
         item.attraction = attraction;
+        item.attractionId = attraction.getId();
         item.travelMinutesFromPrevious = travelMinutesFromPrevious;
         item.source = source;
         item.reason = reason;
