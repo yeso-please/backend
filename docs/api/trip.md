@@ -100,7 +100,7 @@ GET /api/trips/unavailable-dates?from=2026-10-01&to=2026-12-31
 
 ### 3-2. 날짜 중복 미리 확인
 
-> `호출: 회원` · `🔧 변경 필요`
+> `호출: 회원` · `✅ 구현`
 
 ```
 POST /api/trips/context/check
@@ -133,8 +133,6 @@ POST /api/trips/context/check
 | 오류 | HTTP | code |
 |---|---:|---|
 | 시작일·박수 규칙 위반 | 400 | `TRIP_INVALID_START_DATE`, `TRIP_INVALID_NIGHTS` |
-
-**구현과의 차이** — `eligibleRegionCount`가 없다(#41).
 
 ---
 
@@ -264,7 +262,7 @@ GET /api/trips?period=UPCOMING
 
 ### 3-7. 지역 정하기
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/trips/{tripId}/region
@@ -339,6 +337,8 @@ POST /api/trips/{tripId}/region
 | 후보 0개 | 422 | `DRAW_NO_ELIGIBLE_REGION` |
 
 **Side effects** — 여행의 지역·선택 방식·밀도를 바꾸고 `version`을 올린다. `replaceCourse: true`면 코스 항목·식당 선택을 비운다(코스 기록과 최초 생성 완료 표시는 남는다).
+
+**구현과의 차이** — 관광지 취향 벡터(#54)가 아직 없어 `MY_TASTE`는 항상 무시되고 `ignoredConditions`에 `TASTE_NOT_READY`로 담긴다. #54가 배치되면 자동으로 동작한다.
 
 ---
 

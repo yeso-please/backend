@@ -1,5 +1,6 @@
 package com.yeso.backend.trip.application.context;
 
+import com.yeso.backend.attraction.application.region.RegionEligibilityService;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.trip.domain.InvalidNightsException;
@@ -57,6 +58,7 @@ public class TripService {
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
+    private final RegionEligibilityService regionEligibilityService;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -66,10 +68,12 @@ public class TripService {
         LocalDate endDate = startDate.plusDays(nights);
 
         List<TripConflict> conflicts = findConflicts(userId, startDate, endDate);
+        long eligibleRegionCount = regionEligibilityService.countEligible(nights + 1, "RELAXED");
         return new CheckTripContextResponse(
                 conflicts.isEmpty(),
                 endDate,
-                conflicts.stream().map(TripConflictResponse::from).toList());
+                conflicts.stream().map(TripConflictResponse::from).toList(),
+                eligibleRegionCount);
     }
 
     public TripContextResponse createTrip(Long userId, CreateTripRequest request) {

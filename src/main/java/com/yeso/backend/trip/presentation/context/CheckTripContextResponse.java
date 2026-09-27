@@ -6,6 +6,7 @@ import java.util.List;
 public record CheckTripContextResponse(
         boolean available,
         LocalDate endDate,
-        List<TripConflictResponse> conflicts
+        List<TripConflictResponse> conflicts,
+        long eligibleRegionCount
 ) {
 }

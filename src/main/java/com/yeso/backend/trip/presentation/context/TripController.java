@@ -3,6 +3,7 @@ package com.yeso.backend.trip.presentation.context;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.yeso.backend.shared.web.CurrentUserId;
+import com.yeso.backend.trip.application.context.RegionDrawService;
 import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPeriod;
 import jakarta.validation.Valid;
@@ -30,6 +31,7 @@ import java.util.List;
 public class TripController {
 
     private final TripService tripService;
+    private final RegionDrawService regionDrawService;
 
     @Operation(summary = "3-1 선택 불가 날짜")
     @GetMapping("/unavailable-dates")
@@ -86,5 +88,12 @@ public class TripController {
     public TripContextResponse updateContext(
             @CurrentUserId Long userId, @PathVariable Long tripId, @Valid @RequestBody UpdateTripContextRequest request) {
         return tripService.updateContext(userId, tripId, request);
+    }
+
+    @Operation(summary = "3-7 지역 정하기")
+    @PostMapping("/{tripId}/region")
+    public DrawRegionResponse drawRegion(
+            @CurrentUserId Long userId, @PathVariable Long tripId, @Valid @RequestBody DrawRegionRequest request) {
+        return regionDrawService.draw(userId, tripId, request);
     }
 }

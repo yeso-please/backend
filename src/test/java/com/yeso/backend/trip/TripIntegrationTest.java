@@ -43,6 +43,9 @@ class TripIntegrationTest extends IntegrationTest {
     @Autowired
     private TripParticipantRepository tripParticipantRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     private String onboardedToken() throws Exception {
         return fixtures.onboardedMember().accessToken();
     }
@@ -312,7 +315,8 @@ class TripIntegrationTest extends IntegrationTest {
                                     """.formatted(inDays(5))))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.available").value(true))
-                    .andExpect(jsonPath("$.conflicts.length()").value(0));
+                    .andExpect(jsonPath("$.conflicts.length()").value(0))
+                    .andExpect(jsonPath("$.eligibleRegionCount").value(0));
         }
 
         @Test
@@ -335,6 +339,34 @@ class TripIntegrationTest extends IntegrationTest {
 
             mockMvc.perform(get("/api/trips").header("Authorization", ApiFixtures.bearer(token)))
                     .andExpect(jsonPath("$.length()").value(1));
+        }
+
+        @Test
+        @DisplayName("추첨 가능한 지역이 있으면 RELAXED 기준으로 eligibleRegionCount를 센다")
+        void check_countsEligibleRegionsAtRelaxedDensity() throws Exception {
+            jdbc.update("insert into app.regions (sig_cd, province, city, lat, lng) values ('47130', '경상북도', '경주시', 35.85, 129.22)");
+            jdbc.update("""
+                    insert into app.region_contents (region_id, title, introduction, status, hero_image_validation_status,
+                                                     prompt_version, reviewed_at)
+                    values ('47130', '소개', '본문', 'APPROVED', 'VALID', 1, cast('2026-09-01 10:00:00' as timestamp))
+                    """);
+            for (int i = 0; i < 5; i++) {
+                Long id = jdbc.queryForObject("""
+                        insert into app.attractions (name, category, region_id, description, lat, lng, content_type_id, addr)
+                        values ('관광지', '관광지', '47130', '설명', 35.8, 129.2, 12, '주소') returning id
+                        """, Long.class);
+                jdbc.update("insert into app.attraction_images (attraction_id, image_url, validation_status) values (?, ?, 'VALID')",
+                        id, "https://img.example/" + id + ".jpg");
+            }
+
+            mockMvc.perform(post("/api/trips/context/check")
+                            .header("Authorization", ApiFixtures.bearer(onboardedToken()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"startDate":"%s","nights":0}
+                                    """.formatted(inDays(5))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.eligibleRegionCount").value(1));
         }
     }
 
