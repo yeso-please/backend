@@ -1,10 +1,17 @@
 package com.yeso.backend.trip.application.course;
 
+import com.yeso.backend.attraction.application.region.CourseMaterialService;
+import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
+import com.yeso.backend.trip.domain.CourseItem;
+import com.yeso.backend.trip.domain.TravelTimeEstimator;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 코스 저장 구조를 다른 유스케이스에 여는 계약. 코스 테이블(course_items, course_meal_restaurants)과
@@ -24,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CourseStorage {
 
     private final CourseItemRepository courseItemRepository;
+    private final CourseMaterialService courseMaterialService;
 
     @Transactional(readOnly = true)
     public boolean hasCourse(Long tripPlanId) {
@@ -37,5 +45,33 @@ public class CourseStorage {
     public void emptyCourse(TripPlan tripPlan) {
         courseItemRepository.deleteByTripPlanId(tripPlan.getId());
         tripPlan.clearCourseInfo();
+    }
+
+    /** 식사를 건너뛰고 각 날의 앞 관광지에서 오는 이동시간만 다시 계산한다. */
+    public void recalculateTravel(TripPlan tripPlan) {
+        recalculateTravel(tripPlan, courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripPlan.getId()));
+    }
+
+    public void recalculateTravel(TripPlan tripPlan, List<CourseItem> items) {
+        Map<Long, AttractionView> views = courseMaterialService.findAttractionViews(items.stream()
+                .filter(item -> !item.isMeal()).map(CourseItem::getAttractionId).toList());
+        for (int day = 0; day <= tripPlan.getNights(); day++) {
+            AttractionView previous = null;
+            for (CourseItem item : items) {
+                if (item.getDayIndex() != day) {
+                    continue;
+                }
+                if (item.isMeal()) {
+                    item.updateTravelMinutesFromPrevious(null);
+                    continue;
+                }
+                AttractionView current = views.get(item.getAttractionId());
+                Integer minutes = previous == null || current == null || previous.lat() == null
+                        || previous.lng() == null || current.lat() == null || current.lng() == null
+                        ? null : TravelTimeEstimator.minutes(previous.lat(), previous.lng(), current.lat(), current.lng(), tripPlan.getTransport());
+                item.updateTravelMinutesFromPrevious(minutes);
+                previous = current;
+            }
+        }
     }
 }
