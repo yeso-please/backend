@@ -131,4 +131,15 @@ public class CourseItem {
     public void updateTravelMinutesFromPrevious(Integer minutes) {
         this.travelMinutesFromPrevious = minutes;
     }
+
+    public void replaceAttraction(Attraction attraction, int stayMinutes) {
+        if (isMeal()) {
+            throw new IllegalArgumentException("식사 항목은 관광지로 교체할 수 없습니다");
+        }
+        this.attraction = attraction;
+        this.attractionId = attraction.getId();
+        this.stayMinutes = stayMinutes;
+        this.source = CourseItemSource.MANUAL;
+        this.reason = null;
+    }
 }

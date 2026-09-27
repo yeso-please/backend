@@ -205,7 +205,7 @@ public class CourseService {
      * 저장된 코스를 응답으로 바꾼다. 관광지 정보는 지금 데이터로 읽고(2026-09-27), 추천 대상에서 빠진 곳에는 경고를 붙인다.
      * {@code DENSITY_TARGET_NOT_MET}은 생성 결과에만 있는 경고라 생성 응답에만 싣는다.
      */
-    private CourseResponse view(TripPlan trip, String role, List<Warning> generationWarnings) {
+    CourseResponse view(TripPlan trip, String role, List<Warning> generationWarnings) {
         List<CourseItem> items = courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(trip.getId());
         Map<Long, AttractionView> attractions = courseMaterialService.findAttractionViews(items.stream()
                 .filter(item -> !item.isMeal()).map(CourseItem::getAttractionId).toList());
