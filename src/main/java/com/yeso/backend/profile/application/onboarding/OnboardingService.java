@@ -20,6 +20,7 @@ import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.OnboardingRegionNotFoundException;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
 import com.yeso.backend.profile.domain.ScheduleDensity;
+import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.domain.TooManyExperienceTagsException;
 import com.yeso.backend.profile.domain.TooManyLikedRegionsException;
 import com.yeso.backend.profile.domain.UnknownTagException;
@@ -129,6 +130,31 @@ public class OnboardingService {
         OnboardingSubmission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new IllegalStateException("submission을 찾을 수 없습니다: " + submissionId));
         return OnboardingSubmissionResponse.from(submission);
+    }
+
+    /**
+     * 다른 모듈이 쓰는 최신 온보딩 결과 조회 계약(예: trip 지역 정하기 3-7의 밀도 기본값·MY_TASTE 준비 여부).
+     * profile의 Repository를 직접 쓰지 않는다(docs/conventions/모듈-의존성.md).
+     *
+     * @throws UserNotFoundException 회원이 없음
+     * @throws IllegalStateException 최초 설문을 마치지 않은 회원(호출하는 쪽이 먼저 온보딩 완료를 확인해야 한다)
+     */
+    @Transactional(readOnly = true)
+    public LatestOnboardingProfile getLatestProfile(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        if (!user.isOnboardingCompleted()) {
+            throw new IllegalStateException("최초 설문을 마치지 않은 회원입니다: " + userId);
+        }
+        OnboardingSubmission submission = submissionRepository.findById(user.getLatestOnboardingSubmissionId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "latest_onboarding_submission_id가 존재하지 않는 submission을 가리킵니다: "
+                                + user.getLatestOnboardingSubmissionId()));
+        return new LatestOnboardingProfile(
+                submission.getScheduleDensity(), submission.getTasteStatus() == TasteStatus.READY);
+    }
+
+    /** {@code scheduleDensity}: 최신 온보딩의 밀도. {@code tasteVectorReady}: 취향 임베딩이 준비돼 있으면 true. */
+    public record LatestOnboardingProfile(ScheduleDensity scheduleDensity, boolean tasteVectorReady) {
     }
 
     @Transactional(readOnly = true)

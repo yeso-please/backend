@@ -185,12 +185,12 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [2-9](profile.md#2-9-친구-목록) | GET | `/friends` | 회원 | 친구 목록 | MVP |
 | ✅ | [2-10](profile.md#2-10-친구-끊기) | DELETE | `/friends/{userId}` | 회원 | 친구 끊기 | MVP |
 | ✅ | [3-1](trip.md#3-1-선택-불가-날짜) | GET | `/trips/unavailable-dates` | 회원 | 내 여행·참여 여행 날짜 | MVP |
-| 🔧 | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인·추첨 가능 지역 수 | MVP |
+| ✅ | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인·추첨 가능 지역 수 | MVP |
 | ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
 | ✅ | [3-4](trip.md#3-4-여행-context-조회) | GET | `/trips/{tripId}/context` | 참여자 | context 조회 | MVP |
 | 🔧 | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지(코스 있어도, 이동시간 재계산) | MVP |
 | ✅ | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 | MVP |
-| ⬜ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
+| ✅ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
 | ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 | MVP |
 | ✅ | [3-9](trip.md#3-9-여행-탈퇴) | DELETE | `/trips/{tripId}/participants/me` | 참여자 | 탈퇴(마지막이면 여행 삭제) | MVP |
 | ✅ | [4-1](trip.md#4-1-초대-링크-발급) | POST | `/trips/{tripId}/invites` | 참여자 | 초대 링크 발급 | MVP |
