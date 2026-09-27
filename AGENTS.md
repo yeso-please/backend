@@ -10,5 +10,6 @@ Before implementation, read the relevant `docs/conventions/`, create or update `
 
 - Use `$tourapi-detail-backfill` when implementing, dry-running, or executing TourAPI attraction detail/image/course enrichment.
 - Use `$flyway-rds-sync` whenever an entity, database constraint, index, migration, or RDS schema changes.
+- Use `$db-man` to coordinate the full entity → Flyway → local/Testcontainers → explicitly requested dev RDS lifecycle for schema changes. Apply `$flyway-rds-sync` alongside it for migration mechanics; neither skill authorizes an unrequested RDS write.
 
 Do not expose credentials, automatically mutate production RDS, or treat generated text as source tourism data.
