@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.yeso.backend.trip.application.invite.ShareLinkService;
 import com.yeso.backend.trip.infrastructure.ShareSessionCookieFactory;
 import lombok.RequiredArgsConstructor;
+import com.yeso.backend.trip.presentation.course.CourseResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -44,7 +45,7 @@ public class SharedCourseController {
     @Operation(summary = "4-13 공유 코스 조회")
     @SecurityRequirements()
     @GetMapping("/api/shared/courses")
-    public SharedCourseViewResponse view(
+    public CourseResponse view(
             @CookieValue(value = ShareSessionCookieFactory.COOKIE_NAME, required = false) String shareSession) {
         return shareLinkService.view(shareSession);
     }
