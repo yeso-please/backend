@@ -190,7 +190,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [3-2](trip.md#3-2-날짜-중복-미리-확인) | POST | `/trips/context/check` | 회원 | 중복 미리 확인·추첨 가능 지역 수 | MVP |
 | ✅ | [3-3](trip.md#3-3-여행-만들기) | POST | `/trips` | 회원 | 여행 생성 | MVP |
 | ✅ | [3-4](trip.md#3-4-여행-context-조회) | GET | `/trips/{tripId}/context` | 참여자 | context 조회 | MVP |
-| 🔧 | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지(코스 있어도, 이동시간 재계산) | MVP |
+| ✅ | [3-5](trip.md#3-5-이동수단출발지-수정) | PATCH | `/trips/{tripId}/context` | 참여자 | 이동수단·출발지(코스 있어도, 이동시간 재계산) | MVP |
 | ✅ | [3-6](trip.md#3-6-내-여행-목록) | GET | `/trips` | 회원 | 내 여행 목록·캘린더 | MVP |
 | ✅ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
 | ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 | MVP |
@@ -212,9 +212,9 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [4-15](trip.md#4-15-친구-초대-취소) | DELETE | `/trips/{tripId}/friend-invites/{inviteId}` | 참여자 | 친구 초대 취소 | MVP |
 | ✅ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
 | ✅ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
-| ⬜ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
-| ⬜ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
-| ⬜ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
+| ✅ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
+| ✅ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
+| ✅ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
 | ⬜ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
 | ⬜ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
