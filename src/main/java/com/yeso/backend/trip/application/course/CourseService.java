@@ -23,7 +23,8 @@ import com.yeso.backend.trip.domain.CourseItemSource;
 import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.CourseNotFoundException;
 import com.yeso.backend.trip.domain.CourseTitleSource;
-import com.yeso.backend.trip.domain.InvalidCourseOptionException;
+import com.yeso.backend.trip.domain.InvalidScheduleDensityException;
+import com.yeso.backend.trip.domain.InvalidTasteModeException;
 import com.yeso.backend.trip.domain.RecommendationMode;
 import com.yeso.backend.trip.domain.RestaurantSnapshot;
 import com.yeso.backend.trip.domain.TripNotFoundException;
@@ -181,7 +182,7 @@ public class CourseService {
             return preferenceService.courseTasteModeOf(userId);
         }
         if (!requested.equals("TASTE") && !requested.equals("RANDOM")) {
-            throw new InvalidCourseOptionException("tasteMode", requested);
+            throw new InvalidTasteModeException(requested);
         }
         return CourseTasteMode.valueOf(requested);
     }
@@ -190,7 +191,7 @@ public class CourseService {
     private String resolveDensity(String requested, TripPlan trip, Long userId) {
         if (requested != null) {
             if (!requested.equals("RELAXED") && !requested.equals("PACKED")) {
-                throw new InvalidCourseOptionException("scheduleDensity", requested);
+                throw new InvalidScheduleDensityException();
             }
             return requested;
         }

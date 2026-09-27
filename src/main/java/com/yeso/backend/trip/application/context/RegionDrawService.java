@@ -4,8 +4,7 @@ import com.yeso.backend.attraction.application.region.RegionEligibilityService;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService.EligibleRegion;
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
-import com.yeso.backend.profile.application.onboarding.OnboardingService;
-import com.yeso.backend.profile.application.onboarding.OnboardingService.LatestOnboardingProfile;
+import com.yeso.backend.profile.application.onboarding.OnboardingQueryService;
 import com.yeso.backend.trip.application.course.CourseStorage;
 import com.yeso.backend.trip.domain.DrawCondition;
 import com.yeso.backend.trip.domain.DrawIgnoredCondition;
@@ -55,7 +54,7 @@ public class RegionDrawService {
     private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final RegionRepository regionRepository;
-    private final OnboardingService onboardingService;
+    private final OnboardingQueryService onboardingQueryService;
     private final Random random;
 
     public DrawRegionResponse draw(Long userId, Long tripId, DrawRegionRequest request) {
@@ -223,7 +222,7 @@ public class RegionDrawService {
     }
 
     private boolean tasteReady(Long userId) {
-        return onboardingService.getLatestProfile(userId).tasteVectorReady();
+        return onboardingQueryService.findTasteVector(userId).isPresent();
     }
 
     private String resolveDensity(String requestedDensity, TripPlan tripPlan, Long userId) {
@@ -233,8 +232,7 @@ public class RegionDrawService {
         if (tripPlan.getScheduleDensity() != null) {
             return tripPlan.getScheduleDensity();
         }
-        LatestOnboardingProfile profile = onboardingService.getLatestProfile(userId);
-        return profile.scheduleDensity().name();
+        return onboardingQueryService.findLatestScheduleDensity(userId).orElse("RELAXED");
     }
 
     private static RegionSelectionMode parseMode(String mode) {
