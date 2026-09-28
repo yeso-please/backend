@@ -1,5 +1,7 @@
 package com.yeso.backend.trip.application.course;
 
+import com.yeso.backend.attraction.application.region.RestaurantQueryService;
+import com.yeso.backend.attraction.application.region.RestaurantQueryService.Candidate;
 import com.yeso.backend.attraction.domain.Attraction;
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.trip.application.context.TripService;
@@ -14,6 +16,8 @@ import com.yeso.backend.trip.infrastructure.KakaoLocalClient;
 import com.yeso.backend.trip.presentation.course.RestaurantCandidateResponse;
 import com.yeso.backend.trip.presentation.course.RestaurantOriginResponse;
 import com.yeso.backend.trip.presentation.course.RestaurantSearchResponse;
+import com.yeso.backend.trip.presentation.course.RestaurantRecommendationsResponse;
+import com.yeso.backend.trip.presentation.course.RestaurantRecommendationsResponse.Section;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -37,17 +41,51 @@ public class RestaurantService {
     private final CourseItemRepository courseItemRepository;
     private final KakaoLocalClient kakaoLocalClient;
     private final RestaurantSelectionTokenService selectionTokenService;
+    private final RestaurantQueryService restaurantQueryService;
     private final TransactionTemplate readOnlyTransaction;
 
     public RestaurantService(
             TripService tripService, CourseItemRepository courseItemRepository, KakaoLocalClient kakaoLocalClient,
-            RestaurantSelectionTokenService selectionTokenService, PlatformTransactionManager transactionManager) {
+            RestaurantSelectionTokenService selectionTokenService, RestaurantQueryService restaurantQueryService,
+            PlatformTransactionManager transactionManager) {
         this.tripService = tripService;
         this.courseItemRepository = courseItemRepository;
         this.kakaoLocalClient = kakaoLocalClient;
         this.selectionTokenService = selectionTokenService;
+        this.restaurantQueryService = restaurantQueryService;
         this.readOnlyTransaction = new TransactionTemplate(transactionManager);
         this.readOnlyTransaction.setReadOnly(true);
+    }
+
+    /** 5-5 TourAPI 식당 추천. 다른 공공 원천은 MVP에서 빈 섹션으로 보낸다. */
+    public RestaurantRecommendationsResponse recommendations(
+            Long userId, Long tripId, String itemId, int radiusMeters) {
+        OriginAndCandidates found = readOnlyTransaction.execute(status -> {
+            RestaurantOriginResponse origin = resolveOrigin(userId, tripId, itemId);
+            String sigCd = tripService.requireParticipantTrip(userId, tripId).getRegion().getSigCd();
+            List<Candidate> candidates = restaurantQueryService.findTourApi(
+                    sigCd, origin.lat(), origin.lng(), radiusMeters);
+            return new OriginAndCandidates(origin, candidates);
+        });
+        List<RestaurantCandidateResponse> tourApi = found.candidates().stream().map(candidate -> {
+            RestaurantSnapshot snapshot = new RestaurantSnapshot(
+                    "TOUR_API", candidate.externalId(), candidate.name(), candidate.category(),
+                    candidate.address(), candidate.roadAddress(), candidate.lat(), candidate.lng(),
+                    candidate.phone(), candidate.placeUrl(), candidate.imageUrl(), candidate.representativeMenu(),
+                    List.of("한국관광공사 등록 음식점"),
+                    List.of(new RestaurantSnapshot.Source(candidate.sourceName(), candidate.sourceUrl(),
+                            candidate.fetchedAt())));
+            return RestaurantCandidateResponse.of(
+                    selectionTokenService.issue(tripId, itemId, snapshot), snapshot, candidate.distanceMeters());
+        }).toList();
+        return new RestaurantRecommendationsResponse(itemId, found.origin(), List.of(), List.of(
+                new Section("TOUR_API", "한국관광공사 등록 음식점", tourApi),
+                new Section("FARM_RESTAURANT", "농촌진흥청 농가맛집", List.of()),
+                new Section("MODEL_RESTAURANT", "지자체 모범·향토음식점", List.of()),
+                new Section("GOOD_PRICE", "착한가격업소", List.of())));
+    }
+
+    private record OriginAndCandidates(RestaurantOriginResponse origin, List<Candidate> candidates) {
     }
 
     /** 5-6 카카오 Local 음식점 거리순 검색. {@code keyword}가 null이면 주변 음식점 전체다. */
@@ -72,7 +110,6 @@ public class RestaurantService {
      */
     private RestaurantOriginResponse resolveOrigin(Long userId, Long tripId, String itemId) {
         TripPlan trip = tripService.requireParticipantTrip(userId, tripId);
-        tripService.requireNotEnded(trip);
         List<CourseItem> items = courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripId);
         if (items.isEmpty()) {
             throw new CourseNotFoundException(tripId);
@@ -84,6 +121,8 @@ public class RestaurantService {
         if (!slot.isMeal()) {
             throw new CourseInvalidOperationException("식사 슬롯이 아닌 항목입니다: " + itemId);
         }
+        // 오류 판정 순서(docs/api/README.md): 존재 오류(404)를 종료(409)보다 먼저 본다.
+        tripService.requireNotEnded(trip);
 
         Attraction previous = null;
         for (CourseItem item : items) {

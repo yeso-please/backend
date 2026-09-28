@@ -187,7 +187,7 @@ GET /api/trips/{tripId}/context
 
 ### 3-5. 이동수단·출발지 수정
 
-> `호출: 참여자` · `🔧 변경 필요`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 PATCH /api/trips/{tripId}/context
@@ -217,8 +217,6 @@ PATCH /api/trips/{tripId}/context
 | 입력 규칙 위반 | 400 | `TRIP_INVALID_*`, `COMMON_INVALID_REQUEST` |
 | 없거나 참여자가 아님 | 404 | `TRIP_NOT_FOUND` |
 | 버전 불일치 | 409 | `TRIP_VERSION_CONFLICT` |
-
-**구현과의 차이** — 코스가 있으면 `409 TRIP_CONTEXT_LOCKED`로 거부한다. 계약은 변경을 허용하고 코스 이동시간을 다시 계산한다.
 
 ---
 
@@ -1033,7 +1031,7 @@ GET /api/courses/{tripId}
 
 ### 5-3. 일정 편집
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 PATCH /api/courses/{tripId}/schedule
@@ -1096,7 +1094,7 @@ PATCH /api/courses/{tripId}/schedule
 
 ### 5-4. 대체 후보
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/courses/{tripId}/alternatives?itemId=a-101&category=NATURE&limit=10
@@ -1145,7 +1143,7 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&q=월정
 
 ### 5-5. 식당 추천
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000

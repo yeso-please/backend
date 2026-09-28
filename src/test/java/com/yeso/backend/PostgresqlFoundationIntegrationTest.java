@@ -176,10 +176,10 @@ class PostgresqlFoundationIntegrationTest {
         assertThat(v4).isEqualTo(1);
         jdbcTemplate.update("INSERT INTO app.regions(sig_cd,province,city) VALUES ('11110','서울특별시','종로구')");
         jdbcTemplate.update("INSERT INTO app.attractions(name,category,region_id,source_content_id,detail_fetched,event_start_date,event_end_date) VALUES ('축제','축제','11110','festival-1',true,'2026-09-01','2026-09-30')");
-        jdbcTemplate.update("INSERT INTO app.restaurants(region_id,name,image_validation_status) VALUES ('11110','식당','PENDING')");
+        jdbcTemplate.update("INSERT INTO app.restaurants(region_id,name,lat,lng,image_validation_status) VALUES ('11110','식당',37.5,127.0,'PENDING')");
         Long restaurantId = jdbcTemplate.queryForObject("SELECT id FROM app.restaurants WHERE name='식당'", Long.class);
-        jdbcTemplate.update("INSERT INTO app.restaurant_sources(restaurant_id,source_system,source_content_id) VALUES (?,'TOUR_API','food-1')", restaurantId);
-        assertThatThrownBy(() -> jdbcTemplate.update("INSERT INTO app.restaurant_sources(restaurant_id,source_system,source_content_id) VALUES (?,'TOUR_API','food-1')", restaurantId))
+        jdbcTemplate.update("INSERT INTO app.restaurant_sources(restaurant_id,provider,external_id,content_type_id,source_name) VALUES (?,'TOUR_API','food-1',39,'한국관광공사 TourAPI')", restaurantId);
+        assertThatThrownBy(() -> jdbcTemplate.update("INSERT INTO app.restaurant_sources(restaurant_id,provider,external_id,content_type_id,source_name) VALUES (?,'TOUR_API','food-1',39,'한국관광공사 TourAPI')", restaurantId))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

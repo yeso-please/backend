@@ -43,7 +43,7 @@ class DemoMigrationIntegrationTest {
             // Cross the 200-row commit boundary for both batched target tables.
             for (int i = 0; i < 204; i++) {
                 st.execute("INSERT INTO ATTRACTION(ID,SOURCE_CONTENT_ID,SIG_CD,NAME,TYPE,DETAIL_FETCHED) VALUES (" + (1000 + i) + ",'" + (10000 + i) + "','11110','관광지 " + i + "','관광지',FALSE)");
-                st.execute("INSERT INTO FOOD_PLACE(ID,SOURCE_CONTENT_ID,SIG_CD,NAME,DETAIL_FETCHED) VALUES (" + (2000 + i) + ",'" + (20000 + i) + "','11110','식당 " + i + "',FALSE)");
+                st.execute("INSERT INTO FOOD_PLACE(ID,SOURCE_CONTENT_ID,SIG_CD,NAME,LAT,LNG,DETAIL_FETCHED) VALUES (" + (2000 + i) + ",'" + (20000 + i) + "','11110','식당 " + i + "',37.5,127.0,FALSE)");
             }
             st.execute("INSERT INTO TRAVEL_COURSE VALUES (3,'300','11110','공식 코스','설명','산책','3km')");
             st.execute("INSERT INTO COURSE_POINT VALUES (3,0,'100','관광지',NULL,'설명',NULL)");

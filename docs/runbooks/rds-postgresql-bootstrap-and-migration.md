@@ -2,7 +2,7 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태 (2026-09-27):** 개발 RDS의 기존 `app` 스키마에는 초기 이관용 Flyway V1~V4와 TourAPI 데이터가 적용되어 있다. 이후 `main`에 다른 V2~V11이 추가돼 그대로 기동할 수 없다. 최신 코드에서는 TourAPI 확장을 V12~V14의 새 migration으로 제공한다. 기존 이력에 `repair`나 `baselineOnMigrate`를 사용하지 않는다.
+> **현재 상태 (2026-09-28):** 개발 RDS의 기존 `app` 스키마에는 초기 이관용 Flyway V1~V4와 TourAPI 데이터가 적용되어 있다. 이후 `main`에 다른 V2~V12가 추가돼 그대로 기동할 수 없다. 최신 `main`의 V12가 음식점 테이블을 소유하므로 TourAPI 상세 확장과 코스 음식점 경유지는 새 V13~V14에서만 추가한다. 기존 이력에 `repair`나 `baselineOnMigrate`를 사용하지 않는다. 현재 개발 RDS 재구성은 **미완료**다.
 
 ### 개발 RDS 이관 실적 (2026-09-27)
 
@@ -11,7 +11,8 @@
 - 사전 스냅샷: `tripin-dev-before-initial-migration-20260927`; 사후 스냅샷: `tripin-dev-after-demo-import-20260927`. 두 스냅샷의 `사용 가능` 상태는 AWS 콘솔에서 사용자가 확인했다. 에이전트는 AWS API로 스냅샷 상태를 독립 조회하지 못했다.
 - 첫 이관 실행 ID `335e013d-9703-4014-9901-cd5bb101f1a2`는 관광지 1,200건 저장 후 성능 개선을 위해 중단·재개했다. 최종 `SUCCEEDED`, 격리 0. 두 번째 실행 ID `3ff4ba08-1ec6-44e4-a063-a1ab27e3bb6a`도 `SUCCEEDED`; 삽입 0, 수정 0, 격리 0.
 - 최종 수량: 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. TourAPI 원천 ID 중복 0, 사용자·개인 여행 데이터 0.
-- 재구성 전 논리 백업: `build/backups/tripin-dev-pre-reconcile-20260927.dump` (Git 제외), SHA-256 `95009603eab7a756643dbc527acc13f289b1eaf1e19dda02226ae7643443d0`. 이 파일은 접근 제한 저장소에 별도 보관한다.
+- 재구성 전 논리 백업: `build/backups/tripin-dev-pre-reconcile-20260927.dump` (Git 제외), SHA-256 `95009603eab7a756643dbc527acc13f289b1eaf1e19dda02226ae7643443d0`. `pg_restore --list`로 읽기 가능함을 확인했다.
+- 최신 `main` V12 음식점 계약을 포함한 로컬 재현 (2026-09-28): 데모 서버 미사용 상태에서 H2 백업 `build/backups/sumeun-reconcile-20260928.mv.db`를 생성했다 (SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`, Git 제외). 빈 PostgreSQL에 Flyway V1~V14와 JPA `validate` 기동 성공. 실행 ID `9883a0d3-113f-4c8c-8a16-8eee048e31f9`로 dry-run/apply/validate 성공, 격리 0. 재실행 ID `08ca0003-f2cb-4f1a-8e3a-c2cc79819bb7`은 삽입·수정·격리 0. 전체 Gradle 테스트 통과. 이 재현은 새 H2 백업을 원본으로 하며, RDS 논리 백업을 새 스키마에 직접 복원한 것은 아니다.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
 
 ## 0. 이 문서를 사용하는 방법

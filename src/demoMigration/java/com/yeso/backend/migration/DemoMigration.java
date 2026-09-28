@@ -198,7 +198,7 @@ public final class DemoMigration {
         Map<String, Long> existing = new HashMap<>();
         String lookup = table.equals("ATTRACTION")
                 ? "SELECT source_content_id,id FROM app.attractions WHERE source_system='TOUR_API'"
-                : "SELECT source_content_id,restaurant_id FROM app.restaurant_sources WHERE source_system='TOUR_API'";
+                : "SELECT external_id,restaurant_id FROM app.restaurant_sources WHERE provider='TOUR_API'";
         try (Statement st = pg.createStatement(); ResultSet ids = st.executeQuery(lookup)) {
             while (ids.next()) existing.put(ids.getString(1), ids.getLong(2));
         }
@@ -269,9 +269,9 @@ public final class DemoMigration {
                 update = pg.prepareStatement("UPDATE app.attractions SET name=?,category=?,region_id=?,description=COALESCE(?,description),addr=COALESCE(?,addr),lat=COALESCE(?,lat),lng=COALESCE(?,lng),content_type_id=?,homepage=COALESCE(?,homepage),use_time=COALESCE(?,use_time),rest_date=COALESCE(?,rest_date),parking=COALESCE(?,parking),info_center=COALESCE(?,info_center),tel=COALESCE(?,tel),detail_fetched=?,event_start_date=COALESCE(?,event_start_date),event_end_date=COALESCE(?,event_end_date),updated_at=CURRENT_TIMESTAMP WHERE id=? AND (name,category,region_id,description,addr,lat,lng,content_type_id,homepage,use_time,rest_date,parking,info_center,tel,detail_fetched,event_start_date,event_end_date) IS DISTINCT FROM (?,?,?,COALESCE(?,description),COALESCE(?,addr),COALESCE(?,lat),COALESCE(?,lng),?,COALESCE(?,homepage),COALESCE(?,use_time),COALESCE(?,rest_date),COALESCE(?,parking),COALESCE(?,info_center),COALESCE(?,tel),?,?,?)");
                 dependent = pg.prepareStatement("INSERT INTO app.attraction_images(attraction_id,image_url,display_order,validation_status) VALUES (?,?,0,'PENDING') ON CONFLICT (attraction_id,image_url) DO NOTHING");
             } else {
-                insert = pg.prepareStatement("INSERT INTO app.restaurants(id,region_id,name,category,addr,lat,lng,description,image_url,use_time,detail_fetched) VALUES (" + placeholders(11) + ")");
-                update = pg.prepareStatement("UPDATE app.restaurants SET region_id=?,name=?,category=COALESCE(?,category),addr=COALESCE(?,addr),lat=COALESCE(?,lat),lng=COALESCE(?,lng),description=COALESCE(?,description),image_url=COALESCE(?,image_url),use_time=COALESCE(?,use_time),detail_fetched=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (region_id,name,category,addr,lat,lng,description,image_url,use_time,detail_fetched) IS DISTINCT FROM (?,?,COALESCE(?,category),COALESCE(?,addr),COALESCE(?,lat),COALESCE(?,lng),COALESCE(?,description),COALESCE(?,image_url),COALESCE(?,use_time),?)");
-                dependent = pg.prepareStatement("INSERT INTO app.restaurant_sources(restaurant_id,source_system,source_content_id) VALUES (?,'TOUR_API',?)");
+                insert = pg.prepareStatement("INSERT INTO app.restaurants(id,region_id,name,category,address,lat,lng,description,image_url,use_time,detail_fetched) VALUES (" + placeholders(11) + ")");
+                update = pg.prepareStatement("UPDATE app.restaurants SET region_id=?,name=?,category=COALESCE(?,category),address=COALESCE(?,address),lat=COALESCE(?,lat),lng=COALESCE(?,lng),description=COALESCE(?,description),image_url=COALESCE(?,image_url),use_time=COALESCE(?,use_time),detail_fetched=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (region_id,name,category,address,lat,lng,description,image_url,use_time,detail_fetched) IS DISTINCT FROM (?,?,COALESCE(?,category),COALESCE(?,address),COALESCE(?,lat),COALESCE(?,lng),COALESCE(?,description),COALESCE(?,image_url),COALESCE(?,use_time),?)");
+                dependent = pg.prepareStatement("INSERT INTO app.restaurant_sources(restaurant_id,provider,external_id,content_type_id,source_name,fetched_at) VALUES (?,'TOUR_API',?,39,'한국관광공사 TourAPI',NULL)");
             }
         }
 
@@ -369,6 +369,7 @@ public final class DemoMigration {
         if (blank(rs.getString(table.equals("TRAVEL_COURSE") ? "TITLE" : "NAME"))) throw new IllegalArgumentException("MISSING_NAME");
         if (table.equals("ATTRACTION") && !List.of("관광지", "문화시설", "레포츠", "숙박", "쇼핑", "축제").contains(rs.getString("TYPE"))) throw new IllegalArgumentException("UNKNOWN_TYPE");
         if (table.equals("ATTRACTION")) { date(rs.getString("EVENT_START_DATE")); date(rs.getString("EVENT_END_DATE")); }
+        if (table.equals("FOOD_PLACE") && (rs.getObject("LAT") == null || rs.getObject("LNG") == null)) throw new IllegalArgumentException("MISSING_COORDINATE");
     }
     private static boolean validRegion(String code) { return code != null && code.matches("[0-9]{5}"); }
     private static boolean blank(String s) { return s == null || s.isBlank(); }
@@ -419,16 +420,16 @@ public final class DemoMigration {
     private static Object[] concat(Object[] a, Object[] b) { Object[] out = Arrays.copyOf(a, a.length + b.length); System.arraycopy(b, 0, out, a.length, b.length); return out; }
     private static int food(ResultSet rs, Connection pg) throws SQLException {
         String key = clean(rs.getString("SOURCE_CONTENT_ID")); String sig = rs.getString("SIG_CD"); requireRegion(pg, sig);
-        long existing = id(pg, "SELECT restaurant_id FROM app.restaurant_sources WHERE source_system='TOUR_API' AND source_content_id=?", key);
+        long existing = id(pg, "SELECT restaurant_id FROM app.restaurant_sources WHERE provider='TOUR_API' AND external_id=?", key);
         Object[] vals = {sig, clean(rs.getString("NAME")), clean(rs.getString("CATEGORY")), clean(rs.getString("ADDR")), rs.getObject("LAT"), rs.getObject("LNG"), clean(rs.getString("DESCRIPTION")), clean(rs.getString("IMAGE")), clean(rs.getString("USETIME")), rs.getBoolean("DETAIL_FETCHED")};
         int changed;
         if (existing == 0) {
-            changed = execute(pg, "INSERT INTO app.restaurants(region_id,name,category,addr,lat,lng,description,image_url,use_time,detail_fetched) VALUES (?,?,?,?,?,?,?,?,?,?)", vals);
+            changed = execute(pg, "INSERT INTO app.restaurants(region_id,name,category,address,lat,lng,description,image_url,use_time,detail_fetched) VALUES (?,?,?,?,?,?,?,?,?,?)", vals);
             long restaurantId = id(pg, "SELECT id FROM app.restaurants WHERE region_id=? AND name=? ORDER BY id DESC LIMIT 1", sig, vals[1]);
-            execute(pg, "INSERT INTO app.restaurant_sources(restaurant_id,source_system,source_content_id) VALUES (?,'TOUR_API',?)", restaurantId, key);
+            execute(pg, "INSERT INTO app.restaurant_sources(restaurant_id,provider,external_id,content_type_id,source_name,fetched_at) VALUES (?,'TOUR_API',?,39,'한국관광공사 TourAPI',NULL)", restaurantId, key);
         } else {
             Object[] upd = concat(vals, new Object[]{existing});
-            changed = execute(pg, "UPDATE app.restaurants SET region_id=?,name=?,category=COALESCE(?,category),addr=COALESCE(?,addr),lat=COALESCE(?,lat),lng=COALESCE(?,lng),description=COALESCE(?,description),image_url=COALESCE(?,image_url),use_time=COALESCE(?,use_time),detail_fetched=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (region_id,name,category,addr,lat,lng,description,image_url,use_time,detail_fetched) IS DISTINCT FROM (?,?,COALESCE(?,category),COALESCE(?,addr),COALESCE(?,lat),COALESCE(?,lng),COALESCE(?,description),COALESCE(?,image_url),COALESCE(?,use_time),?)", concat(upd, vals));
+            changed = execute(pg, "UPDATE app.restaurants SET region_id=?,name=?,category=COALESCE(?,category),address=COALESCE(?,address),lat=COALESCE(?,lat),lng=COALESCE(?,lng),description=COALESCE(?,description),image_url=COALESCE(?,image_url),use_time=COALESCE(?,use_time),detail_fetched=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (region_id,name,category,address,lat,lng,description,image_url,use_time,detail_fetched) IS DISTINCT FROM (?,?,COALESCE(?,category),COALESCE(?,address),COALESCE(?,lat),COALESCE(?,lng),COALESCE(?,description),COALESCE(?,image_url),COALESCE(?,use_time),?)", concat(upd, vals));
         }
         return existing == 0 ? 1 : changed == 0 ? 0 : 2;
     }
@@ -453,7 +454,7 @@ public final class DemoMigration {
         String sourceId = clean(rs.getString("CONTENT_ID"));
         long attractionId = sourceId == null ? 0 : id(pg, "SELECT id FROM app.attractions WHERE source_system='TOUR_API' AND source_content_id=?", sourceId);
         Object attr = attractionId == 0 ? null : attractionId;
-        long restaurantId = sourceId == null || attractionId != 0 ? 0 : id(pg, "SELECT restaurant_id FROM app.restaurant_sources WHERE source_system='TOUR_API' AND source_content_id=?", sourceId);
+        long restaurantId = sourceId == null || attractionId != 0 ? 0 : id(pg, "SELECT restaurant_id FROM app.restaurant_sources WHERE provider='TOUR_API' AND external_id=?", sourceId);
         Object restaurant = restaurantId == 0 ? null : restaurantId;
         long existing = id(pg, "SELECT id FROM app.official_course_stops WHERE official_course_id=? AND stop_order=?", courseId, order);
         Object[] vals = {courseId, order, attr, restaurant, sourceId, clean(rs.getString("NAME")), clean(rs.getString("TYPE")), clean(rs.getString("DESCRIPTION")), clean(rs.getString("IMAGE"))};
@@ -474,8 +475,8 @@ public final class DemoMigration {
                 {"ATTRACTION", "MISSING_DESCRIPTION", "SELECT source_content_id FROM app.attractions WHERE source_system='TOUR_API' AND (description IS NULL OR btrim(description)='')"},
                 {"ATTRACTION", "MISSING_COORDINATE", "SELECT source_content_id FROM app.attractions WHERE source_system='TOUR_API' AND (lat IS NULL OR lng IS NULL)"},
                 {"ATTRACTION", "MISSING_IMAGE", "SELECT a.source_content_id FROM app.attractions a WHERE a.source_system='TOUR_API' AND NOT EXISTS (SELECT 1 FROM app.attraction_images i WHERE i.attraction_id=a.id)"},
-                {"RESTAURANT", "MISSING_DESCRIPTION", "SELECT s.source_content_id FROM app.restaurant_sources s JOIN app.restaurants r ON r.id=s.restaurant_id WHERE s.source_system='TOUR_API' AND (r.description IS NULL OR btrim(r.description)='')"},
-                {"RESTAURANT", "MISSING_IMAGE", "SELECT s.source_content_id FROM app.restaurant_sources s JOIN app.restaurants r ON r.id=s.restaurant_id WHERE s.source_system='TOUR_API' AND r.image_url IS NULL"},
+                {"RESTAURANT", "MISSING_DESCRIPTION", "SELECT s.external_id FROM app.restaurant_sources s JOIN app.restaurants r ON r.id=s.restaurant_id WHERE s.provider='TOUR_API' AND (r.description IS NULL OR btrim(r.description)='')"},
+                {"RESTAURANT", "MISSING_IMAGE", "SELECT s.external_id FROM app.restaurant_sources s JOIN app.restaurants r ON r.id=s.restaurant_id WHERE s.provider='TOUR_API' AND r.image_url IS NULL"},
                 {"OFFICIAL_STOP", "OFFICIAL_STOP_UNMAPPED", "SELECT c.source_content_id || ':' || s.stop_order FROM app.official_course_stops s JOIN app.official_courses c ON c.id=s.official_course_id WHERE c.source_system='TOUR_API' AND s.attraction_id IS NULL AND s.restaurant_id IS NULL"}
         };
         for (String[] job : jobs) {
@@ -488,7 +489,7 @@ public final class DemoMigration {
     private static void writeQuality(Connection pg, Path path) throws Exception {
         long regions = id(pg, "SELECT count(*) FROM app.regions");
         long attractions = id(pg, "SELECT count(*) FROM app.attractions WHERE source_system='TOUR_API'");
-        long restaurants = id(pg, "SELECT count(*) FROM app.restaurant_sources WHERE source_system='TOUR_API'");
+        long restaurants = id(pg, "SELECT count(*) FROM app.restaurant_sources WHERE provider='TOUR_API'");
         long courses = id(pg, "SELECT count(*) FROM app.official_courses WHERE source_system='TOUR_API'");
         long stops = id(pg, "SELECT count(*) FROM app.official_course_stops s JOIN app.official_courses c ON c.id=s.official_course_id WHERE c.source_system='TOUR_API'");
         long withDescription = id(pg, "SELECT count(*) FROM app.attractions WHERE source_system='TOUR_API' AND description IS NOT NULL AND btrim(description)<>''");

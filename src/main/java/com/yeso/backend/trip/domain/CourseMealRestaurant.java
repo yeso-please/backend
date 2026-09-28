@@ -120,4 +120,26 @@ public class CourseMealRestaurant {
         this.selectedBy = selectedBy;
         this.selectedAt = selectedAt;
     }
+
+    public void replace(RestaurantSnapshot snapshot, User selectedBy, LocalDateTime selectedAt) {
+        this.provider = snapshot.provider();
+        this.externalId = snapshot.externalId();
+        this.name = snapshot.name();
+        this.category = snapshot.category();
+        this.address = snapshot.address();
+        this.roadAddress = snapshot.roadAddress();
+        this.lat = snapshot.lat();
+        this.lng = snapshot.lng();
+        this.phone = snapshot.phone();
+        this.placeUrl = snapshot.placeUrl();
+        this.imageUrl = snapshot.imageUrl();
+        this.representativeMenu = snapshot.representativeMenu();
+        this.evidenceLabels = snapshot.evidenceLabels();
+        this.sources = snapshot.sources().stream()
+                .map(source -> new Source(source.name(), source.url(),
+                        source.fetchedAt() == null ? null : source.fetchedAt().toString()))
+                .toList();
+        this.selectedBy = selectedBy;
+        this.selectedAt = selectedAt;
+    }
 }
