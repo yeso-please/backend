@@ -1,23 +1,14 @@
-# Backend Documentation
+ an# 문서
 
-TriPin 백엔드의 요구사항, API 계약, 설계 결정, 개발 규칙을 저장소 안에서 관리합니다.
+백엔드의 제품 정책, API 계약, 설계, 규칙을 저장소 안에서 관리한다. 이 파일이 유일한 입구다.
 
-## 에이전트와 개발자 읽기 순서
+## 읽는 순서
 
-1. [프로젝트 README](../README.md)
-2. [문서화 규칙](conventions/문서화.md)
-3. [컨벤션 인덱스](conventions/README.md)
-4. 작업 대상의 [기능 명세](features/README.md)
-5. 관련 [REST API 명세](api/README.md)
-6. 관련 [ADR](adr/README.md)
+1. [제품 정책](product.md) — 무엇을 왜 만드는가. 사용자 흐름, 범위(MVP/추가 기능), 결정 기록
+2. [API 명세](api/README.md) — 무엇을 호출하는가. 공통 규약, 호출 주체, 구현 체크리스트, 결정 필요 항목
+3. [컨벤션](conventions/README.md) — 어떻게 코드를 쓰고 협업하는가
+4. 필요할 때: [추천 설계](design/recommendation.md), [ADR](adr/README.md), [RDS 런북](runbooks/rds-postgresql-bootstrap-and-migration.md)
 
-## 문서 영역
+작업은 GitHub 이슈(마일스톤 `MVP`, `추가 기능`)로 나누고, 각 이슈는 API 명세의 절을 링크한다. [archive](archive/README.md)는 대체된 이력이며 구현 근거로 쓰지 않는다.
 
-- [MVP 구현 기준](mvp/README.md): 확정 제품 결정, 기능·API·데이터·PR별 작업 순서
-- [개발 RDS 생성·데모 데이터 이관 런북](runbooks/rds-postgresql-bootstrap-and-migration.md): AWS 초보자용 PostgreSQL RDS 생성, H2 이관, 검증, 보강 절차
-- [REST API](api/README.md): 구현된 API 계약
-- [기능 명세](features/README.md): 작업 목표와 완료 기준
-- [ADR](adr/README.md): 중요한 설계 결정과 trade-off
-- [컨벤션](conventions/README.md): 팀 공통 개발 규칙
-
-코드와 문서가 달라지면 코드만 고치지 말고 같은 변경에서 문서도 갱신합니다.
+코드와 문서가 달라지면 같은 PR에서 함께 고친다.

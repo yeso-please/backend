@@ -1,7 +1,7 @@
 # backend
 백엔드 API 서버
 
-MVP 설계 리뷰와 구현 순서는 [docs/mvp/README.md](docs/mvp/README.md)에서 시작합니다. 현재는 구현 전 제안이며 팀 승인 뒤 기능별 계약으로 확정합니다.
+문서는 [docs/README.md](docs/README.md)에서 시작합니다. 제품 정책, API 명세, 컨벤션 순서로 읽습니다.
 
 개발 PostgreSQL 생성과 데모 H2 데이터 이관은 [RDS 생성·이관 런북](docs/runbooks/rds-postgresql-bootstrap-and-migration.md)을 따릅니다.
 

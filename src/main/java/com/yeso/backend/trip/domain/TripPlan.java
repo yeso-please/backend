@@ -1,8 +1,8 @@
 package com.yeso.backend.trip.domain;
 
 import com.yeso.backend.attraction.domain.Region;
-
 import com.yeso.backend.auth.domain.User;
+import com.yeso.backend.shared.persistence.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,24 +14,21 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import com.yeso.backend.shared.persistence.BaseTimeEntity;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
- * 확정된 코스. 슬롯 잠금/리롤 단계(§5.3)는 stateless라 여기 저장되지 않고,
- * 사용자가 "확정"을 눌렀을 때만 이 엔티티와 {@link TripStop}이 생긴다.
+ * 여행 방. 만드는 순간 기간을 차지하며 날짜는 바꿀 수 없다(2026-09-24 정책). 지역은 지역 정하기(API 3-7)가
+ * 정하기 전까지 null이다. {@code ownerUser}는 만든 사람이며 권한 차이는 없다 — 참여 여부는
+ * {@link TripParticipant}가 판정한다. 확정 단계가 없어 {@code status}는 항상 DRAFT로 남는다.
  *
- * situation은 이 여행 1회에만 적용되는 휘발성 컨텍스트(동행유형/기간 등, §5.1)를
- * JSON 문자열로 스냅샷 저장 — 나중에 취향과 구분해서 "그때 왜 이 코스가 나왔는지" 재현 가능하게.
- *
- * status는 기본값을 두지 않고 생성 시 반드시 명시한다 — v1의 유일한 생성 경로인
- * "코스 확정"(POST /api/courses)은 이 row를 만드는 순간 바로 CONFIRMED여야 하며,
- * DRAFT는 v1에 없는 미래 흐름(확정 전 서버 임시저장) 전용으로 예약해둔 상태다.
- * 필드에 기본값을 주면 실수로 DRAFT인 채 방치되는 확정 코스가 생길 수 있어 의도적으로 막는다.
+ * {@code version}은 낙관적 잠금이다 — 동시에 두 PATCH가 들어오면 하나는
+ * {@code TRIP_VERSION_CONFLICT}로 거부돼야 하므로 JPA {@link Version}을 그대로 쓴다.
  */
 @Entity
 @Table(name = "trip_plans")
@@ -49,8 +46,11 @@ public class TripPlan extends BaseTimeEntity {
     private User ownerUser;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "region_id", nullable = false)
+    @JoinColumn(name = "region_id")
     private Region region;
+
+    @Column(length = 120)
+    private String title;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -62,23 +62,125 @@ public class TripPlan extends BaseTimeEntity {
     @Column(name = "origin_lng")
     private Double originLng;
 
-    @Column(columnDefinition = "text")
-    private String situation;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TripPlanStatus status;
 
-    @Column(name = "start_date")
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
-    @Column(name = "end_date")
+    @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
-    public TripPlan(User ownerUser, Region region, Transport transport, TripPlanStatus status) {
+    /** 지역을 정한 방식(RANDOM·CONDITIONAL·MANUAL). 지역 정하기(API 3-7)가 채운다. */
+    @Column(name = "region_selection", length = 20)
+    private String regionSelection;
+
+    /** 지역을 정할 때 쓴 일정 밀도(RELAXED·PACKED). 지역 정하기(API 3-7)가 채운다. */
+    @Column(name = "schedule_density", length = 20)
+    private String scheduleDensity;
+
+    // ---- 코스 정보(docs/api/trip.md 5장). 항목은 CourseItem에 있다. ----
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "title_source", length = 20)
+    private CourseTitleSource titleSource;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recommendation_mode", length = 20)
+    private RecommendationMode recommendationMode;
+
+    /** 코스를 생성·재생성할 때 취향·제외 조건을 쓴 사람. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "taste_basis_user_id")
+    private User tasteBasisUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_updated_by_user_id")
+    private User courseUpdatedBy;
+
+    @Column(name = "course_updated_at")
+    private LocalDateTime courseUpdatedAt;
+
+    /** 코스를 처음 만든 시각. 코스를 비워도 남아서, 다음 생성은 재생성(참여자 누구나)이 된다. */
+    @Column(name = "course_first_generated_at")
+    private LocalDateTime courseFirstGeneratedAt;
+
+    @Version
+    @Column(nullable = false)
+    private int version;
+
+    public TripPlan(User ownerUser, LocalDate startDate, int nights, Transport transport, Double originLat, Double originLng) {
         this.ownerUser = ownerUser;
-        this.region = region;
         this.transport = transport;
-        this.status = status;
+        this.originLat = originLat;
+        this.originLng = originLng;
+        this.status = TripPlanStatus.DRAFT;
+        applyDates(startDate, nights);
+    }
+
+    public int getNights() {
+        return (int) java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate);
+    }
+
+    /** 종료일이 오늘보다 앞이면 끝난 여행이다(오늘이 종료일이면 아직 진행 중). */
+    public boolean isEnded(LocalDate today) {
+        return endDate.isBefore(today);
+    }
+
+    /** 참여자 정원. 가득 차면 초대를 수락할 수 없다(docs/api/trip.md 4장). */
+    public static final int MAX_PARTICIPANTS = 8;
+
+    /**
+     * 화면에 보일 여행 이름. 코스 제목이 없으면 "M월 D일부터 N박 N+1일 여행"(당일은 "M월 D일 당일 여행")이다
+     * (docs/api/trip.md 3-6).
+     */
+    public String displayTitle() {
+        if (title != null && !title.isBlank()) {
+            return title;
+        }
+        String start = startDate.getMonthValue() + "월 " + startDate.getDayOfMonth() + "일";
+        int nights = getNights();
+        return nights == 0 ? start + " 당일 여행" : start + "부터 " + nights + "박 " + (nights + 1) + "일 여행";
+    }
+
+    public boolean isCreatedBy(Long userId) {
+        return ownerUser.getId().equals(userId);
+    }
+
+    /** 날짜는 바꿀 수 없다. 이동수단은 null이면 유지하고, 출발지는 그대로 덮어쓴다(둘 다 null이면 삭제). */
+    public void updateTransportAndOrigin(Transport transport, Double originLat, Double originLng) {
+        if (transport != null) {
+            this.transport = transport;
+        }
+        this.originLat = originLat;
+        this.originLng = originLng;
+    }
+
+    /** 한 번이라도 코스를 만든 적이 있으면 true다. 첫 생성은 여행을 만든 사람만 한다(5-1). */
+    public boolean hasGeneratedCourse() {
+        return courseFirstGeneratedAt != null;
+    }
+
+    /**
+     * 코스 정보를 비운다(3-7 replaceCourse). 항목 삭제는 호출하는 쪽이 한다.
+     * {@code courseFirstGeneratedAt}은 남긴다.
+     */
+    public void clearCourseInfo() {
+        this.title = null;
+        this.titleSource = null;
+        this.recommendationMode = null;
+        this.tasteBasisUser = null;
+        this.courseUpdatedBy = null;
+        this.courseUpdatedAt = null;
+    }
+
+    public boolean overlaps(LocalDate otherStart, LocalDate otherEnd) {
+        return !startDate.isAfter(otherEnd) && !endDate.isBefore(otherStart);
+    }
+
+    private void applyDates(LocalDate startDate, int nights) {
+        this.startDate = startDate;
+        this.endDate = startDate.plusDays(nights);
     }
 }

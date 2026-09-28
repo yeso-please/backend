@@ -9,7 +9,7 @@ description: Backfill missing TourAPI attraction descriptions, images, coordinat
 
 ## 기준 문서
 
-먼저 `docs/mvp/decisions.md`와 `docs/mvp/data-and-recommendation.md`를 읽는다. 데모 수집 코드는 참고만 하고 backend의 PostgreSQL 스키마와 Flyway 계약을 따른다.
+먼저 `docs/product.md`와 `docs/design/recommendation.md`를 읽는다. 데모 수집 코드는 참고만 하고 backend의 PostgreSQL 스키마와 Flyway 계약을 따른다.
 
 ## 사전 점검
 
@@ -34,6 +34,6 @@ description: Backfill missing TourAPI attraction descriptions, images, coordinat
 - 전후 지역별 설명·이미지·좌표와 추천 가능 교집합을 비교한다.
 - 동일 범위를 재실행해 행 수와 값이 변하지 않는 멱등성을 확인한다.
 - 로그와 git diff에서 API key, DB URL credential, 개인정보를 검색한다.
-- 구현 변경이 있으면 통합 테스트와 관련 `docs/api`/`docs/features`를 함께 갱신한다.
+- 구현 변경이 있으면 통합 테스트와 관련 `docs/api`를 함께 갱신한다.
 
 외부 호출이나 DB 변경을 요청받지 않은 코드/문서 작업에서는 dry-run 계획과 구현까지만 하고 실제 배치를 실행하지 않는다.

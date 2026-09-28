@@ -1,6 +1,7 @@
 package com.yeso.backend;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,21 +9,26 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers(disabledWithoutDocker = true)
+/**
+ * migration 자체를 검증한다. {@code flyway.clean()}으로 스키마를 지우고 V1부터 다시 올리는 테스트가 있어서
+ * 공용 컨테이너({@code support.IntegrationTest})를 쓰면 다른 테스트의 스키마를 깨뜨린다 — 그래서 이 클래스만
+ * 전용 컨테이너를 쓰는 예외다(docs/conventions/테스트.md "예외"). 새 통합 테스트는 이 형태를 따라 하지 않는다.
+ * Docker가 없으면 건너뛰지 않고 실패한다.
+ */
+@Testcontainers
 @SpringBootTest
-@TestPropertySource(properties = {
-        "jwt.secret=test-only-secret-not-used-outside-automated-tests",
-        "spring.jpa.properties.hibernate.default_schema=app"
-})
+@ActiveProfiles("test")
 class PostgresqlFoundationIntegrationTest {
 
     @Container
@@ -39,7 +45,7 @@ class PostgresqlFoundationIntegrationTest {
     Flyway flyway;
 
     @Test
-    @DisplayName("빈 PostgreSQL에 V1 전체 스키마를 생성하고 JPA 검증을 통과한다")
+    @DisplayName("빈 PostgreSQL에 전체 migration으로 핵심 테이블을 만들고 JPA 검증을 통과한다")
     void migration_emptyDatabase_createsWholeSchema() {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = true AND version = '1'", Integer.class);
@@ -50,7 +56,7 @@ class PostgresqlFoundationIntegrationTest {
                   AND table_name IN (
                     'users', 'regions', 'region_contents', 'attractions', 'attraction_images',
                     'official_courses', 'official_course_stops', 'trip_plans', 'trip_participants',
-                    'trip_stops', 'meal_stops', 'ingestion_runs', 'data_quality_issues'
+                    'course_items', 'course_meal_restaurants', 'ingestion_runs', 'data_quality_issues'
                   )
                 """, Integer.class);
 
@@ -63,6 +69,81 @@ class PostgresqlFoundationIntegrationTest {
     void migration_secondRun_isNoOp() {
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         flyway.validate();
+    }
+
+    @Test
+    @DisplayName("V2가 refresh_tokens에 family 회전용 컬럼을 추가하고 revoked 컬럼을 제거한다")
+    void migration_v2_addsRefreshTokenRotationColumns() {
+        Integer successfulV2 = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = true AND version = '2'",
+                Integer.class);
+        Integer rotationColumns = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens'
+                  AND column_name IN ('family_id', 'revoked_at', 'replaced_by_token_id')
+                """, Integer.class);
+        Integer legacyRevokedColumn = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'app' AND table_name = 'refresh_tokens' AND column_name = 'revoked'
+                """, Integer.class);
+
+        assertThat(successfulV2).isEqualTo(1);
+        assertThat(rotationColumns).isEqualTo(3);
+        assertThat(legacyRevokedColumn).isZero();
+    }
+
+    @Test
+    @DisplayName("V1에서 V2로 업그레이드하면 기존 revoked 행은 revoked_at으로 백필되고 active 행은 보존된다")
+    void migration_v1ToV2Upgrade_backfillsRevokedRowsAndPreservesActiveRows() {
+        Flyway v1Only = Flyway.configure()
+                .dataSource(jdbcTemplate.getDataSource())
+                .locations("classpath:db/migration")
+                .schemas("app")
+                .defaultSchema("app")
+                .cleanDisabled(false)
+                .target(MigrationVersion.fromVersion("1"))
+                .load();
+        v1Only.clean();
+        v1Only.migrate();
+
+        jdbcTemplate.update("""
+                INSERT INTO app.users(email, password_hash, nickname)
+                VALUES ('upgrade-fixture@example.com', 'hash', 'upgrade-tester')
+                """);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM app.users WHERE email = 'upgrade-fixture@example.com'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO app.refresh_tokens(user_id, token_hash, expires_at, revoked)
+                VALUES (?, 'upgrade-revoked-hash', CURRENT_TIMESTAMP + INTERVAL '14 days', TRUE)
+                """, userId);
+        jdbcTemplate.update("""
+                INSERT INTO app.refresh_tokens(user_id, token_hash, expires_at, revoked)
+                VALUES (?, 'upgrade-active-hash', CURRENT_TIMESTAMP + INTERVAL '14 days', FALSE)
+                """, userId);
+
+        Flyway.configure()
+                .dataSource(jdbcTemplate.getDataSource())
+                .locations("classpath:db/migration")
+                .schemas("app")
+                .defaultSchema("app")
+                .load()
+                .migrate();
+
+        Integer preservedRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM app.refresh_tokens WHERE token_hash IN ('upgrade-revoked-hash', 'upgrade-active-hash')",
+                Integer.class);
+        LocalDateTime revokedAt = jdbcTemplate.queryForObject(
+                "SELECT revoked_at FROM app.refresh_tokens WHERE token_hash = 'upgrade-revoked-hash'",
+                LocalDateTime.class);
+        LocalDateTime activeRevokedAt = jdbcTemplate.queryForObject(
+                "SELECT revoked_at FROM app.refresh_tokens WHERE token_hash = 'upgrade-active-hash'",
+                LocalDateTime.class);
+
+        assertThat(preservedRows).isEqualTo(2);
+        assertThat(revokedAt).isNotNull();
+        assertThat(activeRevokedAt).isNull();
     }
 
     @Test
@@ -89,9 +170,9 @@ class PostgresqlFoundationIntegrationTest {
     @Transactional
     @DisplayName("TourAPI 상세·음식점 확장 스키마와 원천 ID 유일성을 검증한다")
     void tourApiMigrationSchema_enforcesSourceAndDates() {
-        Integer versions = jdbcTemplate.queryForObject("SELECT count(*) FROM app.flyway_schema_history WHERE success=true AND version IN ('2','3')", Integer.class);
+        Integer versions = jdbcTemplate.queryForObject("SELECT count(*) FROM app.flyway_schema_history WHERE success=true AND version IN ('12','13')", Integer.class);
         assertThat(versions).isEqualTo(2);
-        Integer v4 = jdbcTemplate.queryForObject("SELECT count(*) FROM app.flyway_schema_history WHERE success=true AND version='4'", Integer.class);
+        Integer v4 = jdbcTemplate.queryForObject("SELECT count(*) FROM app.flyway_schema_history WHERE success=true AND version='14'", Integer.class);
         assertThat(v4).isEqualTo(1);
         jdbcTemplate.update("INSERT INTO app.regions(sig_cd,province,city) VALUES ('11110','서울특별시','종로구')");
         jdbcTemplate.update("INSERT INTO app.attractions(name,category,region_id,source_content_id,detail_fetched,event_start_date,event_end_date) VALUES ('축제','축제','11110','festival-1',true,'2026-09-01','2026-09-30')");

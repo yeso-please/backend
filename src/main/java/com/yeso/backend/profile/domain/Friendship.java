@@ -13,9 +13,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 
@@ -26,16 +26,17 @@ import java.time.LocalDateTime;
  * 그래서 두 사용자 쌍을 id 오름차순으로 정규화해 userLow/userHigh에 저장하고
  * (user_low_id, user_high_id)에 unique 제약을 건다 — 누가 먼저 요청했는지와 무관하게
  * 같은 쌍은 물리적으로 한 row만 존재할 수 있다. 실제 요청자는 requestedByUser로 별도 기록.
+ *
+ * 친구 초대 링크 수락은 바로 {@code ACCEPTED}로 저장한다(docs/api/profile.md 친구). 행은 동시 수락에
+ * 안전하도록 {@code FriendshipRepository.insertAcceptedIfAbsent}로만 만든다.
  */
 @Entity
 @Table(
         name = "friendships",
         uniqueConstraints = @UniqueConstraint(columnNames = {"user_low_id", "user_high_id"})
 )
-@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
-@Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Friendship {
 
     @Id
@@ -56,21 +57,14 @@ public class Friendship {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private FriendshipStatus status = FriendshipStatus.PENDING;
+    private FriendshipStatus status;
 
-    @org.springframework.data.annotation.CreatedDate
+    /** 친구가 된 시각(친구 목록의 {@code since}). */
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    /** a, b는 순서 무관 — 생성자가 id 기준으로 정규화해 userLow/userHigh에 배치한다 */
-    public Friendship(User a, User b, User requestedByUser) {
-        if (a.getId() < b.getId()) {
-            this.userLow = a;
-            this.userHigh = b;
-        } else {
-            this.userLow = b;
-            this.userHigh = a;
-        }
-        this.requestedByUser = requestedByUser;
+    /** {@code userId} 쪽에서 본 상대. */
+    public User otherThan(Long userId) {
+        return userLow.getId().equals(userId) ? userHigh : userLow;
     }
 }

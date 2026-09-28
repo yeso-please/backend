@@ -3,56 +3,46 @@ package com.yeso.backend.auth;
 import com.jayway.jsonpath.JsonPath;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.support.ApiFixtures;
+import com.yeso.backend.support.IntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockCookie;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+
+import jakarta.servlet.http.Cookie;
+import java.time.LocalDateTime;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 각 테스트는 운영과 같은 PostgreSQL 스키마를 Testcontainers로 구성하고
- * @Transactional로 자동 롤백한다.
+ * 회원가입·로그인·토큰 재발급·로그아웃·내 정보. refresh 토큰은 body가 아니라 HttpOnly cookie로 오간다.
+ * 매 테스트 후 {@link IntegrationTest}가 모든 테이블을 비우므로 고정 이메일을 써도 충돌하지 않는다.
  */
-@Testcontainers
-@SpringBootTest
-@AutoConfigureMockMvc
-@Transactional
-@TestPropertySource(properties = {
-        "jwt.secret=test-only-secret-not-used-outside-automated-tests",
-        "spring.jpa.properties.hibernate.default_schema=app"
-})
-class AuthIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine")
-            .withDatabaseName("tripin_auth_test")
-            .withUsername("tripin_test")
-            .withPassword("tripin_test");
-
-    @Autowired
-    private MockMvc mockMvc;
+class AuthIntegrationTest extends IntegrationTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private static String signupBody(String email, String password, String nickname) {
         return """
@@ -60,32 +50,62 @@ class AuthIntegrationTest {
                 """.formatted(email, password, nickname);
     }
 
+    private MvcResult signup(String email, String password, String nickname) throws Exception {
+        return fixtures.signupResult(email, password, nickname);
+    }
+
+    private static Cookie refreshCookieOf(MvcResult result) {
+        Cookie cookie = result.getResponse().getCookie("refresh_token");
+        assertThat(cookie).as("refresh_token cookie").isNotNull();
+        return cookie;
+    }
+
+    @Nested
+    @DisplayName("OpenAPI 문서")
+    class OpenApiDocs {
+
+        @Test
+        @DisplayName("익명 사용자가 OpenAPI JSON을 조회할 수 있다")
+        void apiDocs_public() throws Exception {
+            mockMvc.perform(get("/v3/api-docs"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.info.title").value("TriPin Backend API"))
+                    .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"));
+        }
+    }
+
     @Nested
     @DisplayName("회원가입")
     class Signup {
 
         @Test
-        @DisplayName("유효한 요청이면 201과 함께 토큰을 발급한다")
+        @DisplayName("유효한 요청이면 201과 함께 access 토큰과 refresh cookie를 발급한다")
         void signup_success() throws Exception {
             mockMvc.perform(post("/api/auth/signup")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(signupBody("signup1@example.com", "password123", "tester")))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                    .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                    .andExpect(jsonPath("$.tokenType").value("Bearer"));
+                    .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                    .andExpect(jsonPath("$.onboardingCompleted").value(false))
+                    .andExpect(jsonPath("$.user.email").value("signup1@example.com"))
+                    .andExpect(cookie().exists("refresh_token"))
+                    .andExpect(cookie().httpOnly("refresh_token", true))
+                    .andExpect(cookie().path("refresh_token", "/api/auth"))
+                    .andExpect(cookie().secure("refresh_token", true))
+                    .andExpect(cookie().sameSite("refresh_token", "Lax"));
         }
 
         @Test
-        @DisplayName("이메일이 중복이면 409를 반환한다")
-        void signup_duplicateEmail() throws Exception {
+        @DisplayName("이메일이 대소문자·공백만 다르면 중복으로 409를 반환한다")
+        void signup_duplicateEmail_afterNormalization() throws Exception {
             mockMvc.perform(post("/api/auth/signup")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(signupBody("dup@example.com", "password123", "first")));
 
             mockMvc.perform(post("/api/auth/signup")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("dup@example.com", "password123", "second")))
+                            .content(signupBody("  DUP@Example.com  ", "password123", "second")))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.status").value(409))
                     .andExpect(jsonPath("$.code").value("AUTH_DUPLICATE_EMAIL"))
@@ -106,12 +126,35 @@ class AuthIntegrationTest {
         }
 
         @Test
+        @DisplayName("비밀번호가 UTF-8 기준 72바이트를 넘으면 400을 반환한다")
+        void signup_passwordExceedsUtf8ByteLimit() throws Exception {
+            // 한글 한 글자는 UTF-8로 3byte다: 25자 = 75byte > 72이지만 char 길이(25)는 64 이하라 @Size는 통과한다.
+            String password = "가".repeat(25);
+
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(signupBody("longbytes@example.com", password, "tester")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.fieldErrors[0].field").value("password"));
+        }
+
+        @Test
         @DisplayName("이메일 형식이 올바르지 않으면 400을 반환한다")
         void signup_invalidEmail() throws Exception {
             mockMvc.perform(post("/api/auth/signup")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(signupBody("not-an-email", "password123", "tester")))
                     .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("닉네임 앞뒤 공백은 제거되어 저장된다")
+        void signup_nicknameIsTrimmed() throws Exception {
+            MvcResult result = signup("trimnick@example.com", "password123", "  tester  ");
+
+            String accessToken = JsonPath.read(result.getResponse().getContentAsString(), "$.accessToken");
+            mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
+                    .andExpect(jsonPath("$.nickname").value("tester"));
         }
     }
 
@@ -122,9 +165,7 @@ class AuthIntegrationTest {
         @Test
         @DisplayName("올바른 이메일/비밀번호면 200과 함께 토큰을 발급한다")
         void login_success() throws Exception {
-            mockMvc.perform(post("/api/auth/signup")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(signupBody("login1@example.com", "password123", "tester")));
+            signup("login1@example.com", "password123", "tester");
 
             mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -132,15 +173,27 @@ class AuthIntegrationTest {
                                     {"email":"login1@example.com","password":"password123"}
                                     """))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.accessToken").isNotEmpty());
+                    .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                    .andExpect(cookie().exists("refresh_token"));
+        }
+
+        @Test
+        @DisplayName("이메일 대소문자가 달라도 로그인된다")
+        void login_caseInsensitiveEmail() throws Exception {
+            signup("caseuser@example.com", "password123", "tester");
+
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"email":"CaseUser@Example.com","password":"password123"}
+                                    """))
+                    .andExpect(status().isOk());
         }
 
         @Test
         @DisplayName("비밀번호가 틀리면 이메일 미존재와 동일한 401 메시지를 반환한다")
         void login_wrongPasswordAndUnknownEmail_returnSameMessage() throws Exception {
-            mockMvc.perform(post("/api/auth/signup")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(signupBody("login2@example.com", "password123", "tester")));
+            signup("login2@example.com", "password123", "tester");
 
             MvcResult wrongPassword = mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -169,18 +222,27 @@ class AuthIntegrationTest {
     class Me {
 
         @Test
-        @DisplayName("유효한 access 토큰이면 200과 내 정보를 반환한다")
+        @DisplayName("유효한 access 토큰이면 200과 내 정보·온보딩 상태를 반환한다")
         void me_success() throws Exception {
-            MvcResult signup = mockMvc.perform(post("/api/auth/signup")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("me1@example.com", "password123", "tester")))
-                    .andReturn();
+            MvcResult signup = signup("me1@example.com", "password123", "tester");
             String accessToken = JsonPath.read(signup.getResponse().getContentAsString(), "$.accessToken");
 
             mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.email").value("me1@example.com"))
-                    .andExpect(jsonPath("$.nickname").value("tester"));
+                    .andExpect(jsonPath("$.nickname").value("tester"))
+                    .andExpect(jsonPath("$.onboardingCompleted").value(false));
+        }
+
+        @Test
+        @DisplayName("최초 설문을 제출한 뒤에는 onboardingCompleted=true를 반환한다")
+        void me_afterOnboardingSubmission_returnsOnboardingCompleted() throws Exception {
+            ApiFixtures.Member member = fixtures.onboardedMember();
+
+            mockMvc.perform(get("/api/users/me").header("Authorization", member.bearer()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(member.userId()))
+                    .andExpect(jsonPath("$.onboardingCompleted").value(true));
         }
 
         @Test
@@ -199,6 +261,32 @@ class AuthIntegrationTest {
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value("AUTH_UNAUTHENTICATED"));
         }
+
+        @Test
+        @DisplayName("refresh 토큰(opaque)을 access 토큰 자리에 넣으면 거부된다")
+        void me_withRefreshTokenAsAccessToken() throws Exception {
+            MvcResult signup = signup("typeconfuse@example.com", "password123", "tester");
+            Cookie refreshCookie = refreshCookieOf(signup);
+
+            mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + refreshCookie.getValue()))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Nested
+    @DisplayName("공통 오류")
+    class CommonErrors {
+
+        @Test
+        @DisplayName("유효한 토큰으로 없는 경로를 부르면 404 COMMON_NOT_FOUND를 반환한다")
+        void unknownPath_withValidToken_returnsNotFound() throws Exception {
+            ApiFixtures.Member member = fixtures.signup();
+
+            mockMvc.perform(get("/api/no-such-endpoint").header("Authorization", member.bearer()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"))
+                    .andExpect(jsonPath("$.path").value("/api/no-such-endpoint"));
+        }
     }
 
     @Nested
@@ -206,44 +294,34 @@ class AuthIntegrationTest {
     class Refresh {
 
         @Test
-        @DisplayName("유효한 refresh 토큰이면 새 access/refresh 토큰을 발급한다")
+        @DisplayName("유효한 refresh cookie면 새 access 토큰과 새 refresh cookie를 발급한다")
         void refresh_success() throws Exception {
-            MvcResult signup = mockMvc.perform(post("/api/auth/signup")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("refresh1@example.com", "password123", "tester")))
-                    .andReturn();
-            String refreshToken = JsonPath.read(signup.getResponse().getContentAsString(), "$.refreshToken");
+            MvcResult signup = signup("refresh1@example.com", "password123", "tester");
+            Cookie refreshCookie = refreshCookieOf(signup);
 
-            mockMvc.perform(post("/api/auth/refresh")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"refreshToken":"%s"}
-                                    """.formatted(refreshToken)))
+            mockMvc.perform(post("/api/auth/refresh").cookie(refreshCookie))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                    .andExpect(jsonPath("$.refreshToken").value(org.hamcrest.Matchers.not(refreshToken)));
+                    .andExpect(cookie().value("refresh_token", not(refreshCookie.getValue())));
         }
 
         @Test
-        @DisplayName("이미 회전(rotate)된 refresh 토큰을 재사용하면 401을 반환한다")
-        void refresh_reusedRotatedToken() throws Exception {
-            MvcResult signup = mockMvc.perform(post("/api/auth/signup")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("refresh2@example.com", "password123", "tester")))
+        @DisplayName("이미 회전(rotate)된 refresh 토큰을 재사용하면 401을 반환하고 family 전체가 무효화된다")
+        void refresh_reusedRotatedToken_revokesWholeFamily() throws Exception {
+            MvcResult signup = signup("refresh2@example.com", "password123", "tester");
+            Cookie originalRefreshCookie = refreshCookieOf(signup);
+
+            MvcResult firstRefresh = mockMvc.perform(post("/api/auth/refresh").cookie(originalRefreshCookie))
+                    .andExpect(status().isOk())
                     .andReturn();
-            String originalRefreshToken = JsonPath.read(signup.getResponse().getContentAsString(), "$.refreshToken");
+            Cookie rotatedCookie = refreshCookieOf(firstRefresh);
 
-            mockMvc.perform(post("/api/auth/refresh")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                            {"refreshToken":"%s"}
-                            """.formatted(originalRefreshToken)));
+            // 이미 폐기된 최초 토큰 재사용 -> 401 + 이 family(방금 rotate된 토큰 포함)를 통째로 무효화
+            mockMvc.perform(post("/api/auth/refresh").cookie(originalRefreshCookie))
+                    .andExpect(status().isUnauthorized());
 
-            mockMvc.perform(post("/api/auth/refresh")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"refreshToken":"%s"}
-                                    """.formatted(originalRefreshToken)))
+            // family가 전부 폐기됐으므로 정상적으로 rotate된 최신 토큰도 더 이상 쓸 수 없다
+            mockMvc.perform(post("/api/auth/refresh").cookie(rotatedCookie))
                     .andExpect(status().isUnauthorized());
         }
 
@@ -251,11 +329,56 @@ class AuthIntegrationTest {
         @DisplayName("형식이 올바르지 않은 토큰이면 401을 반환한다")
         void refresh_malformedToken() throws Exception {
             mockMvc.perform(post("/api/auth/refresh")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"refreshToken":"not-a-real-jwt"}
-                                    """))
+                            .cookie(new MockCookie("refresh_token", "not-a-real-token")))
                     .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("cookie가 없으면 401을 반환한다")
+        void refresh_withoutCookie() throws Exception {
+            mockMvc.perform(post("/api/auth/refresh"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("동시에 같은 refresh 토큰으로 두 번 요청하면 정확히 하나만 성공한다")
+        void refresh_concurrentRequestsWithSameToken_onlyOneSucceeds() throws Exception {
+            MvcResult signup = signup("concurrent1@example.com", "password123", "tester");
+            Cookie refreshCookie = refreshCookieOf(signup);
+
+            int threadCount = 2;
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch ready = new CountDownLatch(threadCount);
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger successCount = new AtomicInteger();
+            AtomicInteger unauthorizedCount = new AtomicInteger();
+
+            Runnable task = () -> {
+                try {
+                    ready.countDown();
+                    start.await();
+                    int status = mockMvc.perform(post("/api/auth/refresh").cookie(refreshCookie))
+                            .andReturn().getResponse().getStatus();
+                    if (status == 200) {
+                        successCount.incrementAndGet();
+                    } else if (status == 401) {
+                        unauthorizedCount.incrementAndGet();
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            };
+
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(task);
+            }
+            ready.await();
+            start.countDown();
+            executor.shutdown();
+            executor.awaitTermination(10, TimeUnit.SECONDS);
+
+            assertThat(successCount.get()).isEqualTo(1);
+            assertThat(unauthorizedCount.get()).isEqualTo(threadCount - 1);
         }
     }
 
@@ -266,25 +389,22 @@ class AuthIntegrationTest {
         @Test
         @DisplayName("로그아웃 후 같은 refresh 토큰으로 재발급을 시도하면 401을 반환한다")
         void logout_thenRefresh_returnsUnauthorized() throws Exception {
-            MvcResult signup = mockMvc.perform(post("/api/auth/signup")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(signupBody("logout1@example.com", "password123", "tester")))
-                    .andReturn();
-            String refreshToken = JsonPath.read(signup.getResponse().getContentAsString(), "$.refreshToken");
+            MvcResult signup = signup("logout1@example.com", "password123", "tester");
+            Cookie refreshCookie = refreshCookieOf(signup);
 
-            mockMvc.perform(post("/api/auth/logout")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"refreshToken":"%s"}
-                                    """.formatted(refreshToken)))
-                    .andExpect(status().isNoContent());
+            mockMvc.perform(post("/api/auth/logout").cookie(refreshCookie))
+                    .andExpect(status().isNoContent())
+                    .andExpect(cookie().maxAge("refresh_token", 0));
 
-            mockMvc.perform(post("/api/auth/refresh")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"refreshToken":"%s"}
-                                    """.formatted(refreshToken)))
+            mockMvc.perform(post("/api/auth/refresh").cookie(refreshCookie))
                     .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("cookie가 없어도 항상 204를 반환한다")
+        void logout_withoutCookie_stillReturnsNoContent() throws Exception {
+            mockMvc.perform(post("/api/auth/logout"))
+                    .andExpect(status().isNoContent());
         }
     }
 
@@ -295,20 +415,20 @@ class AuthIntegrationTest {
         @Test
         @DisplayName("생성·수정 시각을 서버가 자동으로 기록한다")
         void userTimestamps_areManagedByJpaAuditing() throws Exception {
-            mockMvc.perform(post("/api/auth/signup")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(signupBody("audit@example.com", "password123", "before")));
+            signup("audit@example.com", "password123", "before");
 
             User user = userRepository.findByEmail("audit@example.com").orElseThrow();
             assertThat(user.getCreatedAt()).isNotNull();
             assertThat(user.getUpdatedAt()).isNotNull();
-            var initialUpdatedAt = user.getUpdatedAt();
 
-            Thread.sleep(5);
-            user.setNickname("after");
-            userRepository.saveAndFlush(user);
+            // JPA auditing은 시스템 시계를 쓴다. 기다리는 대신 updated_at을 과거로 돌려 놓고 갱신 여부를 본다.
+            LocalDateTime past = LocalDateTime.of(2000, 1, 1, 0, 0);
+            jdbcTemplate.update("UPDATE app.users SET updated_at = ? WHERE id = ?", past, user.getId());
+            User reloaded = userRepository.findByEmail("audit@example.com").orElseThrow();
+            reloaded.setNickname("after");
+            User saved = userRepository.saveAndFlush(reloaded);
 
-            assertThat(user.getUpdatedAt()).isAfter(initialUpdatedAt);
+            assertThat(saved.getUpdatedAt()).isAfter(past);
         }
     }
 

@@ -17,16 +17,12 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 /**
- * 초대 링크. inviteToken은 refresh_tokens와 같은 원칙으로 해시만 저장한다 —
- * DB 덤프/로그가 노출돼도 원문 토큰(=베어러 크리덴셜) 없이는 재사용할 수 없게.
- * 원문은 발급 시점에 한 번만 응답으로 내려주고 서버는 들고 있지 않는다(서비스 계층 구현 시).
- *
- * revoked로 OWNER의 명시적 무효화를 표현한다 — expiresAt만으로는 재발급 시 기존
- * 링크가 만료 전까지 계속 유효해져 "재발급하면 이전 링크는 못 쓴다"는 요구를 못 지킨다.
+ * 회원을 여행 참여자로 들이는 초대 링크. 읽기 전용 공유 링크와는 별도 token 체계다.
+ * 원문은 발급 응답에서 한 번만 반환하고 DB에는 SHA-256 해시만 저장한다.
+ * 폐기 전까지 여러 회원이 각자 수락할 수 있어 participant와는 1:N이다.
  */
 @Entity
 @Table(name = "trip_invitations")
-@jakarta.persistence.EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -50,17 +46,32 @@ public class TripInvitation {
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
-    @Column(nullable = false)
-    private boolean revoked = false;
 
-    @org.springframework.data.annotation.CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
 
-    public TripInvitation(TripPlan tripPlan, String tokenHash, User invitedByUser, LocalDateTime expiresAt) {
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    public TripInvitation(
+            TripPlan tripPlan, String tokenHash, User invitedByUser,
+            LocalDateTime expiresAt) {
         this.tripPlan = tripPlan;
         this.tokenHash = tokenHash;
         this.invitedByUser = invitedByUser;
-        this.expiresAt = expiresAt;
+                this.expiresAt = expiresAt;
+    }
+
+
+    public boolean isActive(LocalDateTime now) {
+        return revokedAt == null && expiresAt.isAfter(now);
+    }
+
+    public boolean isRevoked() {
+        return revokedAt != null;
+    }
+
+    public void revoke(LocalDateTime now) {
+        this.revokedAt = now;
     }
 }

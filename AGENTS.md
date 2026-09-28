@@ -2,9 +2,9 @@
 
 ## Source of truth
 
-MVP work starts at `docs/mvp/README.md`. Files `docs/FEATURE-SPEC.md`, `docs/API-DESIGN-DRAFT.md`, and `docs/BUTTON-SPEC.md` are legacy demo-analysis notes and must not override `docs/mvp/decisions.md`.
+Start at `docs/README.md`. Product policy is `docs/product.md`, the API contract is `docs/api/`, calculation design is `docs/design/`. Work is tracked as GitHub issues (milestones `MVP`, `추가 기능`) that link to `docs/api/` sections. `docs/archive/` is superseded history and must not be used as a basis for implementation.
 
-Before implementation, read the relevant `docs/conventions/`, create or update `docs/features/{feature}.md` and `docs/api/{domain}.md`, then change code, Flyway migration, and tests in the same PR.
+Before implementation, read the relevant `docs/conventions/`. If the contract must change, update `docs/api/` first, then change code, Flyway migration, and tests in the same PR. Do not commit or push unless a human asks.
 
 ## Repository skills
 

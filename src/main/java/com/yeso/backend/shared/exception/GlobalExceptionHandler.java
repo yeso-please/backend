@@ -1,16 +1,20 @@
 package com.yeso.backend.shared.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestValueException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
@@ -26,8 +30,11 @@ public class GlobalExceptionHandler {
     ) {
         ErrorCode errorCode = exception.getErrorCode();
         log.warn("Domain exception code={}: {}", errorCode.code(), exception.getMessage());
-        return ResponseEntity.status(errorCode.status())
-                .body(ApiErrorResponse.of(errorCode, exception.getMessage(), request.getRequestURI()));
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(errorCode.status());
+        exception.getRetryAfter().ifPresent(
+                retryAfter -> response.header(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfter.toSeconds())));
+        return response.body(ApiErrorResponse.of(
+                errorCode, exception.getMessage(), request.getRequestURI(), exception.getDetails()));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
@@ -46,8 +53,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
-            MissingServletRequestParameterException.class,
-            MethodArgumentTypeMismatchException.class
+            MissingRequestValueException.class,
+            MethodArgumentTypeMismatchException.class,
+            HandlerMethodValidationException.class,
+            ConstraintViolationException.class
     })
     public ResponseEntity<ApiErrorResponse> handleInvalidRequest(Exception exception, HttpServletRequest request) {
         log.warn("Invalid request: {}", exception.getMessage());
@@ -63,6 +72,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiErrorResponse.of(
                         ErrorCode.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다.", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResource(NoResourceFoundException exception, HttpServletRequest request) {
+        log.warn("No resource: {}", exception.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiErrorResponse.of(ErrorCode.NOT_FOUND, "존재하지 않는 API 경로입니다.", request.getRequestURI()));
     }
 
     @ExceptionHandler(Exception.class)

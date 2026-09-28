@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.UUID;
 
 /**
  * 서비스 사용자. 이메일/비밀번호 가입과 소셜 로그인({@link SocialAccount}) 둘 다 지원한다.
@@ -41,9 +42,18 @@ public class User extends BaseTimeEntity {
     @Column(name = "profile_image")
     private String profileImage;
 
+    /** 온보딩 재검사 시 이 pointer만 최신 submission으로 바꾼다 — 이전 제출은 immutable로 남는다. */
+    @Column(name = "latest_onboarding_submission_id")
+    private UUID latestOnboardingSubmissionId;
+
     public User(String email, String passwordHash, String nickname) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.nickname = nickname;
+    }
+
+    /** 최초 설문을 한 번이라도 제출했으면 true다(docs/api/auth.md 1-5). */
+    public boolean isOnboardingCompleted() {
+        return latestOnboardingSubmissionId != null;
     }
 }

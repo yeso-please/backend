@@ -1,5 +1,6 @@
 package com.yeso.backend.shared.web;
 
+import com.yeso.backend.shared.security.AuthenticatedUserPrincipal;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -13,7 +14,7 @@ public record CustomUserDetails(
         Long userId,
         String email,
         Collection<? extends GrantedAuthority> authorities
-) implements UserDetails {
+) implements UserDetails, AuthenticatedUserPrincipal {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

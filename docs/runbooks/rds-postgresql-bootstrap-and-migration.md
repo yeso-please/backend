@@ -2,11 +2,7 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태:** 개발 RDS `tripin_dev`에 Flyway V1~V4 및 TourAPI 데모 데이터를 적용·검증했다. 이후 schema의 기준은 계속 Flyway이며, JPA가 임의로 만든 테이블을 기준으로 삼지 않는다.
-
-> **현재 구현 상태 (2026-09-27):** WORK-09A `demoMigration` 전용 Gradle task와 TourAPI 전용 Flyway V2~V4가 추가됐다. 로컬 PostgreSQL 17에서 dry-run/apply/validate/reapply와 Testcontainers 테스트를 통과했고, 개발 RDS에서도 동일 백업을 이관·재적용했다. `flywayMigrate` 별도 task는 여전히 없다.
-
-> **병합 전 필수 조치:** 최초 이관 이후 `main`에 다른 내용의 Flyway V2~V11이 추가됐다. 개발 RDS의 V2~V4와 버전·체크섬이 충돌하므로 이 브랜치를 현재 `main`에 그대로 병합하거나 개발 RDS에 현재 `main`을 기동하면 안 된다. 이미 적용된 migration의 번호 변경, `flyway repair`, `baselineOnMigrate`로 이력 불일치를 숨기지 않는다. 스냅샷을 보존하고 새 DB에서 최신 `main` 스키마와 이관을 리허설한 뒤 전환 방식을 별도로 결정한다.
+> **현재 상태 (2026-09-27):** 개발 RDS의 기존 `app` 스키마에는 초기 이관용 Flyway V1~V4와 TourAPI 데이터가 적용되어 있다. 이후 `main`에 다른 V2~V11이 추가돼 그대로 기동할 수 없다. 최신 코드에서는 TourAPI 확장을 V12~V14의 새 migration으로 제공한다. 기존 이력에 `repair`나 `baselineOnMigrate`를 사용하지 않는다.
 
 ### 개발 RDS 이관 실적 (2026-09-27)
 
@@ -15,7 +11,7 @@
 - 사전 스냅샷: `tripin-dev-before-initial-migration-20260927`; 사후 스냅샷: `tripin-dev-after-demo-import-20260927`. 두 스냅샷의 `사용 가능` 상태는 AWS 콘솔에서 사용자가 확인했다. 에이전트는 AWS API로 스냅샷 상태를 독립 조회하지 못했다.
 - 첫 이관 실행 ID `335e013d-9703-4014-9901-cd5bb101f1a2`는 관광지 1,200건 저장 후 성능 개선을 위해 중단·재개했다. 최종 `SUCCEEDED`, 격리 0. 두 번째 실행 ID `3ff4ba08-1ec6-44e4-a063-a1ab27e3bb6a`도 `SUCCEEDED`; 삽입 0, 수정 0, 격리 0.
 - 최종 수량: 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. TourAPI 원천 ID 중복 0, 사용자·개인 여행 데이터 0.
-- 로컬 논리 백업: `build/backups/tripin-dev-after-demo-import-20260927.dump` (Git 제외), SHA-256 `5188ee8214382bd5b662467db23406135ee62b1fe708fe990cca91e6502b53f1`. 이 파일은 접근 제한 저장소에 별도 보관하는 것을 권장한다.
+- 재구성 전 논리 백업: `build/backups/tripin-dev-pre-reconcile-20260927.dump` (Git 제외), SHA-256 `95009603eab7a756643dbc527acc13f289b1eaf1e19dda02226ae7643443d0`. 이 파일은 접근 제한 저장소에 별도 보관한다.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
 
 ## 0. 이 문서를 사용하는 방법
@@ -24,9 +20,9 @@
 
 | 단계 | 누가 하는가 | 결과 |
 |---|---|---|
-| WORK-09A | 백엔드 개발자/에이전트 | H2를 읽어 로컬 PostgreSQL에 멱등 이관하는 실행기와 품질 리포트 |
-| WORK-09B | 인프라 담당 개발자 | 개발 RDS, 역할 분리, TLS, snapshot, 최초 schema/data 적재 |
-| WORK-09C | 백엔드 개발자 | 이후 Flyway 변경을 CI에서 검증하고 dev 배포 시 자동 반영하는 경로 |
+| 이슈 #36(H2 이관) | 백엔드 개발자/에이전트 | H2를 읽어 로컬 PostgreSQL에 멱등 이관하는 실행기와 품질 리포트 |
+| 이슈 #38(개발 RDS) | 인프라 담당 개발자 | 개발 RDS, 역할 분리, TLS, snapshot, 최초 schema/data 적재 |
+| 이슈 #37(Flyway 자동화) | 백엔드 개발자 | 이후 Flyway 변경을 CI에서 검증하고 dev 배포 시 자동 반영하는 경로 |
 
 완료 순서는 아래 하나뿐이다.
 
@@ -49,7 +45,7 @@
 - 엔티티만 바꾸고 `ddl-auto=update`로 RDS를 맞추지 않는다.
 - PR CI가 개발/운영 RDS에 접속하게 하지 않는다.
 - V1처럼 이미 공유 DB에 적용된 migration을 수정하지 않는다.
-- 운영 RDS에 WORK-09 명령을 실행하지 않는다.
+- 운영 RDS에 이관 명령을 실행하지 않는다.
 
 ### 0.1 사람과 에이전트의 작업 경계
 
@@ -67,7 +63,7 @@
 그 뒤 에이전트가 맡는 일:
 
 - 데모 서버 중지 여부와 H2 backup/checksum 확인
-- WORK-09A 이관 실행기 구현과 테스트
+- 이슈 #36(H2 이관) 이관 실행기 구현과 테스트
 - 로컬 PostgreSQL dry-run/apply/validate/reapply
 - 품질 리포트 분석
 - 개발 RDS endpoint/database/TLS/Flyway 상태의 read-only 사전 검사
@@ -84,10 +80,10 @@
 아래에서 `<H2_BACKUP_ABSOLUTE_PATH>`만 실제 경로로 바꾼다. 비밀번호나 API key는 넣지 않는다.
 
 ```text
-TARGET_WORK=WORK-09A+09B
+TARGET_ISSUES=#36+#38
 
 AGENTS.md와 docs/runbooks/rds-postgresql-bootstrap-and-migration.md 전체,
-docs/mvp/implementation-workpack.md의 WORK-09,
+docs/archive/implementation-workpack.md의 WORK-09(이력),
 .agents/skills/flyway-rds-sync/SKILL.md를 먼저 읽고 그대로 수행해라.
 
 개발 RDS와 local secret 설정은 준비되어 있다. 운영 RDS는 범위 밖이다.
@@ -220,9 +216,9 @@ Get-FileHash -Algorithm SHA256 -LiteralPath $backup
 
 필드 매핑의 최종 기준은 Java 엔티티가 아니라 **병합된 Flyway SQL**이다.
 
-## 6. Phase C — WORK-09A 이관 실행기 구현
+## 6. Phase C — 이슈 #36(H2 이관) 이관 실행기 구현
 
-WORK-00의 PostgreSQL/Flyway 기반과 WORK-09A 이관 실행기가 구현됐다. 새 환경에서는 아래 명령으로 로컬 리허설을 다시 수행하고 품질 리포트를 승인한 뒤 개발 RDS로 진행한다.
+PostgreSQL/Flyway 기반과 이슈 #36 이관 실행기는 구현됐다. 새 환경에서는 아래 명령으로 로컬 리허설을 다시 수행하고 품질 리포트를 승인한 뒤 개발 RDS로 진행한다.
 
 ### 6.1 생성해야 하는 공개 실행 명령
 
@@ -320,7 +316,7 @@ H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전�
 - 사용자·비밀번호·refresh/session/review/trip 데이터가 target에 들어오지 않음
 - production처럼 보이는 host 또는 `tripin_prod` DB는 명시적 allowlist가 없으면 거부
 
-### 6.7 WORK-09A 완료 gate
+### 6.7 이슈 #36(H2 이관) 완료 gate
 
 - [ ] 위 네 Gradle 명령이 `--help`와 함께 동작한다.
 - [ ] 로컬 PostgreSQL에서 dry-run/apply/validate/reapply를 완료했다.
@@ -339,7 +335,7 @@ docker compose up -d postgres
 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
 ```
 
-로그에서 Flyway V1 성공과 `Started BackendApplication`을 확인한 후 `Ctrl+C`로 서버를 멈춘다. 별도의 `flywayMigrate` task는 WORK-09C가 만들기 전까지 사용하지 않는다.
+로그에서 Flyway V1 성공과 `Started BackendApplication`을 확인한 후 `Ctrl+C`로 서버를 멈춘다. 별도의 `flywayMigrate` task는 이슈 #37(Flyway 자동화)가 만들기 전까지 사용하지 않는다.
 
 그 후 고정한 H2 백업을 source로 이관 도구를 실행한다.
 
@@ -641,7 +637,7 @@ health check 성공 후 dev 배포 완료
 
 PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이 아니며 별도 승인·snapshot·migration job이 필요하다.
 
-### 11.2 WORK-09C에서 구현할 migration 전용 명령
+### 11.2 이슈 #37(Flyway 자동화)에서 구현할 migration 전용 명령
 
 애플리케이션 전체를 띄우지 않고 `info → validate → migrate → info`를 수행하는 `rdsMigrate` Gradle task를 추가한다. Flyway Gradle plugin 또는 전용 JavaExec 중 하나로 구현하되 공개 인터페이스는 아래로 고정한다.
 
@@ -964,8 +960,8 @@ RDS PostgreSQL 15+는 기본적으로 TLS를 요구한다. JDBC/psql에 `sslmode
 
 ## Related
 
-- [MVP 데이터 이관·추천 설계](../mvp/data-and-recommendation.md)
-- [초기 세팅과 팀 실행 순서](../mvp/delivery.md)
-- [MVP 구현 작업서 WORK-00/09](../mvp/implementation-workpack.md)
+- [MVP 데이터 이관·추천 설계](../design/recommendation.md)
+- [초기 세팅과 팀 실행 순서(이력)](../archive/delivery.md)
+- [MVP 구현 작업서 WORK-00/09(이력)](../archive/implementation-workpack.md)
 - [Flyway/RDS 저장소 스킬](../../.agents/skills/flyway-rds-sync/SKILL.md)
 - [TourAPI 보강 저장소 스킬](../../.agents/skills/tourapi-detail-backfill/SKILL.md)

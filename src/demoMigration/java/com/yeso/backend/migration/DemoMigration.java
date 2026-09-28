@@ -126,8 +126,8 @@ public final class DemoMigration {
         catch (Exception e) { return "unknown"; }
     }
     private static void checkFlyway(Connection pg) throws SQLException {
-        try (Statement st = pg.createStatement(); ResultSet rs = st.executeQuery("SELECT version FROM app.flyway_schema_history WHERE success = TRUE ORDER BY installed_rank DESC LIMIT 1")) {
-            if (!rs.next() || !"4".equals(rs.getString(1))) throw new SQLException("Flyway V4 required");
+        try (Statement st = pg.createStatement(); ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM app.flyway_schema_history WHERE success = TRUE AND version IN ('12','13','14')")) {
+            if (!rs.next() || rs.getInt(1) != 3) throw new SQLException("Flyway V12-V14 required");
         }
     }
     private static String startRun(Connection pg, UUID runId, String sha, String git, boolean resume) throws SQLException {
