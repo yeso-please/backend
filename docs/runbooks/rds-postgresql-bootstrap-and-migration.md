@@ -2,7 +2,7 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태 (2026-09-28):** 개발 RDS의 기존 `app` 스키마에는 초기 이관용 Flyway V1~V4와 TourAPI 데이터가 적용되어 있다. 이후 `main`에 다른 V2~V12가 추가돼 그대로 기동할 수 없다. 최신 `main`의 V12가 음식점 테이블을 소유하므로 TourAPI 상세 확장과 코스 음식점 경유지는 새 V13~V14에서만 추가한다. 기존 이력에 `repair`나 `baselineOnMigrate`를 사용하지 않는다. 현재 개발 RDS 재구성은 **미완료**다.
+> **현재 상태 (2026-09-29):** Flyway 이력 충돌을 해결하기 위해 사용 가능 상태를 확인한 사전 스냅샷과 논리 백업을 확보하고 개발 RDS `app` 스키마를 재구성했다. 최신 Flyway V1~V14가 적용됐고 H2 TourAPI 데이터를 재이관·검증했다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
 
 ### 개발 RDS 이관 실적 (2026-09-27)
 
@@ -13,6 +13,11 @@
 - 최종 수량: 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. TourAPI 원천 ID 중복 0, 사용자·개인 여행 데이터 0.
 - 재구성 전 논리 백업: `build/backups/tripin-dev-pre-reconcile-20260927.dump` (Git 제외), SHA-256 `95009603eab7a756643dbc527acc13f289b1eaf1e19dda02226ae7643443d0`. `pg_restore --list`로 읽기 가능함을 확인했다.
 - 최신 `main` V12 음식점 계약을 포함한 로컬 재현 (2026-09-28): 데모 서버 미사용 상태에서 H2 백업 `build/backups/sumeun-reconcile-20260928.mv.db`를 생성했다 (SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`, Git 제외). 빈 PostgreSQL에 Flyway V1~V14와 JPA `validate` 기동 성공. 실행 ID `9883a0d3-113f-4c8c-8a16-8eee048e31f9`로 dry-run/apply/validate 성공, 격리 0. 재실행 ID `08ca0003-f2cb-4f1a-8e3a-c2cc79819bb7`은 삽입·수정·격리 0. 전체 Gradle 테스트 통과. 이 재현은 새 H2 백업을 원본으로 하며, RDS 논리 백업을 새 스키마에 직접 복원한 것은 아니다.
+- 최신 `main`과 개발 RDS 재구성 (2026-09-29): 사용자가 `tripin-dev-after-demo-import-20260927` 수동 스냅샷이 계속 `사용 가능`임을 확인했다. 재구성 직전 RDS에는 구형 V1~V4와 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537건이 있었고, 사용자·여행·온보딩·친구·임베딩 행은 0, 다른 DB 연결은 0이었다.
+- 재구성 직전 추가 논리 백업 `build/backups/tripin-dev-pre-reconcile-20260929.dump` (Git 제외)는 SHA-256 `df920ac3f9fef73bb7c4a2dda466a7ebad4586058fab645150bbeab379249721`이며, `pg_restore --list` 및 별도 로컬 PostgreSQL 복원 후 대표 테이블 수량을 확인했다. 백업 보존 기간과 스냅샷 복구 방법은 AWS 콘솔에서 관리한다.
+- 구형 `app` 스키마 삭제 후 Flyway로 V1~V14를 새로 적용했다. migrator에 임시로 준 데이터베이스 CREATE 권한은 회수했고, `tripin_app`의 schema/table/sequence와 migrator default privileges를 재설정했다. 앱 계정으로 Flyway validate 및 Spring Boot/JPA `validate` 기동이 성공했다.
+- 원본 H2 SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`를 실행 ID `6b9ec367-899d-4cec-897b-45f574baf4f4`로 재이관했다. 총 21,838건, 격리 0, 상태 `SUCCEEDED`. validate 성공. 두 번째 실행은 실행 ID `37cb08f5-a573-4942-b289-1718741c4f90`로 삽입 0·수정 0·격리 0을 확인했다.
+- 최종 수량: 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. 음식점 좌표 누락 0, 이미지 검증 `VALID` 0, 코스 경유지 관광지 연결 234·음식점 연결 24, 사용자·여행·온보딩·지역 승인 콘텐츠 0.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
 
 ## 0. 이 문서를 사용하는 방법

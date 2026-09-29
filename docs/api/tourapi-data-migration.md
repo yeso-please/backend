@@ -1,8 +1,8 @@
 # TourAPI 데이터 이관 계약
 
-- 상태: 구형 개발 RDS 최초 이관 완료 / 최신 `main` V12 음식점 계약으로 재구성 검증 중 (2026-09-28)
+- 상태: 최신 개발 RDS Flyway V1~V14 적용 및 TourAPI 재이관 완료 (2026-09-29)
 - 담당 범위: 내부 배치 CLI와 대상 스키마. HTTP API는 추가하지 않는다.
-- 마지막 갱신일: 2026-09-28
+- 마지막 갱신일: 2026-09-29
 - 관련: [식당 API 계약](trip.md), [RDS 런북](../runbooks/rds-postgresql-bootstrap-and-migration.md)
 
 | H2 원본 | PostgreSQL 대상 | 변환/누락 처리 |
