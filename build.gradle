@@ -20,6 +20,8 @@ repositories {
 sourceSets {
 	demoMigration {
 		java.srcDir 'src/demoMigration/java'
+		compileClasspath += sourceSets.main.output
+		runtimeClasspath += sourceSets.main.output
 	}
 }
 

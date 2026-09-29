@@ -1,5 +1,7 @@
 package com.yeso.backend.migration;
 
+import com.yeso.backend.attraction.infrastructure.RegionQualityRepository;
+
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -497,9 +499,61 @@ public final class DemoMigration {
         long withCoordinates = id(pg, "SELECT count(*) FROM app.attractions WHERE source_system='TOUR_API' AND lat IS NOT NULL AND lng IS NOT NULL");
         long allThree = id(pg, "SELECT count(DISTINCT a.id) FROM app.attractions a JOIN app.attraction_images i ON i.attraction_id=a.id WHERE a.source_system='TOUR_API' AND a.description IS NOT NULL AND btrim(a.description)<>'' AND a.lat IS NOT NULL AND a.lng IS NOT NULL");
         long validImage = id(pg, "SELECT count(DISTINCT a.id) FROM app.attractions a JOIN app.attraction_images i ON i.attraction_id=a.id WHERE a.source_system='TOUR_API' AND i.validation_status='VALID'");
+        String recommendableSql = RegionQualityRepository.RECOMMENDABLE.replace("{h-schema}", "app.");
+        long recommendable = id(pg, "SELECT count(*) FROM (" + recommendableSql + ") ra WHERE ra.source_system='TOUR_API'");
         long mappedAttractionStops = id(pg, "SELECT count(*) FROM app.official_course_stops s JOIN app.official_courses c ON c.id=s.official_course_id WHERE c.source_system='TOUR_API' AND s.attraction_id IS NOT NULL");
         long mappedRestaurantStops = id(pg, "SELECT count(*) FROM app.official_course_stops s JOIN app.official_courses c ON c.id=s.official_course_id WHERE c.source_system='TOUR_API' AND s.restaurant_id IS NOT NULL");
-        write(path, "{\"regions\":" + regions + ",\"attractions\":" + attractions + ",\"restaurants\":" + restaurants + ",\"officialCourses\":" + courses + ",\"officialStops\":" + stops + ",\"attractionsWithDescription\":" + withDescription + ",\"attractionsWithImage\":" + withImage + ",\"attractionsWithCoordinates\":" + withCoordinates + ",\"attractionsWithAllThree\":" + allThree + ",\"attractionsWithValidatedImage\":" + validImage + ",\"mappedAttractionStops\":" + mappedAttractionStops + ",\"mappedRestaurantStops\":" + mappedRestaurantStops + "}");
+        StringBuilder byRegion = new StringBuilder("[");
+        String regionSql = """
+                SELECT r.sig_cd, r.province, r.city,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API') AS attractions,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API' AND a.description IS NOT NULL AND btrim(a.description)<>'') AS with_description,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API' AND EXISTS (SELECT 1 FROM app.attraction_images i WHERE i.attraction_id=a.id)) AS with_image,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API' AND a.lat IS NOT NULL AND a.lng IS NOT NULL) AS with_coordinates,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API' AND a.description IS NOT NULL AND btrim(a.description)<>'' AND a.lat IS NOT NULL AND a.lng IS NOT NULL AND EXISTS (SELECT 1 FROM app.attraction_images i WHERE i.attraction_id=a.id)) AS with_all_three,
+                       (SELECT count(*) FROM app.attractions a WHERE a.region_id=r.sig_cd AND a.source_system='TOUR_API' AND EXISTS (SELECT 1 FROM app.attraction_images i WHERE i.attraction_id=a.id AND i.validation_status='VALID')) AS with_validated_image,
+                       (SELECT count(*) FROM (%s) ra WHERE ra.region_id=r.sig_cd AND ra.source_system='TOUR_API') AS recommendable
+                FROM app.regions r
+                ORDER BY r.sig_cd
+                """.formatted(recommendableSql);
+        try (var statement = pg.createStatement(); var result = statement.executeQuery(regionSql)) {
+            while (result.next()) {
+                if (byRegion.length() > 1) byRegion.append(',');
+                byRegion.append("{\"sigCd\":\"").append(jsonString(result.getString("sig_cd")))
+                        .append("\",\"province\":\"").append(jsonString(result.getString("province")))
+                        .append("\",\"city\":\"").append(jsonString(result.getString("city")))
+                        .append("\",\"attractions\":").append(result.getLong("attractions"))
+                        .append(",\"withDescription\":").append(result.getLong("with_description"))
+                        .append(",\"withImage\":").append(result.getLong("with_image"))
+                        .append(",\"withCoordinates\":").append(result.getLong("with_coordinates"))
+                        .append(",\"withAllThree\":").append(result.getLong("with_all_three"))
+                        .append(",\"withValidatedImage\":").append(result.getLong("with_validated_image"))
+                        .append(",\"recommendable\":").append(result.getLong("recommendable"))
+                        .append('}');
+            }
+        }
+        byRegion.append(']');
+        write(path, "{\"regions\":" + regions + ",\"attractions\":" + attractions + ",\"restaurants\":" + restaurants + ",\"officialCourses\":" + courses + ",\"officialStops\":" + stops + ",\"attractionsWithDescription\":" + withDescription + ",\"attractionsWithImage\":" + withImage + ",\"attractionsWithCoordinates\":" + withCoordinates + ",\"attractionsWithAllThree\":" + allThree + ",\"attractionsWithValidatedImage\":" + validImage + ",\"attractionsRecommendable\":" + recommendable + ",\"mappedAttractionStops\":" + mappedAttractionStops + ",\"mappedRestaurantStops\":" + mappedRestaurantStops + ",\"byRegion\":" + byRegion + "}");
+    }
+    private static String jsonString(String value) {
+        if (value == null) return "";
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (char character : value.toCharArray()) {
+            switch (character) {
+                case '"' -> escaped.append("\\\"");
+                case '\\' -> escaped.append("\\\\");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if (character < 0x20) escaped.append(String.format("\\u%04x", (int) character));
+                    else escaped.append(character);
+                }
+            }
+        }
+        return escaped.toString();
     }
     private static void writeReports(Path path, Counts counts, Connection pg, String mode) throws Exception {
         StringBuilder json = new StringBuilder("{");

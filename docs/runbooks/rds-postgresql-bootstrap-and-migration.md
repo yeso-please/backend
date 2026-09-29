@@ -305,7 +305,7 @@ H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전�
 
 - `manifest.json`: source SHA-256, git SHA, 시작/종료, mode, batch size
 - `counts.json`: source/insert/update/skip/quarantine 수
-- `quality.json`: 설명·좌표·VALID 이미지 교집합과 지역별 후보 수
+- `quality.json`: 전체 설명·이미지·좌표 집계와 `byRegion` 지역별 설명·이미지·좌표·교집합·VALID 이미지·추천 가능 수. 추천 가능 수는 지역 판정 및 코스 후보 조회와 같은 SQL 기준을 사용한다.
 - `quarantine.csv`: entity type, source key, error code. 자유서술 전문과 개인정보는 넣지 않음
 - `summary.md`: 사람이 리뷰하는 요약
 
@@ -324,11 +324,29 @@ H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전�
 
 ### 6.7 이슈 #36(H2 이관) 완료 gate
 
-- [ ] 위 네 Gradle 명령이 `--help`와 함께 동작한다.
-- [ ] 로컬 PostgreSQL에서 dry-run/apply/validate/reapply를 완료했다.
-- [ ] 모든 수량식이 맞고 quarantine 사유를 설명할 수 있다.
-- [ ] PostgreSQL 17 Testcontainers 테스트가 CI에서 통과한다.
-- [ ] RDS endpoint를 한 번도 사용하지 않고 09A를 완료했다.
+- [x] 위 네 Gradle 명령이 `--help`와 함께 동작한다.
+- [x] 로컬 PostgreSQL에서 dry-run/apply/validate/reapply를 완료했다.
+- [x] 모든 수량식이 맞고 quarantine 사유를 설명할 수 있다.
+- [x] PostgreSQL 17 Testcontainers 테스트가 CI에서 통과한다.
+- [x] RDS endpoint를 한 번도 사용하지 않고 09A를 완료했다.
+
+### 6.8 #36 완료 증거 (2026-09-29)
+
+아래 재현은 개발 RDS와 분리된 로컬 PostgreSQL 17에서 수행했다. 개인정보 테이블은 source allowlist 밖이며 target에도 사용자·온보딩·여행·후기 데이터가 없다.
+
+| 확인 항목 | 증거 |
+|---|---|
+| 원천 고정 | H2 백업 SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea` |
+| 스키마 | Flyway V1~V14 적용 및 JPA `validate` 성공 |
+| 최초 apply/validate | run ID `9883a0d3-113f-4c8c-8a16-8eee048e31f9`, 격리 0 |
+| 재실행 멱등성 | run ID `08ca0003-f2cb-4f1a-8e3a-c2cc79819bb7`, insert/update/quarantine 각 0 |
+| 이관 행 수 | 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537 |
+| 품질 요약 | 설명 3,971, 좌표 12,164, 이미지 보유 10,933, 설명·좌표·이미지 교집합 3,887, VALID 이미지 0, 경유지 연결: 관광지 234·음식점 24 |
+| 개인정보·격리 | 사용자/개인 데이터 0, quarantine 0; 이미지 VALID 0과 미연결 경유지 279는 품질 상태로 유지하고 임의 승격하지 않음 |
+| 통합 CI | PR #65 merge commit `2216c7e`, GitHub Actions CI #55 성공 |
+| 지역별 보고서 계약 | `quality.json.byRegion`에 지역별 전체·설명·이미지·좌표·교집합·VALID 이미지·추천 가능 수를 출력. 추천 가능은 `RegionQualityRepository.RECOMMENDABLE` 공용 기준을 재사용하며 Testcontainers 통합 테스트에서 JSON 필드와 수량 검증 |
+
+수량 검증은 entity별 `source = inserted + updated + skipped + quarantined`로 확인했다. 위 run ID는 과거 실행 증거이며, 지역별 보고서는 이번 변경 이후의 `validate` 또는 새 이관 실행에서 생성된다. 개발 RDS 검증은 이 체크리스트 범위가 아니며 #38에서 별도 수행한다.
 
 ## 7. Phase D — 로컬 PostgreSQL 리허설
 
