@@ -8,6 +8,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -38,6 +39,7 @@ class DemoMigrationIntegrationTest {
             st.execute("CREATE TABLE APP_USER(ID BIGINT,EMAIL VARCHAR(255),PASSWORD VARCHAR(255))");
             st.execute("INSERT INTO APP_USER VALUES (1,'private@example.com','hash')");
             st.execute("INSERT INTO REGION VALUES ('11110','서울특별시','종로구',37.5,127.0)");
+            st.execute("INSERT INTO REGION VALUES ('11111','서울특별시','중구',37.5,127.0)");
             st.execute("INSERT INTO ATTRACTION VALUES (1,'100','11110','관광지','관광지','설명','주소',37.5,127.0,'https://example.com/photo.jpg',NULL,NULL,NULL,NULL,NULL,NULL,TRUE,NULL,NULL)");
             st.execute("INSERT INTO FOOD_PLACE VALUES (2,'200','11110','식당','한식',NULL,'주소',37.5,127.0,NULL,NULL,FALSE)");
             // Cross the 200-row commit boundary for both batched target tables.
@@ -55,11 +57,15 @@ class DemoMigrationIntegrationTest {
         assertThat(count(url, user, password, "regions")).isZero();
         UUID first = UUID.randomUUID();
         DemoMigration.run(new String[]{"--mode=apply", "--source=" + sourceFile, "--run-id=" + first}, url, user, password);
-        assertThat(count(url, user, password, "regions")).isEqualTo(1);
+        assertThat(count(url, user, password, "regions")).isEqualTo(2);
         assertThat(count(url, user, password, "attractions")).isEqualTo(205);
         assertThat(count(url, user, password, "restaurants")).isEqualTo(205);
         assertThat(count(url, user, password, "official_courses")).isEqualTo(1);
         assertThat(count(url, user, password, "official_course_stops")).isEqualTo(1);
+        String quality = Files.readString(Path.of("build", "reports", "demo-migration", first.toString(), "quality.json"));
+        assertThat(quality).contains("\"attractionsRecommendable\":0")
+                .contains("\"byRegion\":[{\"sigCd\":\"11110\",\"province\":\"서울특별시\",\"city\":\"종로구\",\"attractions\":205,\"withDescription\":1,\"withImage\":1,\"withCoordinates\":1,\"withAllThree\":1,\"withValidatedImage\":0,\"recommendable\":0},"
+                        + "{\"sigCd\":\"11111\",\"province\":\"서울특별시\",\"city\":\"중구\",\"attractions\":0,\"withDescription\":0,\"withImage\":0,\"withCoordinates\":0,\"withAllThree\":0,\"withValidatedImage\":0,\"recommendable\":0}");
         try (var pg = DriverManager.getConnection(url, user, password); var st = pg.createStatement(); var rs = st.executeQuery("SELECT count(*) FROM app.official_course_stops WHERE attraction_id IS NOT NULL AND restaurant_id IS NULL")) {
             rs.next(); assertThat(rs.getInt(1)).isEqualTo(1);
         }
