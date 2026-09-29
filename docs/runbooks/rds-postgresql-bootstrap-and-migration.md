@@ -20,7 +20,7 @@
 - 최종 수량: 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. 음식점 좌표 누락 0, 이미지 검증 `VALID` 0, 코스 경유지 관광지 연결 234·음식점 연결 24, 사용자·여행·온보딩·지역 승인 콘텐츠 0.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
 - AI Hub 온보딩 V15 적용 검증 (2026-09-29): 사용자가 변경 전 수동 스냅샷 `tripin-dev-postgres-26-09-29`를 제공했다. 개발 RDS의 V1~V14 이력 체크섬을 대조하고 pending V15만 무시하는 사전 validate를 성공시킨 뒤 V15를 적용했다. Flyway info에서 현재 version 15/pending 없음, validate 성공을 확인했다. 스냅샷은 사용자가 생성했다고 알렸으며 에이전트는 AWS 콘솔/API로 상태를 독립 조회하지 못했다.
-- 적용 후 `tripin_app` 계정으로 `dev-rds` 프로파일 앱을 기동해 Flyway no-op 및 Hibernate `ddl-auto=validate` 성공을 확인했다. `/v3/api-docs` HTTP 200. TLS `verify-full` 연결에서 읽은 수량은 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537이다. 앱 프로세스는 검증 후 종료했다.
+- 적용 후 `tripin_app` 계정으로 `dev-rds` 프로파일 앱을 기동해 Flyway no-op 및 Hibernate `ddl-auto=validate` 성공을 확인했다. `/v3/api-docs` HTTP 200. TLS `verify-full` 연결에서 읽은 수량은 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537이다. 앱 계정은 `app` schema `USAGE` 및 `regions SELECT`가 가능하고 `CREATE` 권한은 없는 것을 확인했다. 앱 프로세스는 검증 후 종료했다.
 
 ## 0. 이 문서를 사용하는 방법
 
