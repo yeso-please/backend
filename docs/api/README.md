@@ -228,6 +228,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ⬜ | [6-10](trip.md#6-10-여행기-공유-링크-폐기) | DELETE | `/diaries/{diaryId}/share-links/{linkId}` | 작성자 | 링크 폐기 | 추가 |
 | ⬜ | [6-11](trip.md#6-11-여행기-공유-링크-열기) | GET | `/shared/diaries/{token}` | 공개 | cookie 교환·303 | 추가 |
 | ⬜ | [6-12](trip.md#6-12-공유-여행기-조회) | GET | `/shared/diaries` | 공유 소지자 | 공유 여행기 | 추가 |
+| ⬜ | [6-13](trip.md#6-13-여행기-삭제) | DELETE | `/diaries/{diaryId}` | 작성자 | 초안·발행 여행기 삭제 | 추가 |
 | ✅ | [7-1](attraction.md#7-1-지역-목록) | GET | `/regions` | 회원 | 250개 지역·추첨 가능 여부 | MVP |
 | ✅ | [7-2](attraction.md#7-2-지역-카드) | GET | `/regions/{sigCd}/card` | 회원 | 지역 소개 카드 | MVP |
 | ✅ | [7-3](attraction.md#7-3-지도-관광지-핀) | GET | `/regions/{sigCd}/attractions` | 회원 | 지도 핀 | MVP |
