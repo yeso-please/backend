@@ -336,7 +336,7 @@ POST /api/trips/{tripId}/region
 
 **Side effects** — 여행의 지역·선택 방식·밀도를 바꾸고 `version`을 올린다. `replaceCourse: true`면 코스 항목·식당 선택을 비운다(코스 기록과 최초 생성 완료 표시는 남는다).
 
-**구현과의 차이** — 관광지 취향 벡터(#54)가 아직 없어 `MY_TASTE`는 항상 무시되고 `ignoredConditions`에 `TASTE_NOT_READY`로 담긴다. #54가 배치되면 자동으로 동작한다.
+**취향 조건** — `MY_TASTE` 요청자의 최신 호환 취향 벡터와 추천 가능 관광지의 현재 모델·템플릿·차원 벡터가 모두 준비된 지역에만 반영한다. 지역별 코사인 유사도 상위 5개 평균으로 가중치를 계산한다. 벡터가 없거나 서로 다른 모델/차원이면 `ignoredConditions`에 `TASTE_NOT_READY`를 반환한다.
 
 ---
 

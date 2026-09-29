@@ -26,12 +26,21 @@ public class AttractionQueryRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private final String schema;
     private final String recommendableSql;
+    private final String modelVersion;
+    private final int embeddingTemplateVersion;
+    private final int embeddingDimension;
 
     public AttractionQueryRepository(
             NamedParameterJdbcTemplate jdbc,
-            @Value("${spring.jpa.properties.hibernate.default_schema}") String schema) {
+            @Value("${spring.jpa.properties.hibernate.default_schema}") String schema,
+            @Value("${embedding.model-version:mminilm-l12-v1}") String modelVersion,
+            @Value("${embedding.attraction-batch.template-version:2}") int embeddingTemplateVersion,
+            @Value("${embedding.expected-dimension:384}") int embeddingDimension) {
         this.jdbc = jdbc;
         this.schema = schema;
+        this.modelVersion = modelVersion;
+        this.embeddingTemplateVersion = embeddingTemplateVersion;
+        this.embeddingDimension = embeddingDimension;
         this.recommendableSql = RegionQualityRepository.RECOMMENDABLE.replace("{h-schema}", schema + ".");
     }
 
@@ -148,8 +157,13 @@ public class AttractionQueryRepository {
             return List.of();
         }
         return jdbc.query("""
-                select e.attraction_id, e.embedding, e.dimension from %s.attraction_embeddings e where e.attraction_id in (:ids)
-                """.formatted(schema), new MapSqlParameterSource("ids", ids),
+                select e.attraction_id, e.embedding, e.dimension from %s.attraction_embeddings e
+                where e.attraction_id in (:ids) and e.model_version = :modelVersion
+                  and e.template_version = :templateVersion and e.dimension = :dimension
+                """.formatted(schema), new MapSqlParameterSource("ids", ids)
+                        .addValue("modelVersion", modelVersion)
+                        .addValue("templateVersion", embeddingTemplateVersion)
+                        .addValue("dimension", embeddingDimension),
                 (rs, n) -> new EmbeddingRow(rs.getLong("attraction_id"), rs.getBytes("embedding"), rs.getInt("dimension")));
     }
 

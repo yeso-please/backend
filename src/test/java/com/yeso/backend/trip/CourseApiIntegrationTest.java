@@ -259,13 +259,18 @@ class CourseApiIntegrationTest extends IntegrationTest {
         @Test
         @DisplayName("요청자와 관광지의 취향 벡터가 있으면 취향 반영(PERSONALIZED)으로 만든다")
         void personalized() throws Exception {
-            byte[] vector = VectorCodec.encode(new float[]{1f, 0f, 0f});
-            jdbc.update("update app.user_taste_vectors set embedding = ?, dimension = 3 where user_id = ?", vector, creator.userId());
+            float[] requesterVector = new float[384];
+            requesterVector[0] = 1f;
+            jdbc.update("update app.user_taste_vectors set embedding = ?, dimension = 384 where user_id = ?",
+                    VectorCodec.encode(requesterVector), creator.userId());
             for (Long id : attractionIds) {
+                float[] attractionVector = new float[384];
+                attractionVector[0] = 1f;
+                attractionVector[1] = (float) (id % 5) / 10;
                 jdbc.update("""
                         insert into app.attraction_embeddings (attraction_id, embedding, dimension, model_version, template_version)
-                        values (?, ?, 3, 'test', 1)
-                        """, id, VectorCodec.encode(new float[]{1f, (float) (id % 5) / 10, 0f}));
+                        values (?, ?, 384, 'mminilm-l12-v1', 2)
+                        """, id, VectorCodec.encode(attractionVector));
             }
             Long tripId = tripInGyeongju(creator);
 

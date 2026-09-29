@@ -1,5 +1,6 @@
 package com.yeso.backend.profile.infrastructure;
 
+import com.yeso.backend.shared.embedding.AttractionEmbeddingBatchRequest;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,5 +102,55 @@ class HttpEmbeddingClientTest {
                         java.util.List.of(), java.util.Map.of(), java.util.List.of(), java.util.List.of()))))
                 .isInstanceOf(EmbeddingPermanentException.class)
                 .satisfies(e -> assertThat(((EmbeddingPermanentException) e).errorCode()).isEqualTo("HTTP_400"));
+    }
+
+    @Test
+    @DisplayName("관광지 묶음을 /embeddings/batch로 보내고 ID별 벡터를 반환한다")
+    void embedAttractions_sendsBatchContract() throws IOException {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        server.createContext("/embeddings/batch", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = """
+                    {"dimension":384,"items":[{"id":"101","embeddingBase64":"AQIDBA=="}]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
+        var request = new AttractionEmbeddingBatchRequest("mminilm-l12-v1", 2, List.of(
+                new AttractionEmbeddingBatchRequest.Item("101", "경복궁", 14, "서울특별시 종로구",
+                        List.of("궁궐", "역사"), "조선의 법궁")));
+
+        var result = client.embedAttractions(request);
+
+        assertThat(requestBody.get()).contains("\"templateVersion\":2")
+                .contains("\"contentTypeId\":14")
+                .contains("\"regionName\":\"서울특별시 종로구\"")
+                .contains("\"description\":\"조선의 법궁\"");
+        assertThat(result.dimension()).isEqualTo(384);
+        assertThat(result.items()).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo("101");
+            assertThat(item.embeddingBase64()).isEqualTo("AQIDBA==");
+        });
+    }
+
+    @Test
+    @DisplayName("배치 API 일시 장애는 재실행 가능한 예외로 분류한다")
+    void embedAttractions_serverReturns503_throwsRetryableException() throws IOException {
+        server.createContext("/embeddings/batch", exchange -> {
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(503, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
+
+        assertThatThrownBy(() -> client.embedAttractions(new AttractionEmbeddingBatchRequest(
+                "mminilm-l12-v1", 2, List.of())))
+                .isInstanceOf(com.yeso.backend.shared.embedding.AttractionEmbeddingServiceException.class)
+                .satisfies(exception -> assertThat(((com.yeso.backend.shared.embedding.AttractionEmbeddingServiceException) exception)
+                        .retryable()).isTrue());
     }
 }

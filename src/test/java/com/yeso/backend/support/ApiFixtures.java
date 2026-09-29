@@ -77,14 +77,12 @@ public class ApiFixtures {
 
     // ---------- onboarding ----------
 
-    /** 12문항 모두 choice=1, RELAXED인 최소 유효 설문. */
+    /** AI Hub 템플릿 2를 사용하는 최소 유효 최신 설문. */
     public static String onboardingBody() {
-        String answers = IntStream.rangeClosed(1, 12)
-                .mapToObj(n -> "{\"questionNumber\":%d,\"choice\":1}".formatted(n))
-                .collect(Collectors.joining(",", "[", "]"));
         return """
-                {"questionVersion":"demo-mbti-v1","answers":%s,"scheduleDensity":"RELAXED"}
-                """.formatted(answers);
+                {"questionVersion":"aihub-traveler-v1","travelStyles":{"1":4,"3":4,"5":4,"6":4},
+                 "travelMotives":[],"likedRegions":[],"scheduleDensity":"RELAXED"}
+                """;
     }
 
     public void submitOnboarding(String accessToken) throws Exception {

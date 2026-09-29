@@ -62,6 +62,10 @@ embedding:
   base-url: ${EMBEDDING_SERVICE_BASE_URL:}
   model-version: ${EMBEDDING_MODEL_VERSION:mminilm-l12-v1}
   expected-dimension: 384
+  attraction-batch:
+    enabled: false
+    batch-size: 64
+    template-version: 2
   timeout-millis: 5000
   max-attempts: 5
   retry-backoff-seconds: 30

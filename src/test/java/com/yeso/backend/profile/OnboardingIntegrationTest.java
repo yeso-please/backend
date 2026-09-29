@@ -3,6 +3,7 @@ package com.yeso.backend.profile;
 import com.jayway.jsonpath.JsonPath;
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.profile.application.onboarding.OnboardingQueryService;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
 import com.yeso.backend.support.ApiFixtures;
 import com.yeso.backend.support.IntegrationTest;
@@ -29,6 +30,9 @@ class OnboardingIntegrationTest extends IntegrationTest {
 
     @Autowired
     private RegionRepository regionRepository;
+
+    @Autowired
+    private OnboardingQueryService onboardingQueryService;
 
     @BeforeEach
     void seedRegions() {
@@ -95,6 +99,19 @@ class OnboardingIntegrationTest extends IntegrationTest {
     @Nested
     @DisplayName("제출")
     class Submit {
+
+        @Test
+        @DisplayName("구형 템플릿 벡터는 새 관광지 템플릿과 섞지 않고 최신 설문을 기다린다")
+        void submit_legacyProfileVector_isNotUsedWithCurrentAttractionTemplate() throws Exception {
+            var member = fixtures.signup();
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", member.bearer())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(submissionBody("demo-mbti-v1", "RELAXED", Map.of(), "[]", "[]")))
+                    .andExpect(status().isCreated());
+
+            assertThat(onboardingQueryService.findTasteVector(member.userId())).isEmpty();
+        }
 
         @Test
         @DisplayName("AI Hub 설문은 구조화된 취향을 저장하고 템플릿 v2로 전달한다")

@@ -1,7 +1,9 @@
 package com.yeso.backend.profile.application.onboarding;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.infrastructure.OnboardingSubmissionRepository;
+import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.UserTasteVectorRepository;
 import com.yeso.backend.shared.embedding.VectorCodec;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class OnboardingQueryService {
     private final UserRepository userRepository;
     private final OnboardingSubmissionRepository onboardingSubmissionRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
+    private final EmbeddingProperties embeddingProperties;
 
     /** 최신 설문의 일정 밀도({@code RELAXED}·{@code PACKED}). 설문 전이면 빈 값. */
     public Optional<String> findLatestScheduleDensity(Long userId) {
@@ -34,6 +37,9 @@ public class OnboardingQueryService {
     /** 회원 취향 벡터. 아직 없거나, 저장된 바이트가 기록된 차원과 맞지 않으면 빈 값(코스는 규칙으로 폴백한다). */
     public Optional<float[]> findTasteVector(Long userId) {
         return userTasteVectorRepository.findById(userId)
+                .filter(vector -> embeddingProperties.getModelVersion().equals(vector.getModelVersion()))
+                .filter(vector -> vector.getDimension() == embeddingProperties.getExpectedDimension())
+                .filter(vector -> vector.getTemplateVersion() == OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION)
                 .flatMap(vector -> VectorCodec.tryDecode(vector.getEmbedding(), vector.getDimension()));
     }
 }
