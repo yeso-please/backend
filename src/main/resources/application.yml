@@ -80,3 +80,12 @@ course:
       rest-api-key: ${KAKAO_REST_API_KEY:}
       timeout-millis: 3000
       default-retry-after-seconds: 60
+
+# 여행기 사진은 private S3 bucket을 사용한다. 로컬에서는 비활성이고 업로드 요청은 503이다.
+# dev 배포는 DIARY_PHOTOS_S3_ENABLED=true, DIARY_PHOTOS_S3_BUCKET, AWS_REGION과 task role 권한을 제공한다.
+tripin:
+  diary:
+    photos:
+      enabled: ${DIARY_PHOTOS_S3_ENABLED:false}
+      bucket: ${DIARY_PHOTOS_S3_BUCKET:}
+      region: ${AWS_REGION:ap-northeast-2}

@@ -216,11 +216,11 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
 | ✅ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
-| ⬜ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
-| ⬜ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
-| ⬜ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |
-| ⬜ | [6-4](trip.md#6-4-여행기-수정) | PATCH | `/diaries/{diaryId}` | 작성자 | 본문·공개 범위 수정 | 추가 |
-| ⬜ | [6-5](trip.md#6-5-여행기-발행) | POST | `/diaries/{diaryId}/publish` | 작성자 | 발행 | 추가 |
+| ✅ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
+| ✅ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
+| ✅ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |
+| ✅ | [6-4](trip.md#6-4-여행기-수정) | PATCH | `/diaries/{diaryId}` | 작성자 | 본문·공개 범위 수정 | 추가 |
+| ✅ | [6-5](trip.md#6-5-여행기-발행) | POST | `/diaries/{diaryId}/publish` | 작성자 | 발행 | 추가 |
 | ⬜ | [6-6](trip.md#6-6-여행기-조회) | GET | `/diaries/{diaryId}` | 작성자·친구 | 상세 | 추가 |
 | ⬜ | [6-7](trip.md#6-7-내-여행-지도) | GET | `/me/travel-map` | 회원 | 내 핀 목록 | 추가 |
 | ⬜ | [6-8](trip.md#6-8-친구-여행-지도) | GET | `/friends/{userId}/travel-map` | 수락된 친구 | 친구 핀 목록 | 추가 |
@@ -228,7 +228,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ⬜ | [6-10](trip.md#6-10-여행기-공유-링크-폐기) | DELETE | `/diaries/{diaryId}/share-links/{linkId}` | 작성자 | 링크 폐기 | 추가 |
 | ⬜ | [6-11](trip.md#6-11-여행기-공유-링크-열기) | GET | `/shared/diaries/{token}` | 공개 | cookie 교환·303 | 추가 |
 | ⬜ | [6-12](trip.md#6-12-공유-여행기-조회) | GET | `/shared/diaries` | 공유 소지자 | 공유 여행기 | 추가 |
-| ⬜ | [6-13](trip.md#6-13-여행기-삭제) | DELETE | `/diaries/{diaryId}` | 작성자 | 초안·발행 여행기 삭제 | 추가 |
+| ✅ | [6-13](trip.md#6-13-여행기-삭제) | DELETE | `/diaries/{diaryId}` | 작성자 | 초안·발행 여행기 삭제 | 추가 |
 | ✅ | [7-1](attraction.md#7-1-지역-목록) | GET | `/regions` | 회원 | 250개 지역·추첨 가능 여부 | MVP |
 | ✅ | [7-2](attraction.md#7-2-지역-카드) | GET | `/regions/{sigCd}/card` | 회원 | 지역 소개 카드 | MVP |
 | ✅ | [7-3](attraction.md#7-3-지도-관광지-핀) | GET | `/regions/{sigCd}/attractions` | 회원 | 지도 핀 | MVP |
