@@ -1,0 +1,4 @@
+interface:
+  display_name: "TourAPI 관광지 상세 적재"
+  short_description: "누락 관광지 소개글을 수집해 개발 RDS에 자동 적재합니다"
+  default_prompt: "Run $tourapi-attraction-backfill end-to-end: inspect the configured development RDS and missing attraction-description count, validate TourAPI detailCommon2 with a one-item diagnostic and no contentTypeId, then automatically backfill all eligible missing descriptions to that dev RDS within the configured quota. Fail closed on any target, API, lock, or TLS validation error; never write to production. Report updated, empty, remaining, and resumed counts."
