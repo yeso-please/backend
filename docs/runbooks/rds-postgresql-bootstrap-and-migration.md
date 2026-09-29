@@ -683,6 +683,23 @@ PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이
 
 명령은 시작할 때 secret을 제외한 target host/database, 현재 version, pending version을 보여주고, 끝날 때 적용 version과 소요시간을 출력한다. `clean`, `repair`, `baselineOnMigrate=true`, out-of-order 적용은 제공하지 않는다.
 
+구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다.
+
+```powershell
+$env:MIGRATION_TARGET_ENV = "dev"
+$env:DB_URL = "jdbc:postgresql://<RDS endpoint>:5432/tripin_dev?sslmode=verify-full&sslrootcert=<URL-인코딩된-CA-절대경로>"
+$env:FLYWAY_USER = "tripin_migrator"
+$env:FLYWAY_PASSWORD = "<secret store에서 주입>"
+$env:RDS_CA_PATH = "<CA bundle 절대경로>"
+
+.\gradlew.bat rdsMigrationInfo
+.\gradlew.bat rdsMigrationValidate
+# 스냅샷과 validate 결과를 확인한 뒤에만 명시적으로 실행
+.\gradlew.bat rdsMigrate
+```
+
+가드는 `MIGRATION_TARGET_ENV=dev`, `tripin_dev`, `tripin_migrator`, `*.rds.amazonaws.com`, `sslmode=verify-full`, URL의 `sslrootcert`와 `RDS_CA_PATH` 일치를 모두 요구한다. 다른 DB, 로컬 PostgreSQL, 운영 이름, 비 TLS URL은 거부한다. 로그에는 endpoint/DB, 현재·pending·적용 version, 실행 수와 시간만 남고 연결 오류도 예외 유형만 출력해 secret과 드라이버 메시지가 노출되지 않도록 한다. 명령을 실행하기 전에 secret을 셸 기록에 직접 입력하지 말고 승인된 secret 주입 절차를 사용한다.
+
 ### 11.3 migration 파일 작성 규칙
 
 1. main 최신 상태에서 현재 최대 version을 확인한다.
@@ -738,6 +755,8 @@ CREATE INDEX idx_refresh_tokens_family_active
 - 새 NOT NULL/UNIQUE/FK/CHECK/index의 성공·실패 경계
 - 이미 적용된 migration 파일 변경 탐지
 
+`PostgresqlFoundationIntegrationTest`가 빈 DB 전체 적용, V1→최신 업그레이드, 재실행 no-op, Flyway validate와 `@SpringBootTest`의 Hibernate `ddl-auto=validate`를 검증한다. PR CI는 base 대비 기존 migration 경로의 수정·삭제가 있으면 실패한다(새 migration 추가는 허용). GitHub 저장소 설정의 branch protection/Ruleset에서 `CI / test`를 required check로 지정해야 병합이 강제된다.
+
 PR에 migration이 있는데 entity/test/docs가 없거나, entity schema가 바뀌었는데 migration이 없으면 CI를 실패시킨다. GitHub branch protection에서 이 job을 required check로 지정한다.
 
 ### 11.5 dev 자동 적용 방식
@@ -786,7 +805,9 @@ dev RDS가 public인 동안에도 GitHub-hosted runner가 RDS에 직접 접속�
 ### 11.8 자동화 완료 gate
 
 - [ ] migration 없는 entity schema 변경을 CI가 잡는다.
-- [ ] 모든 PR은 PostgreSQL 17에서 clean/upgrade/no-op을 검증한다.
+- [x] 모든 PR은 PostgreSQL 17에서 clean/upgrade/no-op을 검증한다.
+- [x] PR CI가 이미 존재하는 migration 파일의 수정·삭제를 거부한다.
+- [x] migration 전용 명령은 TLS 검증된 `tripin_dev` RDS와 migrator 계정만 허용한다.
 - [ ] merge 후 dev 배포에서 pending migration이 한 번만 적용된다.
 - [ ] migration 실패 시 새 instance가 ready가 되지 않는다.
 - [ ] `tripin_app`은 DDL 권한이 없다.
