@@ -1447,7 +1447,7 @@ POST /api/diaries/{diaryId}/publish
 
 ### 6-6. 여행기 조회
 
-> `호출: 작성자 · 친구(FRIENDS·발행됨)` · `⬜ 미구현`
+> `호출: 작성자 · 친구(FRIENDS·발행됨)` · `✅ 구현`
 
 ```
 GET /api/diaries/{diaryId}
@@ -1465,7 +1465,7 @@ GET /api/diaries/{diaryId}
 
 ### 6-7. 내 여행 지도
 
-> `호출: 회원` · `⬜ 미구현`
+> `호출: 회원` · `✅ 구현`
 
 ```
 GET /api/me/travel-map?from=2026-01-01&to=2026-12-31
@@ -1485,13 +1485,13 @@ GET /api/me/travel-map?from=2026-01-01&to=2026-12-31
 ```
 
 - 핀 위치는 대표 사진 위치, 없으면 지역 중심이다.
-- 대표 사진이 없으면 `coverPhotoUrl`은 서비스 기본 이미지다. 다른 사진 URL이나 EXIF는 넣지 않는다.
+- 대표 사진이 없으면 `coverPhotoUrl`은 `null`이다(클라이언트가 기본 이미지를 표시). 다른 사진 URL이나 EXIF는 넣지 않는다.
 
 ---
 
 ### 6-8. 친구 여행 지도
 
-> `호출: 수락된 친구` · `⬜ 미구현`
+> `호출: 수락된 친구` · `✅ 구현`
 
 ```
 GET /api/friends/{userId}/travel-map?from=&to=
@@ -1507,7 +1507,7 @@ GET /api/friends/{userId}/travel-map?from=&to=
 
 ### 6-9. 여행기 공유 링크 발급·목록
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 POST /api/diaries/{diaryId}/share-links
@@ -1541,7 +1541,7 @@ GET  /api/diaries/{diaryId}/share-links
 
 ### 6-10. 여행기 공유 링크 폐기
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 DELETE /api/diaries/{diaryId}/share-links/{linkId}
@@ -1557,7 +1557,7 @@ DELETE /api/diaries/{diaryId}/share-links/{linkId}
 
 ### 6-11. 여행기 공유 링크 열기
 
-> `호출: 공개` · `⬜ 미구현`
+> `호출: 공개` · `✅ 구현`
 
 ```
 GET /api/shared/diaries/{token}
@@ -1580,7 +1580,7 @@ Set-Cookie: diary_share_session=…; HttpOnly; SameSite=Lax; Path=/api/shared/di
 
 ### 6-12. 공유 여행기 조회
 
-> `호출: 여행기 공유 링크 소지자` · `⬜ 미구현`
+> `호출: 여행기 공유 링크 소지자` · `✅ 구현`
 
 ```
 GET /api/shared/diaries

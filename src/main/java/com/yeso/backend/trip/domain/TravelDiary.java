@@ -103,6 +103,10 @@ public class TravelDiary extends BaseTimeEntity {
         if (coverPhotoId != null) this.coverPhotoId = coverPhotoId;
     }
 
+    public void updateForSharing(DiaryVisibility visibility) {
+        this.visibility = visibility;
+    }
+
     public void publish(LocalDateTime at) {
         this.status = DiaryStatus.PUBLISHED;
         if (this.publishedAt == null) this.publishedAt = at;

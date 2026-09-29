@@ -12,7 +12,9 @@ public enum TokenAudience {
     INVITE("iv"),
     SHARE_LINK("sl"),
     SHARE_SESSION("ss"),
-    FRIEND_LINK("fl");
+    FRIEND_LINK("fl"),
+    DIARY_SHARE_LINK("dl"),
+    DIARY_SHARE_SESSION("ds");
 
     private static final String SEPARATOR = "_";
 
