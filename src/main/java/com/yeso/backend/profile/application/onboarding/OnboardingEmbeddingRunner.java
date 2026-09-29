@@ -4,6 +4,7 @@ import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.profile.domain.EmbeddingJob;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
+import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.infrastructure.EmbeddingClient;
 import com.yeso.backend.profile.infrastructure.EmbeddingJobRepository;
@@ -12,6 +13,7 @@ import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.EmbeddingRequest;
 import com.yeso.backend.profile.infrastructure.EmbeddingResult;
 import com.yeso.backend.profile.infrastructure.EmbeddingTransientException;
+import com.yeso.backend.profile.infrastructure.LikedTripRepository;
 import com.yeso.backend.profile.infrastructure.UserTasteVectorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class OnboardingEmbeddingRunner {
     private final EmbeddingJobRepository embeddingJobRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
     private final UserRepository userRepository;
+    private final LikedTripRepository likedTripRepository;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingProperties embeddingProperties;
 
@@ -55,8 +58,8 @@ public class OnboardingEmbeddingRunner {
 
         try {
             EmbeddingResult result = embeddingClient.embed(new EmbeddingRequest(
-                    String.valueOf(job.getId()), submission.getProfileText(),
-                    job.getModelVersion(), job.getTemplateVersion()));
+                    String.valueOf(job.getId()), job.getModelVersion(), job.getTemplateVersion(),
+                    profileFor(submission, job.getTemplateVersion())));
 
             if (result.dimension() != embeddingProperties.getExpectedDimension()) {
                 failPermanently(job, submission, "EMBEDDING_DIMENSION_MISMATCH");
@@ -71,6 +74,36 @@ public class OnboardingEmbeddingRunner {
             log.error("Unexpected error while running embedding job jobId={}", job.getId(), e);
             failPermanently(job, submission, "UNEXPECTED_ERROR");
         }
+    }
+
+    private EmbeddingRequest.Profile profileFor(OnboardingSubmission submission, int templateVersion) {
+        var likedTrips = likedTripRepository.findAllBySubmission_IdOrderByIdAsc(submission.getId());
+        if (templateVersion == OnboardingQuestionBank.LEGACY_TEMPLATE_VERSION) {
+            return new EmbeddingRequest.Profile(
+                    nullToEmpty(submission.getMbtiCode()),
+                    submission.getScheduleDensity().name(),
+                    submission.getExperienceTags(),
+                    submission.getExcludeTags(),
+                    likedTrips.stream().map(trip -> new EmbeddingRequest.LikedTrip(
+                            trip.getRegion().getSigCd(), regionName(trip), trip.getTags(), nullToEmpty(trip.getNote())))
+                            .toList(),
+                    java.util.Map.of(), java.util.List.of(), java.util.List.of());
+        }
+        if (templateVersion != OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION) {
+            throw new IllegalArgumentException("지원하지 않는 회원 템플릿 버전입니다.");
+        }
+        return new EmbeddingRequest.Profile(
+                "", submission.getScheduleDensity().name(), java.util.List.of(), submission.getExcludeTags(),
+                java.util.List.of(), submission.getTravelStyles(), submission.getTravelMotives(),
+                likedTrips.stream().map(this::regionName).toList());
+    }
+
+    private String regionName(com.yeso.backend.profile.domain.LikedTrip trip) {
+        return trip.getRegion().getProvince() + " " + trip.getRegion().getCity();
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private void applyReady(EmbeddingJob job, OnboardingSubmission submission, EmbeddingResult result) {

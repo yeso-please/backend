@@ -9,12 +9,39 @@ import static com.yeso.backend.profile.domain.OnboardingAxis.SN;
 import static com.yeso.backend.profile.domain.OnboardingAxis.TF;
 
 /**
- * `docs/api/profile.md 부록`의 질문·글자 매핑·태그 사전을 그대로 옮긴 서버 상수다.
- * 문구나 매핑을 바꾸면 이 클래스를 고치지 말고 새 {@code questionVersion}을 만든다.
+ * 현재 AI Hub 온보딩 정책과 구형 MBTI 제출 호환 데이터를 담는 버전별 서버 상수다.
+ * 문항·선택·템플릿 매핑을 바꾸면 기존 version 값을 고치지 말고 새 {@code questionVersion}을 만든다.
  */
 public final class OnboardingQuestionBank {
 
-    public static final String QUESTION_VERSION = "demo-mbti-v1";
+    public static final String QUESTION_VERSION = "aihub-traveler-v1";
+    public static final String LEGACY_QUESTION_VERSION = "demo-mbti-v1";
+    public static final int AIHUB_TEMPLATE_VERSION = 2;
+    public static final int LEGACY_TEMPLATE_VERSION = 1;
+
+    public static final Map<Integer, TravelStyleQuestion> TRAVEL_STYLE_QUESTIONS = Map.of(
+            1, new TravelStyleQuestion(1, "자연", "도시", "OFFICIAL"),
+            3, new TravelStyleQuestion(3, "새로운 지역", "익숙한 지역", "INFERRED"),
+            5, new TravelStyleQuestion(5, "휴양과 휴식", "체험 활동", "INFERRED"),
+            6, new TravelStyleQuestion(6, "잘 알려지지 않은 곳", "잘 알려진 명소", "INFERRED")
+    );
+
+    public static final Map<Integer, String> TRAVEL_MOTIVES = Map.of(
+            1, "일상에서 벗어나기",
+            2, "휴식과 재충전",
+            3, "동반자와 추억 만들기",
+            4, "나를 돌아보기",
+            5, "SNS에 올릴 사진",
+            6, "운동과 건강",
+            7, "새로운 경험",
+            8, "역사와 문화 탐방",
+            9, "특별한 날 기념"
+    );
+
+    public static final int MAX_TRAVEL_MOTIVES = 3;
+    public static final int MAX_LIKED_REGIONS = 3;
+
+    public record TravelStyleQuestion(int number, String leftPole, String rightPole, String evidence) {}
 
     public static final List<OnboardingQuestion> QUESTIONS = List.of(
             new OnboardingQuestion(1, JP, "여행을 떠날 때 계획은",

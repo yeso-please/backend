@@ -1,5 +1,21 @@
 package com.yeso.backend.profile.infrastructure;
 
-/** Python 임베딩 서비스 요청. text(profileText 등 자유서술 포함 가능)는 로그에 남기지 않는다. */
-public record EmbeddingRequest(String requestId, String text, String modelVersion, int templateVersion) {
+import java.util.List;
+import java.util.Map;
+
+/** AI 서버에 보내는 구조화 프로필. 자유서술은 AI 서비스가 처리하며 로그에 남기지 않는다. */
+public record EmbeddingRequest(String requestId, String modelVersion, int templateVersion, Profile profile) {
+
+    public record Profile(
+            String travelMbti,
+            String scheduleDensity,
+            List<String> experienceTags,
+            List<String> excludeTags,
+            List<LikedTrip> likedTrips,
+            Map<Integer, Integer> travelStyles,
+            List<Integer> travelMotives,
+            List<String> likedRegions
+    ) {}
+
+    public record LikedTrip(String sigCd, String regionName, List<String> tags, String note) {}
 }
