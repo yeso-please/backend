@@ -683,7 +683,7 @@ PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이
 
 명령은 시작할 때 secret을 제외한 target host/database, 현재 version, pending version을 보여주고, 끝날 때 적용 version과 소요시간을 출력한다. `clean`, `repair`, `baselineOnMigrate=true`, out-of-order 적용은 제공하지 않는다.
 
-구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다.
+구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다. 사전 `validate`는 `*:pending`만 무시해 새 migration이 대기 중이어도 기존 적용분의 이름·타입·체크섬 불일치를 검출한다. 누락된 로컬 migration이나 이미 적용된 migration 변경은 여전히 실패한다. `info`에는 대기 version이 그대로 표시되며, `migrate` 전 snapshot 확인은 별도로 필요하다.
 
 ```powershell
 $env:MIGRATION_TARGET_ENV = "dev"
