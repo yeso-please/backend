@@ -58,10 +58,11 @@
 ## 5. 임베딩과 취향 집계
 
 - 새 회원 온보딩은 AI Hub `travelStyles`·`travelMotives`·`likedRegions` 구조화 입력을 Python에 보낸다. 서비스가 template v2의 문장으로 합성하며, 제외 조건과 일정 밀도는 임베딩에 섞지 않는다. 구형 `demo-mbti-v1` 재검사와 미처리 job은 저장된 template v1로 호환 처리한다.
-- Python 서비스는 회원/관광지에 같은 모델·벡터 차원을 쓴다. 회원 템플릿 v2와 관광지 템플릿 v1은 역할별 규칙이므로 버전을 각각 명시해 혼합되지 않게 한다. RDS 업무 테이블을 직접 쓰지 않고 벡터를 Spring에 반환한다.
+- Python 서비스는 회원/관광지에 같은 모델·벡터 차원을 쓴다. 현재 template v2는 AI Hub 회원 프로필과 TourAPI 유형을 포함한 관광지 문장 쌍이다. v1 구형 프로필 벡터는 보존하지만 v2 관광지 벡터와 혼합해 코사인 계산하지 않는다. 회원이 최신 설문을 다시 제출하기 전에는 취향 점수를 비개인화 폴백으로 처리한다. RDS 업무 테이블을 직접 쓰지 않고 벡터를 Spring에 반환한다.
 - 임베딩 서비스는 별도 레포 [`yeso-please/ai`](https://github.com/yeso-please/ai)에 둔다. 벡터는 **float32 리틀엔디언 바이트**(PyTorch/NumPy `tobytes()` 그대로)를 base64로 주고받고, DB(`user_taste_vectors`, `attraction_embeddings`)에도 같은 바이트로 저장한다(2026-09-27).
 - 현재 기본 모델은 공개 사전학습 `mminilm-l12-v1`이다. 이후 파인튜닝 모델은 오프라인 평가와 별도 model version을 만든 뒤 벡터를 재생성해 전환한다. 다른 model/template 벡터를 코사인 계산에서 섞지 않는다.
-- 관광지 벡터는 사전 배치, 회원 벡터는 설문 완료 시 생성한다. 변경된 텍스트는 `PENDING`으로 되돌린다.
+- 관광지 벡터는 사전 배치(`POST /embeddings/batch`), 회원 벡터는 설문 완료 시 생성한다. 배치는 추천 가능 관광지 중 `PENDING`·누락·버전 불일치 벡터만 ID 순으로 묶어 처리한다. 한 묶음은 DB 트랜잭션에서 잠그고 성공 응답 전체가 검증된 뒤 저장한다. 장애·부분 응답은 묶음 전체를 저장하지 않으므로 같은 one-shot 작업을 다시 실행하면 미완료분부터 이어간다. 텍스트를 바꾸는 동기화는 `Attraction.updateEmbeddableContent`를 거쳐 `PENDING`으로 되돌린다.
+- 초기 실행은 운영 서버 자동 기동과 분리한다. AI URL이 설정된 개발 환경에서 애플리케이션 JAR을 `--spring.main.web-application-type=none --embedding.attraction-batch.enabled=true`로 한 번 실행하고, 끝나면 처리 수·미완료 수·버전별 상태를 확인한다. 배치 크기는 `embedding.attraction-batch.batch-size`(기본 64), 현재 계약은 template v2다. 관광지와 프로필의 모델·템플릿·차원이 일치하는 벡터만 추천 계산에 쓴다.
 - Spring은 지역/품질 필터 후 코사인 유사도와 규칙 점수를 계산한다. 초기 후보 규모에서는 애플리케이션 계산, 측정 후 필요할 때 pgvector로 옮긴다.
 - 관광지 점수는 **요청한 사람** 한 명의 취향 벡터로 구한다. 참여자 취향을 평균하지 않는다. 제외 조건은 판정 가능한 것(`물놀이` 분류)만 적용한다(2026-09-25). `야간 이동`은 코스가 시각을 다루지 않아 저장만 한다. 제외 조건도 요청자의 것을 적용한다.
 - Python 장애 때 새 임베딩을 요청 시마다 재시도하지 않는다. 저장된 호환 벡터가 없으면 공식 코스→비개인화 규칙 순으로 폴백한다.
