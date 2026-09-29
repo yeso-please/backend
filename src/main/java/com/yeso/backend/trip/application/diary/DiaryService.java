@@ -18,6 +18,7 @@ import com.yeso.backend.trip.infrastructure.DiaryPhotoRepository;
 import com.yeso.backend.trip.infrastructure.DiaryPhotoStorage;
 import com.yeso.backend.trip.infrastructure.DiaryTasteSignalRepository;
 import com.yeso.backend.trip.infrastructure.TravelDiaryRepository;
+import com.yeso.backend.trip.infrastructure.DiaryShareLinkRepository;
 import com.yeso.backend.trip.presentation.diary.CreateDiaryRequest;
 import com.yeso.backend.trip.presentation.diary.DiaryPhotoResponse;
 import com.yeso.backend.trip.presentation.diary.DiaryResponse;
@@ -50,6 +51,7 @@ public class DiaryService {
     private static final Duration PHOTO_URL_LIFETIME = Duration.ofMinutes(5);
 
     private final TravelDiaryRepository diaryRepository;
+    private final DiaryShareLinkRepository shareLinkRepository;
     private final DiaryPhotoRepository photoRepository;
     private final DiaryTasteSignalRepository tasteSignalRepository;
     private final UserRepository userRepository;
@@ -190,6 +192,7 @@ public class DiaryService {
     public void delete(Long userId, Long diaryId) {
         TravelDiary diary = requireOwner(userId, diaryId);
         List<DiaryPhoto> photos = photoRepository.findByDiaryIdOrderByOrderIndexAscIdAsc(diaryId);
+        shareLinkRepository.deleteAll(shareLinkRepository.findByDiaryIdOrderByCreatedAtDesc(diaryId));
         // The rows are removed in the same transaction. Best-effort object cleanup happens after authorization.
         for (DiaryPhoto photo : photos) {
             photoStorage.delete(photo.getObjectKey());
@@ -201,9 +204,55 @@ public class DiaryService {
         diaryRepository.delete(diary);
     }
 
+    public void changeVisibility(Long userId, Long diaryId, DiaryVisibility visibility) {
+        TravelDiary diary = requireOwner(userId, diaryId);
+        diary.updateForSharing(visibility);
+    }
+
     @Transactional(readOnly = true)
     public DiaryResponse getForOwner(Long userId, Long diaryId) {
         return response(userId, requireOwner(userId, diaryId), true);
+    }
+
+    public TravelDiary requireOwnerDiary(Long userId, Long diaryId) {
+        return requireOwner(userId, diaryId);
+    }
+
+    public DiaryResponse responseFor(Long viewerId, TravelDiary diary, boolean owner) {
+        DiaryLocationPrecision precision = owner ? DiaryLocationPrecision.EXACT : diary.getLocationPrecision();
+        return responseAtPrecision(viewerId, diary, owner, precision, null, null);
+    }
+
+    public DiaryResponse responseAtPrecision(Long viewerId, TravelDiary diary, boolean owner,
+                                             DiaryLocationPrecision precision, Double fallbackLat, Double fallbackLng) {
+        List<DiaryPhotoResponse> photos = photoRepository.findByDiaryIdOrderByOrderIndexAscIdAsc(diary.getId()).stream()
+                .map(photo -> new DiaryPhotoResponse(photo.getId(),
+                        photoStorage.presignedGet(photo.getObjectKey(), PHOTO_URL_LIFETIME),
+                        photoStorage.presignedGet(photo.getThumbnailKey(), PHOTO_URL_LIFETIME), photo.getTakenAt(),
+                        precision == DiaryLocationPrecision.EXACT ? photo.getLatitude()
+                                : precision == DiaryLocationPrecision.CITY ? fallbackLat : null,
+                        precision == DiaryLocationPrecision.EXACT ? photo.getLongitude()
+                                : precision == DiaryLocationPrecision.CITY ? fallbackLng : null, photo.getOrderIndex()))
+                .toList();
+        Double lat = fallbackLat;
+        Double lng = fallbackLng;
+        if (precision == DiaryLocationPrecision.EXACT) {
+            DiaryPhoto cover = photoRepository.findByDiaryIdOrderByOrderIndexAscIdAsc(diary.getId()).stream()
+                    .filter(photo -> photo.getId().equals(diary.getCoverPhotoId())).findFirst().orElse(null);
+            lat = cover == null ? null : cover.getLatitude();
+            lng = cover == null ? null : cover.getLongitude();
+        }
+        return new DiaryResponse(diary.getId(), diary.getTripId(), diary.getStatus(), diary.getTitle(), diary.getBody(),
+                diary.getCourseTitle(), diary.getRegionSigCd(), diary.getVisitedFrom(), diary.getVisitedTo(),
+                diary.getVisibility(), precision, diary.getSatisfaction(), parseTags(diary.getExperienceTagsJson()),
+                owner ? diary.isIncludeInTasteProfile() : null, diary.getCoverPhotoId(), photos,
+                diary.getPublishedAt(), diary.getUpdatedAt());
+    }
+
+    public DiaryPhotoResponse coverResponse(TravelDiary diary) {
+        return photoRepository.findByDiaryIdOrderByOrderIndexAscIdAsc(diary.getId()).stream()
+                .filter(photo -> photo.getId().equals(diary.getCoverPhotoId())).findFirst()
+                .map(this::photoResponse).orElse(null);
     }
 
     private void syncTasteSignal(TravelDiary diary) {

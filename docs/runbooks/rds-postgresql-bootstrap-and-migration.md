@@ -2,7 +2,7 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태 (2026-09-29):** Flyway 이력 충돌을 해결하기 위해 사용 가능 상태를 확인한 사전 스냅샷과 논리 백업을 확보하고 개발 RDS `app` 스키마를 재구성했다. 최신 Flyway V1~V14가 적용됐고 H2 TourAPI 데이터를 재이관·검증했다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
+> **현재 상태 (2026-09-29 확인):** 개발 RDS `tripin_dev`에는 V1~V15가 성공 적용되어 있다. V15는 `add aihub onboarding profile`이며 체크섬 `508623008`이다. 여행기 기능은 후속 V16(여행기·사진)과 V17(공유 링크·세션)을 추가한다. RDS 측 기록과 사용 가능 상태의 최신 스냅샷은 적용 직전에 재확인한다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
 
 ### 개발 RDS 이관 실적 (2026-09-27)
 

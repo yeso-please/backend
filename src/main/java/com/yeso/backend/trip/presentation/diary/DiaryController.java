@@ -2,6 +2,7 @@ package com.yeso.backend.trip.presentation.diary;
 
 import com.yeso.backend.shared.web.CurrentUserId;
 import com.yeso.backend.trip.application.diary.DiaryService;
+import com.yeso.backend.trip.application.diary.DiaryQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ import java.util.List;
 public class DiaryController {
 
     private final DiaryService diaryService;
+    private final DiaryQueryService diaryQueryService;
 
     @Operation(summary = "6-1 여행기 만들기")
     @PostMapping("/api/courses/{tripId}/diary")
@@ -57,6 +59,12 @@ public class DiaryController {
     public DiaryResponse update(@CurrentUserId Long userId, @PathVariable Long diaryId,
                                 @Valid @RequestBody UpdateDiaryRequest request) {
         return diaryService.update(userId, diaryId, request);
+    }
+
+    @Operation(summary = "6-6 여행기 조회")
+    @org.springframework.web.bind.annotation.GetMapping("/api/diaries/{diaryId}")
+    public DiaryResponse get(@CurrentUserId Long userId, @PathVariable Long diaryId) {
+        return diaryQueryService.get(userId, diaryId);
     }
 
     @Operation(summary = "6-5 여행기 발행")

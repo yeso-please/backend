@@ -17,10 +17,12 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class DiaryAuthoringIntegrationTest extends IntegrationTest {
@@ -263,6 +265,67 @@ class DiaryAuthoringIntegrationTest extends IntegrationTest {
                             .header("Authorization", stranger.bearer()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
+        }
+    }
+
+    @Nested
+    @DisplayName("조회·지도·링크 공유")
+    class Queries {
+        @Test
+        @DisplayName("내 여행 지도는 초안도 반환하지만 친구 지도는 FRIENDS 발행 기록만 반환한다")
+        void maps_enforceVisibilityAndFriendship() throws Exception {
+            ApiFixtures.Member author = fixtures.onboardedMember("diary-author");
+            ApiFixtures.Member friend = fixtures.onboardedMember("diary-friend");
+            ApiFixtures.Member stranger = fixtures.onboardedMember("diary-stranger");
+            Long draft = createDiary(author);
+            mockMvc.perform(get("/api/me/travel-map").header("Authorization", author.bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$[0].diaryId").value(draft));
+            mockMvc.perform(get("/api/friends/{userId}/travel-map", author.userId())
+                            .header("Authorization", friend.bearer()))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FRIEND_REQUIRED"));
+
+            fixtures.makeFriends(author, friend);
+            mockMvc.perform(patch("/api/diaries/{diaryId}", draft).header("Authorization", author.bearer())
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"visibility\":\"FRIENDS\"}"));
+            mockMvc.perform(multipart("/api/diaries/{diaryId}/photos", draft).file(png("files", "trip.png"))
+                    .header("Authorization", author.bearer()));
+            mockMvc.perform(post("/api/diaries/{diaryId}/publish", draft).header("Authorization", author.bearer()));
+
+            mockMvc.perform(get("/api/friends/{userId}/travel-map", author.userId())
+                            .header("Authorization", friend.bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$[0].diaryId").value(draft));
+            mockMvc.perform(get("/api/diaries/{diaryId}", draft).header("Authorization", stranger.bearer()))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("DIARY_NOT_FOUND"));
+            mockMvc.perform(get("/api/diaries/{diaryId}", draft).header("Authorization", friend.bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.includeInTasteProfile").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("발행된 LINK 여행기는 만료 링크·HttpOnly 세션으로 읽기 전용 공개된다")
+        void linkSharing_isScopedAndRevocable() throws Exception {
+            ApiFixtures.Member author = fixtures.onboardedMember("link-author");
+            Long diaryId = createDiary(author);
+            mockMvc.perform(multipart("/api/diaries/{diaryId}/photos", diaryId).file(png("files", "trip.png"))
+                    .header("Authorization", author.bearer()));
+            mockMvc.perform(patch("/api/diaries/{diaryId}", diaryId).header("Authorization", author.bearer())
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"visibility\":\"LINK\"}"));
+            mockMvc.perform(post("/api/diaries/{diaryId}/publish", diaryId).header("Authorization", author.bearer()));
+            MvcResult created = mockMvc.perform(post("/api/diaries/{diaryId}/share-links", diaryId)
+                            .header("Authorization", author.bearer()).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"expiresInDays\":7}"))
+                    .andExpect(status().isCreated()).andExpect(jsonPath("$.token").isNotEmpty()).andReturn();
+            String token = JsonPath.read(created.getResponse().getContentAsString(), "$.token");
+            MvcResult opened = mockMvc.perform(get("/api/shared/diaries/{token}", token))
+                    .andExpect(status().isSeeOther()).andExpect(header().exists("Set-Cookie")).andReturn();
+            String cookie = opened.getResponse().getCookie("diary_share_session").getValue();
+            mockMvc.perform(get("/api/shared/diaries").cookie(new jakarta.servlet.http.Cookie("diary_share_session", cookie)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.diaryId").value(diaryId))
+                    .andExpect(jsonPath("$.includeInTasteProfile").doesNotExist());
+            Number linkId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+            mockMvc.perform(delete("/api/diaries/{diaryId}/share-links/{linkId}", diaryId, linkId.longValue())
+                    .header("Authorization", author.bearer())).andExpect(status().isNoContent());
+            mockMvc.perform(get("/api/shared/diaries").cookie(new jakarta.servlet.http.Cookie("diary_share_session", cookie)))
+                    .andExpect(status().isGone()).andExpect(jsonPath("$.code").value("DIARY_SHARE_LINK_REVOKED"));
         }
     }
 

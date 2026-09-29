@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/friend-links/by-token/*").permitAll()
                         // share session은 HttpOnly cookie로 검증한다.
                         .requestMatchers(HttpMethod.GET, "/api/shared/courses/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/shared/diaries/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
