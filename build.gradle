@@ -31,6 +31,10 @@ configurations {
 }
 
 dependencies {
+	implementation platform('software.amazon.awssdk:bom:2.48.0')
+	implementation 'software.amazon.awssdk:s3'
+	implementation 'com.drewnoakes:metadata-extractor:2.19.0'
+	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-security'

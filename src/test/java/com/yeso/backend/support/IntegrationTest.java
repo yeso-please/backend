@@ -2,6 +2,7 @@ package com.yeso.backend.support;
 
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
+import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -44,6 +45,9 @@ public abstract class IntegrationTest {
     protected FakeKakaoLocalClient fakeKakaoLocalClient;
 
     @Autowired
+    protected FakeDiaryPhotoStorage fakeDiaryPhotoStorage;
+
+    @Autowired
     private DatabaseCleaner databaseCleaner;
 
     @AfterEach
@@ -51,6 +55,7 @@ public abstract class IntegrationTest {
         databaseCleaner.truncateAll();
         fakeEmbeddingClient.reset();
         fakeKakaoLocalClient.reset();
+        fakeDiaryPhotoStorage.reset();
         clock.reset();
     }
 }

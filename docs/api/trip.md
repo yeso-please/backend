@@ -1306,6 +1306,7 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 |---|---:|---|
 | `DIARY_PHOTO_INVALID` | 400 | 허용하지 않는 형식·크기이거나 검사 실패 |
 | `DIARY_PHOTO_LIMIT_EXCEEDED` | 400 | 사진이 30장을 넘음 |
+| `DIARY_PHOTO_STORAGE_UNAVAILABLE` | 503 | private S3 설정·접근 실패 |
 | `SHARE_SESSION_INVALID` | 401 | 여행기 공유 세션 cookie 없음·만료 |
 | `FRIEND_REQUIRED` | 403 | 수락된 친구가 아님 |
 | `DIARY_NOT_FOUND` | 404 | 없거나 볼 권한이 없음(구분하지 않음) |
@@ -1320,7 +1321,7 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 ### 6-1. 여행기 만들기
 
-> `호출: 참여자` · `⬜ 미구현`
+> `호출: 참여자` · `✅ 구현`
 
 ```
 POST /api/courses/{tripId}/diary
@@ -1346,7 +1347,7 @@ POST /api/courses/{tripId}/diary
 
 ### 6-2. 사진 올리기
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 POST /api/diaries/{diaryId}/photos
@@ -1377,7 +1378,7 @@ Content-Type: multipart/form-data
 
 ### 6-3. 사진 삭제
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 DELETE /api/diaries/{diaryId}/photos/{photoId}
@@ -1393,7 +1394,7 @@ DELETE /api/diaries/{diaryId}/photos/{photoId}
 
 ### 6-4. 여행기 수정
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 PATCH /api/diaries/{diaryId}
@@ -1428,7 +1429,7 @@ PATCH /api/diaries/{diaryId}
 
 ### 6-5. 여행기 발행
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 POST /api/diaries/{diaryId}/publish
@@ -1596,13 +1597,13 @@ GET /api/shared/diaries
 
 ### 6-13. 여행기 삭제
 
-> `호출: 작성자` · `⬜ 미구현`
+> `호출: 작성자` · `✅ 구현`
 
 ```
 DELETE /api/diaries/{diaryId}
 ```
 
-초안과 발행 여행기 모두 작성자가 삭제할 수 있다. 성공하면 사진 객체와 썸네일, 공유 링크·세션, 해당 여행기에서 파생한 취향 신호를 제거한다. 진행 중인 파일 정리는 재시도 가능한 저장소 작업으로 처리하며, 삭제된 기록을 다시 조회하거나 공유 링크로 열 수 없어야 한다.
+초안과 발행 여행기 모두 작성자가 삭제할 수 있다. 성공하면 사진 객체와 썸네일, 공유 링크·세션, 해당 여행기에서 파생한 취향 신호를 제거한다. 저장소 삭제에 실패하면 요청을 실패 처리하고 재시도할 수 있도록 오류를 반환한다. 삭제된 기록을 다시 조회하거나 공유 링크로 열 수 없어야 한다.
 
 **Response `204 No Content`**
 
