@@ -3,6 +3,7 @@ package com.yeso.backend.migration;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationInfoService;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
 
 import java.net.URI;
 import java.net.URLDecoder;
@@ -39,15 +40,8 @@ public final class RdsMigration {
         }
 
         Target target = Target.fromEnvironment(System.getenv());
-        Flyway flyway = Flyway.configure()
+        Flyway flyway = configuration()
                 .dataSource(target.url(), target.user(), target.password())
-                .locations("classpath:db/migration")
-                .schemas("app")
-                .defaultSchema("app")
-                .validateMigrationNaming(true)
-                .cleanDisabled(true)
-                .baselineOnMigrate(false)
-                .outOfOrder(false)
                 .load();
 
         System.out.printf("대상: %s / %s (secret 미출력)%n", target.host(), DATABASE);
@@ -69,6 +63,20 @@ public final class RdsMigration {
             default -> throw new IllegalStateException("지원하지 않는 명령");
         }
         System.out.printf("소요 시간: %d ms%n", Duration.between(started, Instant.now()).toMillis());
+    }
+
+    static FluentConfiguration configuration() {
+        return Flyway.configure()
+                .locations("classpath:db/migration")
+                .schemas("app")
+                .defaultSchema("app")
+                .validateMigrationNaming(true)
+                .cleanDisabled(true)
+                .baselineOnMigrate(false)
+                .outOfOrder(false)
+                // Pre-migration validation should allow pending migrations while still
+                // rejecting checksum/name changes and applied migrations missing locally.
+                .ignoreMigrationPatterns("*:pending");
     }
 
     private static void printVersions(MigrationInfoService info) {

@@ -2,7 +2,7 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태 (2026-09-29):** Flyway 이력 충돌을 해결하기 위해 사용 가능 상태를 확인한 사전 스냅샷과 논리 백업을 확보하고 개발 RDS `app` 스키마를 재구성했다. 최신 Flyway V1~V14가 적용됐고 H2 TourAPI 데이터를 재이관·검증했다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
+> **현재 상태 (2026-09-29):** Flyway 이력 충돌을 해결하기 위해 사용 가능 상태를 확인한 사전 스냅샷과 논리 백업을 확보하고 개발 RDS `app` 스키마를 재구성했다. 최신 Flyway V1~V15가 적용됐고 H2 TourAPI 데이터를 재이관·검증했다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
 
 ### 개발 RDS 이관 실적 (2026-09-27)
 
@@ -19,6 +19,8 @@
 - 원본 H2 SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`를 실행 ID `6b9ec367-899d-4cec-897b-45f574baf4f4`로 재이관했다. 총 21,838건, 격리 0, 상태 `SUCCEEDED`. validate 성공. 두 번째 실행은 실행 ID `37cb08f5-a573-4942-b289-1718741c4f90`로 삽입 0·수정 0·격리 0을 확인했다.
 - 최종 수량: 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. 음식점 좌표 누락 0, 이미지 검증 `VALID` 0, 코스 경유지 관광지 연결 234·음식점 연결 24, 사용자·여행·온보딩·지역 승인 콘텐츠 0.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
+- AI Hub 온보딩 V15 적용 검증 (2026-09-29): 사용자가 변경 전 수동 스냅샷 `tripin-dev-postgres-26-09-29`를 제공했다. 개발 RDS의 V1~V14 이력 체크섬을 대조하고 pending V15만 무시하는 사전 validate를 성공시킨 뒤 V15를 적용했다. Flyway info에서 현재 version 15/pending 없음, validate 성공을 확인했다. 스냅샷은 사용자가 생성했다고 알렸으며 에이전트는 AWS 콘솔/API로 상태를 독립 조회하지 못했다.
+- 적용 후 `tripin_app` 계정으로 `dev-rds` 프로파일 앱을 기동해 Flyway no-op 및 Hibernate `ddl-auto=validate` 성공을 확인했다. `/v3/api-docs` HTTP 200. TLS `verify-full` 연결에서 읽은 수량은 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537이다. 앱 계정은 `app` schema `USAGE` 및 `regions SELECT`가 가능하고 `CREATE` 권한은 없는 것을 확인했다. 앱 프로세스는 검증 후 종료했다.
 
 ## 0. 이 문서를 사용하는 방법
 
@@ -683,7 +685,7 @@ PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이
 
 명령은 시작할 때 secret을 제외한 target host/database, 현재 version, pending version을 보여주고, 끝날 때 적용 version과 소요시간을 출력한다. `clean`, `repair`, `baselineOnMigrate=true`, out-of-order 적용은 제공하지 않는다.
 
-구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다.
+구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다. 사전 `validate`는 `*:pending`만 무시해 새 migration이 대기 중이어도 기존 적용분의 이름·타입·체크섬 불일치를 검출한다. 누락된 로컬 migration이나 이미 적용된 migration 변경은 여전히 실패한다. `info`에는 대기 version이 그대로 표시되며, `migrate` 전 snapshot 확인은 별도로 필요하다.
 
 ```powershell
 $env:MIGRATION_TARGET_ENV = "dev"
