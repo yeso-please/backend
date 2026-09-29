@@ -11,6 +11,11 @@ public class FakeEmbeddingClient implements EmbeddingClient {
     public enum Mode { SUCCESS, TRANSIENT, PERMANENT, DIMENSION_MISMATCH }
 
     private volatile Mode mode = Mode.SUCCESS;
+    private volatile EmbeddingRequest lastRequest;
+
+    public EmbeddingRequest lastRequest() {
+        return lastRequest;
+    }
 
     public void setMode(Mode mode) {
         this.mode = mode;
@@ -19,10 +24,12 @@ public class FakeEmbeddingClient implements EmbeddingClient {
     /** IntegrationTest가 매 테스트 후 호출한다 — 한 테스트가 바꾼 모드가 다음 테스트로 새지 않게. */
     public void reset() {
         this.mode = Mode.SUCCESS;
+        this.lastRequest = null;
     }
 
     @Override
     public EmbeddingResult embed(EmbeddingRequest request) throws EmbeddingTransientException, EmbeddingPermanentException {
+        this.lastRequest = request;
         return switch (mode) {
             case SUCCESS -> new EmbeddingResult(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}), 384);
             case DIMENSION_MISMATCH -> new EmbeddingResult(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}), 1);

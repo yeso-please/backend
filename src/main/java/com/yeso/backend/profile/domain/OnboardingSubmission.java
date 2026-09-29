@@ -18,6 +18,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -67,6 +68,14 @@ public class OnboardingSubmission {
     @Column(name = "exclude_tags", nullable = false, columnDefinition = "jsonb")
     private List<String> excludeTags = List.of();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "travel_styles", nullable = false, columnDefinition = "jsonb")
+    private Map<Integer, Integer> travelStyles = Map.of();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "travel_motives", nullable = false, columnDefinition = "jsonb")
+    private List<Integer> travelMotives = List.of();
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
@@ -82,6 +91,21 @@ public class OnboardingSubmission {
             List<String> experienceTags,
             List<String> excludeTags
     ) {
+        this(user, questionVersion, mbtiCode, profileText, scheduleDensity, experienceTags, excludeTags,
+                Map.of(), List.of());
+    }
+
+    public OnboardingSubmission(
+            User user,
+            String questionVersion,
+            String mbtiCode,
+            String profileText,
+            ScheduleDensity scheduleDensity,
+            List<String> experienceTags,
+            List<String> excludeTags,
+            Map<Integer, Integer> travelStyles,
+            List<Integer> travelMotives
+    ) {
         this.id = UUID.randomUUID();
         this.user = user;
         this.questionVersion = questionVersion;
@@ -90,6 +114,8 @@ public class OnboardingSubmission {
         this.scheduleDensity = scheduleDensity;
         this.experienceTags = experienceTags;
         this.excludeTags = excludeTags;
+        this.travelStyles = travelStyles;
+        this.travelMotives = travelMotives;
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.completedAt = now;

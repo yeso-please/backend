@@ -40,8 +40,7 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         try {
             EmbeddingApiResponse response = restClient.post()
                     .uri("/embeddings")
-                    .body(new EmbeddingApiRequest(
-                            request.requestId(), request.text(), request.modelVersion(), request.templateVersion()))
+                    .body(request)
                     .retrieve()
                     .body(EmbeddingApiResponse.class);
 
@@ -62,10 +61,6 @@ public class HttpEmbeddingClient implements EmbeddingClient {
             throw new EmbeddingTransientException("TIMEOUT", "임베딩 서비스 호출이 시간 초과됐습니다.", e);
         }
     }
-
-    private record EmbeddingApiRequest(String requestId, String text, String modelVersion, int templateVersion) {
-    }
-
     private record EmbeddingApiResponse(String embeddingBase64, int dimension) {
     }
 }

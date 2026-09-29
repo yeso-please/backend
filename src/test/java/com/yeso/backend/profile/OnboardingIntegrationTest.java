@@ -62,21 +62,31 @@ class OnboardingIntegrationTest extends IntegrationTest {
                 questionVersion, answersJson(answerOverrides), scheduleDensity, experienceTagsJson, likedTripsJson);
     }
 
+    private static String aiHubSubmissionBody(String stylesJson, String motivesJson, String likedRegionsJson) {
+        return """
+                {"questionVersion":"aihub-traveler-v1","scheduleDensity":"RELAXED","excludeTags":["물놀이"],
+                 "travelStyles":%s,"travelMotives":%s,"likedRegions":%s}
+                """.formatted(stylesJson, motivesJson, likedRegionsJson);
+    }
+
     @Nested
     @DisplayName("질문 조회")
     class Questions {
 
         @Test
-        @DisplayName("인증 없이 12문항·태그 사전·질문 버전을 반환한다")
+        @DisplayName("인증 없이 AI Hub 스타일·동기 문항과 근거 수준을 반환한다")
         void questions_isPublicAndMatchesFixture() throws Exception {
             mockMvc.perform(get("/api/onboarding/questions"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.questionVersion").value("demo-mbti-v1"))
-                    .andExpect(jsonPath("$.questions.length()").value(12))
-                    .andExpect(jsonPath("$.questions[0].axis").value("JP"))
-                    .andExpect(jsonPath("$.questions[0].choice1.letter").value("P"))
-                    .andExpect(jsonPath("$.questions[3].choice1.letter").value("J"))
-                    .andExpect(jsonPath("$.experienceTags.length()").value(12))
+                    .andExpect(jsonPath("$.questionVersion").value("aihub-traveler-v1"))
+                    .andExpect(jsonPath("$.travelStyles.length()").value(4))
+                    .andExpect(jsonPath("$.travelStyles[0].number").value(1))
+                    .andExpect(jsonPath("$.travelStyles[0].evidence").value("OFFICIAL"))
+                    .andExpect(jsonPath("$.travelStyles[1].number").value(3))
+                    .andExpect(jsonPath("$.travelStyles[1].evidence").value("INFERRED"))
+                    .andExpect(jsonPath("$.travelMotives.length()").value(9))
+                    .andExpect(jsonPath("$.maxTravelMotives").value(3))
+                    .andExpect(jsonPath("$.maxLikedRegions").value(3))
                     .andExpect(jsonPath("$.excludeTags.length()").value(4))
                     .andExpect(jsonPath("$.scheduleDensityOptions[0]").value("RELAXED"));
         }
@@ -85,6 +95,68 @@ class OnboardingIntegrationTest extends IntegrationTest {
     @Nested
     @DisplayName("제출")
     class Submit {
+
+        @Test
+        @DisplayName("AI Hub 설문은 구조화된 취향을 저장하고 템플릿 v2로 전달한다")
+        void submit_aiHubProfile_usesTemplateV2() throws Exception {
+            String token = accessToken();
+
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", ApiFixtures.bearer(token))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(aiHubSubmissionBody(
+                                    "{\"1\":1,\"3\":4,\"5\":6,\"6\":7}", "[2,7]", "[\"11110\"]")))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.questionVersion").value("aihub-traveler-v1"))
+                    .andExpect(jsonPath("$.mbtiCode").doesNotExist())
+                    .andExpect(jsonPath("$.travelStyles['1']").value(1))
+                    .andExpect(jsonPath("$.travelStyles['5']").value(6))
+                    .andExpect(jsonPath("$.travelMotives[0]").value(2))
+                    .andExpect(jsonPath("$.likedRegions[0]").value("11110"))
+                    .andExpect(jsonPath("$.tasteStatus").value("READY"));
+
+            assertThat(fakeEmbeddingClient.lastRequest().templateVersion()).isEqualTo(2);
+            assertThat(fakeEmbeddingClient.lastRequest().modelVersion()).isEqualTo("mminilm-l12-v1");
+            assertThat(fakeEmbeddingClient.lastRequest().profile().travelStyles())
+                    .containsEntry(1, 1).containsEntry(3, 4).containsEntry(5, 6).containsEntry(6, 7);
+            assertThat(fakeEmbeddingClient.lastRequest().profile().travelMotives()).containsExactly(2, 7);
+            assertThat(fakeEmbeddingClient.lastRequest().profile().likedRegions())
+                    .containsExactly("서울특별시 종로구");
+        }
+
+        @Test
+        @DisplayName("AI Hub 스타일은 정해진 4개 항목 각각 1~7만 허용한다")
+        void submit_aiHub_invalidStyles_returnsDomainCode() throws Exception {
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", ApiFixtures.bearer(accessToken()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(aiHubSubmissionBody("{\"1\":1,\"3\":4,\"5\":6}", "[]", "[]")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("ONBOARDING_INVALID_TRAVEL_STYLES"));
+        }
+
+        @Test
+        @DisplayName("AI Hub 여행 동기는 1~9 중 중복 없이 최대 3개를 허용한다")
+        void submit_aiHub_invalidMotives_returnsDomainCode() throws Exception {
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", ApiFixtures.bearer(accessToken()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(aiHubSubmissionBody("{\"1\":1,\"3\":4,\"5\":6,\"6\":7}", "[2,2]", "[]")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("ONBOARDING_INVALID_TRAVEL_MOTIVE"));
+        }
+
+        @Test
+        @DisplayName("AI Hub 선호 지역은 등록된 SIG_CD만 받는다")
+        void submit_aiHub_unknownLikedRegion_returnsDomainCode() throws Exception {
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", ApiFixtures.bearer(accessToken()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(aiHubSubmissionBody(
+                                    "{\"1\":1,\"3\":4,\"5\":6,\"6\":7}", "[]", "[\"99999\"]")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("ONBOARDING_REGION_NOT_FOUND"));
+        }
 
         @Test
         @DisplayName("유효한 제출이면 201과 mbtiCode·profileText·tasteStatus를 반환한다")
