@@ -2,9 +2,23 @@
 
 이 문서는 AWS RDS를 처음 사용하는 개발자가 TriPin 개발 DB를 만들고, 데모 H2의 비개인 데이터를 새 Flyway 스키마로 안전하게 옮긴 뒤 TourAPI로 보강하는 순서다.
 
-> **현재 상태(2026-09-25):** PostgreSQL/Flyway(V1~V6)와 `ddl-auto=validate`가 준비됐다. 개발 RDS는 아직 없다(#38). 이관 실행기는 #36에서 만든다. JPA가 임의로 만든 테이블을 기준 스키마로 삼지 않는다. 데이터를 지우는 migration(V6 등)은 [ADR 0002 보완](../adr/0002-postgresql-flyway-schema-source.md)대로 적용 전 스냅샷을 뜬다.
+> **현재 상태 (2026-09-29):** Flyway 이력 충돌을 해결하기 위해 사용 가능 상태를 확인한 사전 스냅샷과 논리 백업을 확보하고 개발 RDS `app` 스키마를 재구성했다. 최신 Flyway V1~V14가 적용됐고 H2 TourAPI 데이터를 재이관·검증했다. `repair`나 `baselineOnMigrate`는 사용하지 않았다.
 
-> **중요한 현실 확인:** 2026-09-25 현재 이 저장소에는 이관 실행기(#36)와 migration 전용 Gradle task가 아직 없다. `./gradlew flywayMigrate`는 현재 실행할 수 없는 명령이다. 지금 바로 가능한 것은 PostgreSQL/Flyway V1 검증과 Spring Boot 기동 시 migration 적용까지다. H2 이관은 이 문서의 **Phase C 구현 계약**을 먼저 코드로 완성한 뒤 실행한다.
+### 개발 RDS 이관 실적 (2026-09-27)
+
+- 대상: `tripin-dev-postgres` / `tripin_dev` / PostgreSQL 17.11, TLS `verify-full`. Flyway V1~V4 모두 성공했고 앱의 `ddl-auto=validate` 기동을 확인했다.
+- 원본 H2 SHA-256: `fee56562c20a84156e279c836b8d781c455e9cf7924788bcbd6d56d810c7897a`.
+- 사전 스냅샷: `tripin-dev-before-initial-migration-20260927`; 사후 스냅샷: `tripin-dev-after-demo-import-20260927`. 두 스냅샷의 `사용 가능` 상태는 AWS 콘솔에서 사용자가 확인했다. 에이전트는 AWS API로 스냅샷 상태를 독립 조회하지 못했다.
+- 첫 이관 실행 ID `335e013d-9703-4014-9901-cd5bb101f1a2`는 관광지 1,200건 저장 후 성능 개선을 위해 중단·재개했다. 최종 `SUCCEEDED`, 격리 0. 두 번째 실행 ID `3ff4ba08-1ec6-44e4-a063-a1ab27e3bb6a`도 `SUCCEEDED`; 삽입 0, 수정 0, 격리 0.
+- 최종 수량: 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. TourAPI 원천 ID 중복 0, 사용자·개인 여행 데이터 0.
+- 재구성 전 논리 백업: `build/backups/tripin-dev-pre-reconcile-20260927.dump` (Git 제외), SHA-256 `95009603eab7a756643dbc527acc13f289b1eaf1e19dda02226ae7643443d0`. `pg_restore --list`로 읽기 가능함을 확인했다.
+- 최신 `main` V12 음식점 계약을 포함한 로컬 재현 (2026-09-28): 데모 서버 미사용 상태에서 H2 백업 `build/backups/sumeun-reconcile-20260928.mv.db`를 생성했다 (SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`, Git 제외). 빈 PostgreSQL에 Flyway V1~V14와 JPA `validate` 기동 성공. 실행 ID `9883a0d3-113f-4c8c-8a16-8eee048e31f9`로 dry-run/apply/validate 성공, 격리 0. 재실행 ID `08ca0003-f2cb-4f1a-8e3a-c2cc79819bb7`은 삽입·수정·격리 0. 전체 Gradle 테스트 통과. 이 재현은 새 H2 백업을 원본으로 하며, RDS 논리 백업을 새 스키마에 직접 복원한 것은 아니다.
+- 최신 `main`과 개발 RDS 재구성 (2026-09-29): 사용자가 `tripin-dev-after-demo-import-20260927` 수동 스냅샷이 계속 `사용 가능`임을 확인했다. 재구성 직전 RDS에는 구형 V1~V4와 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537건이 있었고, 사용자·여행·온보딩·친구·임베딩 행은 0, 다른 DB 연결은 0이었다.
+- 재구성 직전 추가 논리 백업 `build/backups/tripin-dev-pre-reconcile-20260929.dump` (Git 제외)는 SHA-256 `df920ac3f9fef73bb7c4a2dda466a7ebad4586058fab645150bbeab379249721`이며, `pg_restore --list` 및 별도 로컬 PostgreSQL 복원 후 대표 테이블 수량을 확인했다. 백업 보존 기간과 스냅샷 복구 방법은 AWS 콘솔에서 관리한다.
+- 구형 `app` 스키마 삭제 후 Flyway로 V1~V14를 새로 적용했다. migrator에 임시로 준 데이터베이스 CREATE 권한은 회수했고, `tripin_app`의 schema/table/sequence와 migrator default privileges를 재설정했다. 앱 계정으로 Flyway validate 및 Spring Boot/JPA `validate` 기동이 성공했다.
+- 원본 H2 SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`를 실행 ID `6b9ec367-899d-4cec-897b-45f574baf4f4`로 재이관했다. 총 21,838건, 격리 0, 상태 `SUCCEEDED`. validate 성공. 두 번째 실행은 실행 ID `37cb08f5-a573-4942-b289-1718741c4f90`로 삽입 0·수정 0·격리 0을 확인했다.
+- 최종 수량: 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. 음식점 좌표 누락 0, 이미지 검증 `VALID` 0, 코스 경유지 관광지 연결 234·음식점 연결 24, 사용자·여행·온보딩·지역 승인 콘텐츠 0.
+- 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
 
 ## 0. 이 문서를 사용하는 방법
 
@@ -116,7 +130,7 @@ docs/archive/implementation-workpack.md의 WORK-09(이력),
 
 - 서울 리전의 개발용 PostgreSQL RDS가 TLS와 제한된 보안 그룹으로 실행된다.
 - 빈 DB에 Flyway가 처음부터 끝까지 성공하고 JPA는 `ddl-auto=validate`로만 검증한다.
-- 데모 H2의 지역·관광지·이미지·상세·공식 코스만 새 스키마에 멱등 이관된다.
+- 데모 H2의 지역 참조·TourAPI 관광지·이미지·상세·음식점(39)·공식 코스·경유지만 새 스키마에 멱등 이관된다.
 - 이관 전후 수량과 품질 리포트, RDS 스냅샷, 실패 행 목록이 남는다.
 
 사용자, 비밀번호, 세션, 후기, 개인 일정과 업로드 파일은 이번 이관 대상이 아니다.
@@ -210,7 +224,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath $backup
 
 ## 6. Phase C — 이슈 #36(H2 이관) 이관 실행기 구현
 
-WORK-00의 PostgreSQL/Flyway 기반은 이미 구현됐다. 이제 RDS를 만들기 전에 이관 실행기를 완성한다. 구현 에이전트에는 이 문서 전체와 `TARGET_WORK=이슈 #36(H2 이관)`를 전달한다.
+PostgreSQL/Flyway 기반과 이슈 #36 이관 실행기는 구현됐다. 새 환경에서는 아래 명령으로 로컬 리허설을 다시 수행하고 품질 리포트를 승인한 뒤 개발 RDS로 진행한다.
 
 ### 6.1 생성해야 하는 공개 실행 명령
 
@@ -252,9 +266,10 @@ H2 runtime dependency는 main 애플리케이션 classpath에 넣지 않고 전�
 
 1. `region → regions`
 2. `attraction → attractions`
-3. 관광지 대표/상세 이미지 → `attraction_images`
-4. `travel_course → official_courses`
-5. `course_point → official_course_stops`
+3. 관광지 대표 이미지 → `attraction_images`
+4. `food_place → restaurants + restaurant_sources` (TourAPI 39만)
+5. `travel_course → official_courses`
+6. `course_point → official_course_stops` (관광지·음식점 연결)
 
 멱등 key:
 
@@ -481,16 +496,28 @@ CREATE ROLE tripin_app LOGIN;
 \password tripin_app
 
 GRANT CONNECT ON DATABASE tripin_dev TO tripin_migrator, tripin_app;
-CREATE SCHEMA IF NOT EXISTS app AUTHORIZATION tripin_migrator;
-GRANT USAGE ON SCHEMA app TO tripin_app;
+GRANT CREATE ON DATABASE tripin_dev TO tripin_migrator;
 
 ALTER ROLE tripin_migrator IN DATABASE tripin_dev SET search_path TO app, public;
 ALTER ROLE tripin_app IN DATABASE tripin_dev SET search_path TO app, public;
+```
 
-ALTER DEFAULT PRIVILEGES FOR ROLE tripin_migrator IN SCHEMA app
+`tripin_admin`은 RDS의 제한된 관리자이므로 다른 역할 소유의 schema를 직접 생성할 수 없다. 위 명령 후 **`tripin_migrator`로 다시 접속**하여 실행한다.
+
+```sql
+CREATE SCHEMA app AUTHORIZATION tripin_migrator;
+GRANT USAGE ON SCHEMA app TO tripin_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA app
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO tripin_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE tripin_migrator IN SCHEMA app
+ALTER DEFAULT PRIVILEGES IN SCHEMA app
   GRANT USAGE, SELECT ON SEQUENCES TO tripin_app;
+```
+
+V1 첫 줄의 `CREATE SCHEMA IF NOT EXISTS app`도 스키마가 이미 있어도 데이터베이스 `CREATE` 권한을 검사한다. **첫 Flyway V1 적용이 성공한 뒤** `tripin_admin`으로 다시 접속해 임시 권한을 회수한다.
+
+```sql
+REVOKE CREATE ON DATABASE tripin_dev FROM tripin_migrator;
 ```
 
 각 `\password`는 입력을 화면에 표시하지 않는다. 서로 다른 강한 비밀번호를 사용한다.
@@ -546,6 +573,8 @@ $env:JWT_SECRET='<AT_LEAST_32_RANDOM_BYTES>'
 ```
 
 Flyway 성공, Hibernate validate 성공, `Started BackendApplication`을 확인한 뒤 `Ctrl+C`로 종료한다. 이어서 `psql`에서 확인한다.
+
+`bootRun`의 Gradle 종료 코드만 보지 말고 애플리케이션 로그에서 `Started BackendApplication`을 확인한다. Spring Boot가 기동에 실패해도 `bootRun`이 `BUILD SUCCESSFUL`을 출력할 수 있다. 이 프로젝트의 보안 설정은 웹 환경을 요구하므로 검증 시 `--spring.main.web-application-type=none`을 사용하지 않는다.
 
 ```sql
 SELECT installed_rank, version, description, type, success, installed_on

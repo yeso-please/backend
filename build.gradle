@@ -17,6 +17,17 @@ repositories {
 	mavenCentral()
 }
 
+sourceSets {
+	demoMigration {
+		java.srcDir 'src/demoMigration/java'
+	}
+}
+
+configurations {
+	demoMigrationImplementation.extendsFrom implementation
+	demoMigrationRuntimeOnly.extendsFrom runtimeOnly
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -41,10 +52,27 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.testcontainers:testcontainers-postgresql'
+	testImplementation sourceSets.demoMigration.output
+	testImplementation 'com.h2database:h2:2.4.240'
 	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
+	demoMigrationImplementation 'com.h2database:h2:2.4.240'
+	demoMigrationRuntimeOnly 'org.postgresql:postgresql'
+}
+
+tasks.register('demoMigration', JavaExec) {
+	group = 'migration'
+	description = 'Read-only H2 TourAPI migration to PostgreSQL'
+	dependsOn tasks.named('demoMigrationClasses')
+	classpath = sourceSets.demoMigration.runtimeClasspath
+	mainClass = 'com.yeso.backend.migration.DemoMigration'
+	workingDir = projectDir
+	standardInput = System.in
+	if (System.getenv('DB_URL')) {
+		environment 'DB_URL', System.getenv('DB_URL')
+	}
 }
 
 tasks.named('test') {

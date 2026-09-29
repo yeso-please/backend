@@ -1,0 +1,4 @@
+interface:
+  display_name: "TriPin DB 변경 담당"
+  short_description: "엔티티·Flyway·개발 RDS의 스키마 변경과 검증을 조율합니다"
+  default_prompt: "Use $db-man to plan and verify this TriPin schema change, keeping Flyway, entities, and the explicitly selected dev RDS in sync."

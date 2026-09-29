@@ -19,6 +19,7 @@ import com.yeso.backend.shared.persistence.BaseTimeEntity;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.time.LocalDate;
 
 /**
  * 관광지. description은 TourAPI 원천 특성상 상당수 비어 있다
@@ -79,6 +80,15 @@ public class Attraction extends BaseTimeEntity {
     @Setter
     @Column(name = "source_content_id", length = 100)
     private String sourceContentId;
+
+    @Column(name = "detail_fetched", nullable = false)
+    private boolean detailFetched;
+
+    @Column(name = "event_start_date")
+    private LocalDate eventStartDate;
+
+    @Column(name = "event_end_date")
+    private LocalDate eventEndDate;
 
     @Setter
     @Enumerated(EnumType.STRING)
