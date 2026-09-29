@@ -77,6 +77,16 @@ tasks.register('demoMigration', JavaExec) {
 	}
 }
 
+['rdsMigrationInfo': 'info', 'rdsMigrationValidate': 'validate', 'rdsMigrate': 'migrate'].each { taskName, command ->
+	tasks.register(taskName, JavaExec) {
+		group = 'migration'
+		description = "Run guarded ${command} against the development RDS only"
+		classpath = sourceSets.main.runtimeClasspath
+		mainClass = 'com.yeso.backend.migration.RdsMigration'
+		args command
+	}
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 }
