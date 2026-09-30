@@ -8,7 +8,7 @@
 
 **추천 가능 관광지** — 유효한 지역·좌표, 공백이 아닌 상세 설명, 검증된(`VALID`) 이미지 1장 이상, 차단성 품질 이슈 없음을 모두 만족하는 장소. 차단성 품질 이슈는 `data_quality_issues`에서 심각도 `ERROR`이고 열린(`OPEN`) 이슈다. `WARNING`이나 해결된 이슈는 막지 않는다. 쇼핑·숙박·음식점은 코스 후보가 아니라서 빠진다. 이 판정은 수집 결과에서 파생하며 사람이 수동으로 켜지 않는다. 소개문은 가장 최근에 승인된 한 건을 본다.
 
-**추첨 가능 지역** — 승인된(`APPROVED`) 최신 소개문, 검증된 대표 이미지, 추천 가능 관광지 `days × 밀도 상한 + min(days, 3)`개 이상(RELAXED 상한 4, PACKED 6). MVP에서는 승인 도구 없이 시연 지역 10~20곳만 시드로 승인한다(이슈 #51). 시드 지역은 가장 긴 여행인 **6박(7일) RELAXED를 충족**하는 곳(추천 가능 관광지 7×4+3 = 31개 이상)으로 고른다. 그래도 적격 지역이 없는 기간은 3-2 `eligibleRegionCount`로 미리 경고한다.
+**추첨 가능 지역** — 지역 소개문과 대표 이미지가 없어도 추천 후보가 될 수 있다. 요청한 일정에 맞는 추천 가능 관광지 `days × 밀도 상한 + min(days, 3)`개 이상(RELAXED 상한 4, PACKED 6)이 필요하다. 승인된 소개문은 카드에 표시하며, 콘텐츠가 없으면 지역명 기반의 빈 콘텐츠 카드를 돌려준다. 적격 지역이 없는 기간은 3-2 `eligibleRegionCount`로 미리 경고한다.
 
 **관광지 유형 `category`**
 
@@ -47,7 +47,6 @@
 | `ATTRACTION_INVALID_BOUNDS` | 400 | `bbox` 형식 오류, 최소가 최대보다 큼, 한국 범위 밖 |
 | `REGION_NOT_FOUND` | 404 | 없는 `SIG_CD` |
 | `ATTRACTION_NOT_FOUND` | 404 | 없는 관광지 |
-| `REGION_CONTENT_NOT_READY` | 422 | 승인된 소개문이나 검증된 대표 이미지가 없음 |
 
 ---
 
@@ -83,8 +82,6 @@ GET /api/regions
 
 | `ineligibleReasons[]` | 뜻 |
 |---|---|
-| `NO_APPROVED_CONTENT` | 승인된 소개문 없음 |
-| `NO_VALID_HERO_IMAGE` | 검증된 대표 이미지 없음 |
 | `INSUFFICIENT_ATTRACTIONS` | 이 일수·밀도에 필요한 추천 가능 관광지 부족 |
 
 추첨 불가 지역도 지도에는 표시한다. 인기·별점 순위는 제공하지 않는다.
@@ -128,17 +125,17 @@ GET /api/regions/{sigCd}/card
 
 | 필드 | 설명 |
 |---|---|
-| `introduction` | 2~4문단. 검증된 사실·대표 관광지·출처로만 쓰고 사람이 승인한 문장 |
+| `introduction` | 소개 콘텐츠가 있을 때 문단 배열. 콘텐츠가 없으면 빈 배열 |
 | `landmarks` | 승인된 소개문이 근거로 쓴 대표 관광지 중 추천 가능한 것 최대 3개, 소개문에 나온 순서. 나중에 추천 불가가 된 곳은 빠진다 |
 | `characteristics`, `historyHighlights` | 승인된 지역 소개 콘텐츠의 태그. 없으면 빈 배열 |
+| `heroImage` | 승인된 콘텐츠의 이미지가 검증되지 않았거나 소개 콘텐츠가 없으면 `null` |
 | `heroImage.license` | 원천이 밝힌 이용 조건. 없으면 `null` |
 
-승인 콘텐츠가 없는 지역에 임시 문구·허구 소개를 만들지 않는다.
+승인 콘텐츠가 없는 지역에는 도시명을 제목으로 쓰고, 소개·태그·관광지·출처는 빈 배열, `heroImage`와 `updatedAt`은 `null`로 응답한다. 임시 문구·허구 소개를 만들지 않는다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
 | 없는 지역 | 404 | `REGION_NOT_FOUND` |
-| 소개·대표 이미지 미준비 | 422 | `REGION_CONTENT_NOT_READY` |
 
 ---
 

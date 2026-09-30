@@ -105,7 +105,7 @@ class RegionEligibilityIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("승인된 소개문이 없으면 소개문·대표 이미지 사유가 모두 붙는다")
+        @DisplayName("승인된 소개문과 대표 이미지가 없어도 관광지 수가 충분하면 추첨 가능하다")
         void noApprovedContent() {
             region(GYEONGJU);
             content(GYEONGJU, "DRAFT", "VALID", 1, null);
@@ -113,18 +113,20 @@ class RegionEligibilityIntegrationTest extends IntegrationTest {
                 attraction(GYEONGJU);
             }
 
-            assertThat(evaluate(GYEONGJU, 1, "RELAXED").ineligibleReasons())
-                    .containsExactly(IneligibleReason.NO_APPROVED_CONTENT, IneligibleReason.NO_VALID_HERO_IMAGE);
+            RegionEligibility result = evaluate(GYEONGJU, 1, "RELAXED");
+            assertThat(result.drawEligible()).isTrue();
+            assertThat(result.ineligibleReasons()).isEmpty();
         }
 
         @Test
-        @DisplayName("가장 최근에 승인된 소개문의 대표 이미지로 판정한다")
+        @DisplayName("지역 소개의 대표 이미지 유효성은 추첨 적격 여부에 영향을 주지 않는다")
         void latestApprovedContentWins() {
             readyRegion(GYEONGJU, 5); // 9/1 승인, 대표 이미지 VALID
             content(GYEONGJU, "APPROVED", "INVALID", 2, "2026-09-20 10:00:00");
 
-            assertThat(evaluate(GYEONGJU, 1, "RELAXED").ineligibleReasons())
-                    .containsExactly(IneligibleReason.NO_VALID_HERO_IMAGE);
+            RegionEligibility result = evaluate(GYEONGJU, 1, "RELAXED");
+            assertThat(result.drawEligible()).isTrue();
+            assertThat(result.ineligibleReasons()).isEmpty();
         }
 
         @Test
