@@ -60,7 +60,7 @@ app:
 # 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
 embedding:
   base-url: ${EMBEDDING_SERVICE_BASE_URL:}
-  model-version: demo-embedding-v1
+  model-version: mminilm-l12-v1  # ai MODEL_VERSION과 같아야 한다(다르면 409)
   template-version: 1
   expected-dimension: 384
   timeout-millis: 5000

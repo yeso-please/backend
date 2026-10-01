@@ -1,5 +1,6 @@
 package com.yeso.backend.profile.application.onboarding;
 
+import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.profile.domain.EmbeddingJob;
@@ -8,10 +9,12 @@ import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.infrastructure.EmbeddingClient;
 import com.yeso.backend.profile.infrastructure.EmbeddingJobRepository;
 import com.yeso.backend.profile.infrastructure.EmbeddingPermanentException;
+import com.yeso.backend.profile.infrastructure.EmbeddingProfile;
 import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.EmbeddingRequest;
 import com.yeso.backend.profile.infrastructure.EmbeddingResult;
 import com.yeso.backend.profile.infrastructure.EmbeddingTransientException;
+import com.yeso.backend.profile.infrastructure.LikedTripRepository;
 import com.yeso.backend.profile.infrastructure.UserTasteVectorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.UUID;
 
 /**
@@ -38,6 +44,7 @@ public class OnboardingEmbeddingRunner {
     private final EmbeddingJobRepository embeddingJobRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
     private final UserRepository userRepository;
+    private final LikedTripRepository likedTripRepository;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingProperties embeddingProperties;
 
@@ -55,7 +62,7 @@ public class OnboardingEmbeddingRunner {
 
         try {
             EmbeddingResult result = embeddingClient.embed(new EmbeddingRequest(
-                    String.valueOf(job.getId()), submission.getProfileText(),
+                    String.valueOf(job.getId()), toProfile(submission),
                     job.getModelVersion(), job.getTemplateVersion()));
 
             if (result.dimension() != embeddingProperties.getExpectedDimension()) {
@@ -71,6 +78,29 @@ public class OnboardingEmbeddingRunner {
             log.error("Unexpected error while running embedding job jobId={}", job.getId(), e);
             failPermanently(job, submission, "UNEXPECTED_ERROR");
         }
+    }
+
+    private EmbeddingProfile toProfile(OnboardingSubmission submission) {
+        List<EmbeddingProfile.LikedTrip> likedTrips = likedTripRepository.findAllBySubmissionIdOrderBySigCd(submission.getId())
+                .stream()
+                .map(lt -> new EmbeddingProfile.LikedTrip(
+                        lt.getRegion().getSigCd(), regionName(lt.getRegion()), lt.getTags(),
+                        lt.getNote() == null ? "" : lt.getNote()))
+                .toList();
+        return new EmbeddingProfile(
+                submission.getMbtiCode() == null ? "" : submission.getMbtiCode(),
+                submission.getScheduleDensity().name(),
+                submission.getExperienceTags(),
+                submission.getExcludeTags(),
+                likedTrips);
+    }
+
+    /** "강원특별자치도 강릉시". 세종처럼 시도와 시군구가 같으면 한 번만 쓴다. */
+    private static String regionName(Region region) {
+        return Stream.of(region.getProvince(), region.getCity())
+                .filter(part -> part != null && !part.isBlank())
+                .distinct()
+                .collect(Collectors.joining(" "));
     }
 
     private void applyReady(EmbeddingJob job, OnboardingSubmission submission, EmbeddingResult result) {
