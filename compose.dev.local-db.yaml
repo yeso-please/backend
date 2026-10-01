@@ -1,0 +1,35 @@
+# compose.dev.yaml 위에 겹쳐 backend를 Docker PostgreSQL(local profile)에 붙인다. RDS 접속값은 쓰지 않는다.
+#   docker compose -f compose.dev.yaml -f compose.dev.local-db.yaml up -d --build
+# 빈 DB라 Flyway가 V1부터 적용하고 지역·관광지 데이터는 없다.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tripin_local
+      POSTGRES_USER: tripin_local
+      POSTGRES_PASSWORD: tripin_local_dev_only
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripin_local -d tripin_local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - tripin-dev-postgres-data:/var/lib/postgresql/data
+
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DB_URL: jdbc:postgresql://postgres:5432/tripin_local?currentSchema=app
+      DB_USERNAME: tripin_local
+      DB_PASSWORD: tripin_local_dev_only
+      FLYWAY_USER: tripin_local
+      FLYWAY_PASSWORD: tripin_local_dev_only
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  tripin-dev-postgres-data:

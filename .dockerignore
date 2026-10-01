@@ -1,0 +1,15 @@
+# 비밀값은 이미지에 들어가지 않게 한다.
+.env
+.env.*
+config/application-secret*
+
+.git
+.github
+.gradle
+.idea
+.agents
+build
+data
+docs
+test_frontend
+compose*.yaml
