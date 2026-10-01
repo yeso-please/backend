@@ -8,7 +8,7 @@ Before implementation, read the relevant `docs/conventions/`. If the contract mu
 
 ## Repository skills
 
-- Use `$tourapi-detail-backfill` when implementing, dry-running, or executing TourAPI attraction detail/image/course enrichment.
+- Use `$tourapi-attraction-backfill` (legacy alias: `$tourapi-detail-backfill`) to automatically collect and write eligible missing TourAPI attraction descriptions to the configured development RDS. Invoking the skill authorizes this bounded dev-only API/DML operation; it never authorizes production, schema changes, course ingestion, or image ingestion. Keep its target, TLS, API-response, quota, and writer-lock fail-closed checks. Team setup and run instructions: `docs/runbooks/tourapi-attraction-backfill.md`.
 - Use `$flyway-rds-sync` whenever an entity, database constraint, index, migration, or RDS schema changes.
 - Use `$db-man` to coordinate the full entity → Flyway → local/Testcontainers → explicitly requested dev RDS lifecycle for schema changes. Apply `$flyway-rds-sync` alongside it for migration mechanics; neither skill authorizes an unrequested RDS write.
 

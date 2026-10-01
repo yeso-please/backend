@@ -42,7 +42,7 @@
 - 실행은 재시작 가능해야 하며 cursor, 성공/없음/재시도/실패, 일일 호출 수를 DB에 기록한다. 429/쿼터 초과는 즉시 중단하고 다음 실행에서 이어간다.
 - 원천에 설명이나 이미지가 없으면 `SOURCE_EMPTY`로 기록한다. 생성형 문장으로 원천 상세를 채우지 않는다.
 - 수집 후 이미지 HEAD/GET 검증과 품질 리포트를 다시 실행한다. 추천 가능 상태는 검증 결과로 파생하며 수동 boolean으로 조작하지 않는다.
-- 반복 절차는 저장소 스킬 `.agents/skills/tourapi-detail-backfill/SKILL.md`를 사용한다.
+- 반복 절차는 저장소 스킬 `$tourapi-attraction-backfill` (`.agents/skills/tourapi-attraction-backfill/SKILL.md`)을 사용한다. 이전 이름 `$tourapi-detail-backfill`은 호환 별칭이다.
 
 ## 4. 지역 소개 콘텐츠
 
