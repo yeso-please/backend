@@ -76,9 +76,45 @@ tasks.register('demoMigration', JavaExec) {
 	mainClass = 'com.yeso.backend.migration.DemoMigration'
 	workingDir = projectDir
 	standardInput = System.in
+	environment loadLocalIngestionEnv()
 	if (System.getenv('DB_URL')) {
 		environment 'DB_URL', System.getenv('DB_URL')
 	}
+}
+
+tasks.register('tourApiDetailBackfill', JavaExec) {
+	group = 'migration'
+	description = 'Dry-run or apply missing TourAPI attraction/course descriptions to PostgreSQL'
+	dependsOn tasks.named('demoMigrationClasses')
+	classpath = sourceSets.demoMigration.runtimeClasspath
+	mainClass = 'com.yeso.backend.migration.TourApiDetailBackfill'
+	workingDir = projectDir
+	standardInput = System.in
+	environment loadLocalIngestionEnv()
+}
+
+/** Load only known local ingestion settings; process environment always wins over .env. */
+def loadLocalIngestionEnv() {
+	def allowed = ['DB_URL', 'DB_USERNAME', 'DB_PASSWORD', 'TOUR_API_KEY', 'TOUR_API_BASE_URL',
+			'INGESTION_ACTOR', 'MIGRATION_TARGET_ENV', 'MIGRATION_BEFORE_SNAPSHOT', 'MIGRATION_CONFIRM_RUN_ID'] as Set
+	def values = [:]
+	def envFile = file('.env')
+	if (envFile.isFile()) {
+		envFile.eachLine('UTF-8') { line ->
+			def text = line.trim()
+			if (!text || text.startsWith('#')) return
+			def separator = text.indexOf('=')
+			if (separator <= 0) return
+			def key = text.substring(0, separator).trim()
+			if (!allowed.contains(key) || System.getenv(key) != null) return
+			def value = text.substring(separator + 1).trim()
+			if (value.length() >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+				value = value.substring(1, value.length() - 1)
+			}
+			values[key] = value
+		}
+	}
+	return values
 }
 
 tasks.named('test') {
