@@ -94,17 +94,15 @@ public class RegionQueryService {
     private record SourceRef(String title, String url) {
     }
 
-    /** 승인된 소개문과 검증된 대표 이미지가 없으면 {@code REGION_CONTENT_NOT_READY}. 임시 문구를 만들지 않는다. */
+    /** 지역 소개가 준비되지 않은 경우에도 추첨 결과를 확인할 수 있도록 빈 콘텐츠 카드로 응답한다. */
     public RegionCardResponse regionCard(String sigCd) {
         Region region = requireRegion(sigCd);
-        RegionContentRow content = attractionQueryRepository.findLatestApprovedContent(sigCd)
-                .filter(row -> "VALID".equals(row.heroImageStatus()))
-                .orElseThrow(() -> new RegionContentNotReadyException(sigCd));
+        RegionContentRow content = attractionQueryRepository.findLatestApprovedContent(sigCd).orElse(null);
 
         Map<Long, CourseCandidate> recommendable = regionEligibilityService.findCourseCandidates(sigCd).stream()
                 .collect(Collectors.toMap(CourseCandidate::attractionId, Function.identity()));
         // 대표 관광지는 소개문에 나온 순서대로, 지금 추천 가능한 것만 최대 3곳.
-        List<RegionCardResponse.Landmark> landmarks = readList(content.landmarksJson(), new TypeReference<List<LandmarkRef>>() { })
+        List<RegionCardResponse.Landmark> landmarks = content == null ? List.of() : readList(content.landmarksJson(), new TypeReference<List<LandmarkRef>>() { })
                 .stream()
                 .sorted(Comparator.comparing(LandmarkRef::order, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(ref -> recommendable.get(ref.attractionId()))
@@ -114,19 +112,20 @@ public class RegionQueryService {
                         candidate.attractionId(), candidate.name(), candidate.thumbnailUrl()))
                 .toList();
 
+        boolean hasValidHeroImage = content != null && "VALID".equals(content.heroImageStatus());
         return new RegionCardResponse(
-                region.getSigCd(), region.getProvince(), region.getCity(), content.title(),
-                paragraphs(content.introduction()),
-                new RegionCardResponse.HeroImage(
+                region.getSigCd(), region.getProvince(), region.getCity(), content == null ? region.getCity() : content.title(),
+                content == null ? List.of() : paragraphs(content.introduction()),
+                hasValidHeroImage ? new RegionCardResponse.HeroImage(
                         content.heroImageUrl(), content.heroImageSourceName(), content.heroImageSourceUrl(),
-                        content.heroImageLicense()),
-                readList(content.characteristicsJson(), new TypeReference<List<String>>() { }),
-                commaSeparated(content.historyTags()),
+                        content.heroImageLicense()) : null,
+                content == null ? List.of() : readList(content.characteristicsJson(), new TypeReference<List<String>>() { }),
+                content == null ? List.of() : commaSeparated(content.historyTags()),
                 landmarks,
-                readList(content.sourcesJson(), new TypeReference<List<SourceRef>>() { }).stream()
+                content == null ? List.of() : readList(content.sourcesJson(), new TypeReference<List<SourceRef>>() { }).stream()
                         .map(source -> new RegionCardResponse.Source(source.title(), source.url()))
                         .toList(),
-                content.updatedAt());
+                content == null ? null : content.updatedAt());
     }
 
     // ---------- 7-3 ----------

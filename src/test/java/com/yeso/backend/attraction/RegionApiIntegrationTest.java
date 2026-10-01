@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.util.List;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -121,7 +122,7 @@ class RegionApiIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.regions[1].drawEligible").value(true))
                     .andExpect(jsonPath("$.regions[0].drawEligible").value(false))
                     .andExpect(jsonPath("$.regions[0].ineligibleReasons",
-                            contains("NO_APPROVED_CONTENT", "NO_VALID_HERO_IMAGE", "INSUFFICIENT_ATTRACTIONS")));
+                            contains("INSUFFICIENT_ATTRACTIONS")));
 
             mockMvc.perform(authed(get("/api/regions").param("days", "1").param("scheduleDensity", "PACKED")))
                     .andExpect(jsonPath("$.eligibleCount").value(0));
@@ -171,15 +172,19 @@ class RegionApiIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("승인된 소개가 없거나 대표 이미지가 검증되지 않았으면 422 REGION_CONTENT_NOT_READY다")
-        void notReady() throws Exception {
+        @DisplayName("소개 콘텐츠가 없어도 지역명 기반 카드가 반환된다")
+        void contentOptional() throws Exception {
             mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
-                    .andExpect(status().isUnprocessableContent())
-                    .andExpect(jsonPath("$.code").value("REGION_CONTENT_NOT_READY"));
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.title").value("경주시"))
+                    .andExpect(jsonPath("$.introduction.length()").value(0))
+                    .andExpect(jsonPath("$.heroImage").value(nullValue()));
 
             approvedContent("PENDING", "[]");
             mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
-                    .andExpect(jsonPath("$.code").value("REGION_CONTENT_NOT_READY"));
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.title").value("천년의 시간이 머무는 도시"))
+                    .andExpect(jsonPath("$.heroImage").value(nullValue()));
         }
 
         @Test
