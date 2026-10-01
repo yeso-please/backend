@@ -1,0 +1,4 @@
+interface:
+  display_name: "TriPin 개발 서버 실행"
+  short_description: "backend·AI 임베딩 서버·테스트 프론트를 로컬에서 함께 띄우고 확인합니다"
+  default_prompt: "Use $tripin-dev-run to start the TriPin backend, AI server, and test frontend locally, checking the dev RDS target and Flyway state first."
