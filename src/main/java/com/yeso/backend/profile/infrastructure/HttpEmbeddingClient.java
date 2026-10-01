@@ -41,7 +41,7 @@ public class HttpEmbeddingClient implements EmbeddingClient {
             EmbeddingApiResponse response = restClient.post()
                     .uri("/embeddings")
                     .body(new EmbeddingApiRequest(
-                            request.requestId(), request.text(), request.modelVersion(), request.templateVersion()))
+                            request.requestId(), request.modelVersion(), request.templateVersion(), request.profile()))
                     .retrieve()
                     .body(EmbeddingApiResponse.class);
 
@@ -63,7 +63,7 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         }
     }
 
-    private record EmbeddingApiRequest(String requestId, String text, String modelVersion, int templateVersion) {
+    private record EmbeddingApiRequest(String requestId, String modelVersion, int templateVersion, EmbeddingProfile profile) {
     }
 
     private record EmbeddingApiResponse(String embeddingBase64, int dimension) {

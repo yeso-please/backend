@@ -59,6 +59,7 @@
 
 - Python 서비스는 온보딩/관광지 텍스트를 같은 모델·버전·차원으로 임베딩한다. RDS 업무 테이블을 직접 쓰지 않고 벡터를 Spring에 반환한다.
 - 임베딩 서비스는 별도 레포 [`yeso-please/ai`](https://github.com/yeso-please/ai)에 둔다. 벡터는 **float32 리틀엔디언 바이트**(PyTorch/NumPy `tobytes()` 그대로)를 base64로 주고받고, DB(`user_taste_vectors`, `attraction_embeddings`)에도 같은 바이트로 저장한다(2026-09-27).
+- 회원 벡터 요청(`POST /embeddings`)은 문장이 아니라 구조화된 `profile`(`travelMbti`, `scheduleDensity`, `experienceTags`, `excludeTags`, `likedTrips[{sigCd, regionName, tags, note}]`)을 보낸다. 임베딩 문장은 ai가 `templateVersion`에 맞춰 합성한다. `embedding.model-version`은 ai `MODEL_VERSION`(`mminilm-l12-v1`)과 같아야 하며 다르면 409다(2026-10-01, 계약 원문은 ai README "백엔드와의 계약"). 응답의 `profileText`는 화면 표시·보관용으로 계속 Spring이 만든다.
 - 관광지 벡터는 사전 배치, 회원 벡터는 설문 완료 시 생성한다. 변경된 텍스트는 `PENDING`으로 되돌린다.
 - Spring은 지역/품질 필터 후 코사인 유사도와 규칙 점수를 계산한다. 초기 후보 규모에서는 애플리케이션 계산, 측정 후 필요할 때 pgvector로 옮긴다.
 - 관광지 점수는 **요청한 사람** 한 명의 취향 벡터로 구한다. 참여자 취향을 평균하지 않는다. 제외 조건은 판정 가능한 것(`물놀이` 분류)만 적용한다(2026-09-25). `야간 이동`은 코스가 시각을 다루지 않아 저장만 한다. 제외 조건도 요청자의 것을 적용한다.

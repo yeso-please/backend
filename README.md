@@ -5,7 +5,18 @@
 
 개발 PostgreSQL 생성과 데모 H2 데이터 이관은 [RDS 생성·이관 런북](docs/runbooks/rds-postgresql-bootstrap-and-migration.md)을 따릅니다.
 
-## 로컬 실행
+## 로컬 개발 스택 (backend + AI + 테스트 프론트, 개발 RDS)
+
+Docker Desktop만 있으면 됩니다. 준비물(`.env`, RDS 보안 그룹 IP 등록)과 문제 해결은 [로컬 개발 스택 런북](docs/runbooks/local-dev-stack.md)을 봅니다.
+
+```powershell
+cd backend
+docker compose -f compose.dev.yaml up -d --build
+```
+
+브라우저에서 http://localhost:5173 을 엽니다.
+
+## 로컬 실행 (backend만)
 
 Java 21과 Docker Desktop이 필요합니다.
 
