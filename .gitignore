@@ -35,6 +35,9 @@ build/
 ### 로컬 비밀 설정 (JWT secret, OAuth client secret 등, 커밋 금지) ###
 /config/application-secret*
 !/config/application-secret.example.yaml
+/.env
+/.env.*
+!/.env.example
 
 ### IntelliJ IDEA ###
 .idea
@@ -44,3 +47,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Offline Python ingestion tools
+__pycache__/
+*.py[cod]
+.pytest_cache/

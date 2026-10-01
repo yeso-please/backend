@@ -1,6 +1,7 @@
 package com.yeso.backend.migration;
 
 import com.yeso.backend.attraction.infrastructure.RegionQualityRepository;
+import com.yeso.backend.attraction.application.ingestion.IngestionWriterLock;
 
 import java.io.BufferedWriter;
 import java.nio.file.Files;
@@ -40,8 +41,13 @@ public final class DemoMigration {
     private DemoMigration() {}
 
     public static void main(String[] args) throws Exception {
-        run(args, System.getenv().getOrDefault("DB_URL", "jdbc:postgresql://localhost:5432/tripin_local?currentSchema=app"),
-                System.getenv().getOrDefault("DB_USERNAME", "tripin_local"), System.getenv().getOrDefault("DB_PASSWORD", "tripin_local_dev_only"));
+        try {
+            run(args, System.getenv().getOrDefault("DB_URL", "jdbc:postgresql://localhost:5432/tripin_local?currentSchema=app"),
+                    System.getenv().getOrDefault("DB_USERNAME", "tripin_local"), System.getenv().getOrDefault("DB_PASSWORD", "tripin_local_dev_only"));
+        } catch (IngestionWriterLock.WriterBusyException e) {
+            System.err.println("실행 차단: " + e.getMessage());
+            System.exit(2);
+        }
     }
 
     public static void run(String[] args, String url, String user, String password) throws Exception {
@@ -66,12 +72,14 @@ public final class DemoMigration {
         String jdbcUrl = url + (url.contains("?") ? "&" : "?") + "reWriteBatchedInserts=true";
         try (Connection pg = DriverManager.getConnection(jdbcUrl, user, password)) {
             pg.setSchema("app");
-            checkFlyway(pg);
             if (mode.equals("validate")) {
+                checkFlyway(pg);
                 validate(pg, runId, report);
                 return;
             }
-            try (Connection h2 = DriverManager.getConnection("jdbc:h2:file:" + source.toString().substring(0, source.toString().length() - 6).replace('\\', '/') + ";ACCESS_MODE_DATA=r;IFEXISTS=TRUE", "sa", "")) {
+            try (IngestionWriterLock ignored = IngestionWriterLock.acquire(pg, "DEMO_MIGRATION");
+                 Connection h2 = DriverManager.getConnection("jdbc:h2:file:" + source.toString().substring(0, source.toString().length() - 6).replace('\\', '/') + ";ACCESS_MODE_DATA=r;IFEXISTS=TRUE", "sa", "")) {
+                checkFlyway(pg);
                 h2.setReadOnly(true);
                 Set<String> sourceRegions = new HashSet<>();
                 try (Statement st = h2.createStatement(); ResultSet regions = st.executeQuery("SELECT SIG_CD FROM REGION")) {
@@ -80,6 +88,11 @@ public final class DemoMigration {
                 String gitSha = gitSha();
                 Counts counts = new Counts();
                 write(report.resolve("manifest.json"), "{\"runId\":\"" + runId + "\",\"mode\":\"" + mode + "\",\"sourceSha256\":\"" + sha + "\",\"gitSha\":\"" + gitSha + "\",\"batchSize\":" + BATCH + "}");
+                if (mode.equals("apply")) {
+                    boolean resume = options.containsKey("resume-run-id");
+                    assertNoUnconfirmedRunningRuns(pg, runId, resume);
+                    if (resume) markInterruptedRunFailed(pg, runId);
+                }
                 String resumeCursor = mode.equals("apply") ? startRun(pg, runId, sha, gitSha, options.containsKey("resume-run-id")) : null;
                 try (BufferedWriter quarantine = Files.newBufferedWriter(report.resolve("quarantine.csv"))) {
                     quarantine.write("entity_type,source_key,error_code\n");
@@ -133,18 +146,53 @@ public final class DemoMigration {
         }
     }
     private static String startRun(Connection pg, UUID runId, String sha, String git, boolean resume) throws SQLException {
+        String actor = System.getenv().getOrDefault("INGESTION_ACTOR", System.getenv().getOrDefault("USERNAME", "unknown"));
+        String host = System.getenv().getOrDefault("COMPUTERNAME", "unknown");
         if (resume) {
             String cursor;
             try (PreparedStatement ps = pg.prepareStatement("SELECT source_checksum,application_version,status,cursor_value FROM app.ingestion_runs WHERE id=?")) {
                 ps.setObject(1, runId); try (ResultSet rs = ps.executeQuery()) { if (!rs.next() || !sha.equals(rs.getString(1)) || !git.equals(rs.getString(2)) || !"FAILED".equals(rs.getString(3))) throw new SQLException("Resume checksum/version/status mismatch"); cursor = rs.getString(4); }
             }
-            try (PreparedStatement ps = pg.prepareStatement("UPDATE app.ingestion_runs SET status='RUNNING' WHERE id=?")) { ps.setObject(1, runId); ps.executeUpdate(); }
+            try (PreparedStatement ps = pg.prepareStatement("UPDATE app.ingestion_runs SET status='RUNNING',started_at=CURRENT_TIMESTAMP,summary=summary || jsonb_build_object('actor',?,'host',?) WHERE id=?")) {
+                ps.setString(1, actor); ps.setString(2, host); ps.setObject(3, runId); ps.executeUpdate();
+            }
             return cursor;
         } else {
-            try (PreparedStatement ps = pg.prepareStatement("INSERT INTO app.ingestion_runs(id,job_type,source_system,status,source_checksum,application_version) VALUES (?,'DEMO_MIGRATION','TOUR_API','RUNNING',?,?)")) {
-                ps.setObject(1, runId); ps.setString(2, sha); ps.setString(3, git); ps.executeUpdate();
+            try (PreparedStatement ps = pg.prepareStatement("INSERT INTO app.ingestion_runs(id,job_type,source_system,status,source_checksum,application_version,summary) VALUES (?,'DEMO_MIGRATION','TOUR_API','RUNNING',?,?,jsonb_build_object('actor',?,'host',?))")) {
+                ps.setObject(1, runId); ps.setString(2, sha); ps.setString(3, git); ps.setString(4, actor); ps.setString(5, host); ps.executeUpdate();
             }
             return null;
+        }
+    }
+    private static void assertNoUnconfirmedRunningRuns(Connection pg, UUID runId, boolean resume) throws SQLException {
+        try (PreparedStatement ps = pg.prepareStatement("""
+                SELECT id, job_type, summary ->> 'actor' AS actor, summary ->> 'host' AS host, started_at, cursor_value
+                FROM app.ingestion_runs
+                WHERE status='RUNNING'
+                ORDER BY started_at DESC
+                """)) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID activeRunId = (UUID) rs.getObject("id");
+                    if (resume && runId.equals(activeRunId)) continue;
+                    throw new IngestionWriterLock.WriterBusyException("다른 적재 이력이 RUNNING 상태로 남아 있어 실행을 차단했습니다. 작업="
+                            + rs.getString("job_type") + ", 실행자=" + rs.getString("actor")
+                            + ", 호스트=" + rs.getString("host") + ", runId=" + activeRunId
+                            + ", 시작=" + rs.getObject("started_at") + ", 진행위치=" + rs.getString("cursor_value")
+                            + ". 기존 프로세스가 종료된 것을 확인한 뒤 해당 ID로 --resume-run-id를 지정하세요.");
+                }
+            }
+        }
+    }
+    private static void markInterruptedRunFailed(Connection pg, UUID runId) throws SQLException {
+        try (PreparedStatement ps = pg.prepareStatement("""
+                UPDATE app.ingestion_runs
+                SET status='FAILED', finished_at=CURRENT_TIMESTAMP,
+                    summary=summary || jsonb_build_object('interrupted', TRUE, 'interruptedReason', 'operator explicitly resumed after confirming prior process stopped')
+                WHERE id=? AND status='RUNNING'
+                """)) {
+            ps.setObject(1, runId);
+            ps.executeUpdate();
         }
     }
     private static void finishRun(Connection pg, UUID runId, Counts counts) throws SQLException {
