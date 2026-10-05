@@ -126,14 +126,12 @@ export function Auth({ onAuth }) {
 export function Onboarding({ onComplete }) {
   const [q, setQ] = useState(null),
     [regions, setRegions] = useState([]),
-    [answers, setAnswers] = useState({}),
+    [styles, setStyles] = useState({}),
+    [motives, setMotives] = useState([]),
     [density, setDensity] = useState("RELAXED"),
-    [tags, setTags] = useState([]),
     [exclude, setExclude] = useState([]),
-    [liked, setLiked] = useState([]),
+    [likedRegions, setLikedRegions] = useState([]),
     [sig, setSig] = useState(""),
-    [note, setNote] = useState(""),
-    [likedTags, setLikedTags] = useState([]),
     [step, setStep] = useState(0),
     [result, setResult] = useState(null),
     [error, setError] = useState(null),
@@ -147,6 +145,11 @@ export function Onboarding({ onComplete }) {
       ]);
       setQ(questions);
       setRegions(rs.regions);
+      setStyles(
+        Object.fromEntries(
+          questions.travelStyles.map((x) => [x.number, x.neutralValue]),
+        ),
+      );
     } catch (e) {
       setError(e);
     }
@@ -154,6 +157,12 @@ export function Onboarding({ onComplete }) {
   useEffect(() => {
     load();
   }, []);
+  const motiveLabel = (code) =>
+    q.travelMotives.find((m) => m.code === code)?.label;
+  const regionLabel = (sigCd) => {
+    const r = regions.find((x) => x.sigCd === sigCd);
+    return r ? `${r.province} ${r.city}` : sigCd;
+  };
   const submit = async () => {
     setBusy(true);
     setError(null);
@@ -163,14 +172,11 @@ export function Onboarding({ onComplete }) {
           method: "POST",
           body: {
             questionVersion: q.questionVersion,
-            answers: Object.entries(answers).map(([n, c]) => ({
-              questionNumber: Number(n),
-              choice: c,
-            })),
+            travelStyles: styles,
+            travelMotives: motives,
+            likedRegions,
             scheduleDensity: density,
-            experienceTags: tags,
             excludeTags: exclude,
-            likedTrips: liked,
           },
         }),
       );
@@ -187,7 +193,7 @@ export function Onboarding({ onComplete }) {
         <div>
           <div className="eyebrow">YOUR TRAVEL DNA</div>
           <h1>나를 닮은 여행 취향</h1>
-          <p>서버에서 받은 질문과 태그로 취향 프로필을 만듭니다.</p>
+          <p>서버에서 받은 AI Hub 설문 형식 질문으로 취향 프로필을 만듭니다.</p>
         </div>
         <Badge>{step + 1} / 3</Badge>
       </div>
@@ -197,7 +203,7 @@ export function Onboarding({ onComplete }) {
       ) : (
         <>
           <div className="stepper">
-            {["여행 성향", "취향과 기억", "분석 결과"].map((x, i) => (
+            {["여행 스타일", "동기와 지역", "분석 결과"].map((x, i) => (
               <span key={x} className={i === step ? "active" : ""}>
                 {i + 1} {x}
               </span>
@@ -206,48 +212,67 @@ export function Onboarding({ onComplete }) {
           {step === 0 ? (
             <>
               <div className="question-list">
-                {q.questions.map((x, i) => (
+                {q.travelStyles.map((x, i) => (
                   <Panel key={x.number}>
-                    <small>QUESTION {String(i + 1).padStart(2, "0")}</small>
-                    <h3>{x.prompt}</h3>
-                    <div className="two-col">
-                      {[x.choice1, x.choice2].map((c) => (
-                        <button
-                          className={`choice ${answers[x.number] === c.choice ? "selected" : ""}`}
-                          key={c.choice}
-                          onClick={() =>
-                            setAnswers({ ...answers, [x.number]: c.choice })
-                          }
-                        >
-                          {c.text}
-                          {answers[x.number] === c.choice && (
-                            <Check size={18} />
-                          )}
-                        </button>
-                      ))}
+                    <small>
+                      STYLE {String(i + 1).padStart(2, "0")}
+                      {x.evidence === "INFERRED" && " · 의미 추정 문항"}
+                    </small>
+                    <div className="row spread">
+                      <strong>{x.leftPole}</strong>
+                      <strong>{x.rightPole}</strong>
                     </div>
+                    <input
+                      type="range"
+                      min={x.minValue}
+                      max={x.maxValue}
+                      value={styles[x.number] ?? x.neutralValue}
+                      onChange={(e) =>
+                        setStyles({
+                          ...styles,
+                          [x.number]: Number(e.target.value),
+                        })
+                      }
+                    />
+                    <p className="muted">
+                      {styles[x.number] ?? x.neutralValue} / {x.maxValue}
+                      {(styles[x.number] ?? x.neutralValue) === x.neutralValue &&
+                        " · 중립"}
+                    </p>
                   </Panel>
                 ))}
               </div>
               <div className="row spread">
-                <span>
-                  {Object.keys(answers).length} / {q.questions.length} 응답
-                </span>
+                <span>{q.travelStyles.length}개 스타일</span>
                 <Button
-                  disabled={Object.keys(answers).length !== q.questions.length}
                   onClick={() => {
                     setStep(1);
                     window.scrollTo(0, 0);
                   }}
                 >
-                  다음 · 취향 선택
+                  다음 · 동기와 지역
                 </Button>
               </div>
             </>
           ) : step === 1 ? (
             <>
               <Panel>
-                <h2>어떤 여행이 좋은가요?</h2>
+                <h2>왜 여행을 떠나나요?</h2>
+                <h3>
+                  여행 동기 <small>최대 {q.maxTravelMotives}개</small>
+                </h3>
+                <Tags
+                  options={q.travelMotives.map((m) => m.label)}
+                  value={motives.map(motiveLabel)}
+                  onChange={(chosen) =>
+                    setMotives(
+                      q.travelMotives
+                        .filter((m) => chosen.includes(m.label))
+                        .map((m) => m.code),
+                    )
+                  }
+                  max={q.maxTravelMotives}
+                />
                 <Field label="일정 밀도">
                   <Select
                     value={density}
@@ -255,15 +280,6 @@ export function Onboarding({ onComplete }) {
                     options={q.scheduleDensityOptions}
                   />
                 </Field>
-                <h3>
-                  좋아하는 경험 <small>최대 {q.maxExperienceTags}개</small>
-                </h3>
-                <Tags
-                  options={q.experienceTags}
-                  value={tags}
-                  onChange={setTags}
-                  max={q.maxExperienceTags}
-                />
                 <h3>피하고 싶은 경험</h3>
                 <Tags
                   options={q.excludeTags}
@@ -277,9 +293,9 @@ export function Onboarding({ onComplete }) {
                 </Notice>
               </Panel>
               <Panel>
-                <h2>좋았던 여행의 기억</h2>
+                <h2>좋아하는 여행지</h2>
                 <p className="muted">
-                  선택 사항 · 최대 30곳 · 메모는 취향 분석에 사용됩니다.
+                  선택 사항 · 최대 {q.maxLikedRegions}곳 · 취향 분석에 사용됩니다.
                 </p>
                 <Field label="지역">
                   <Select
@@ -294,44 +310,28 @@ export function Onboarding({ onComplete }) {
                     ]}
                   />
                 </Field>
-                <Field label="좋았던 점">
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    maxLength={500}
-                    placeholder="바다를 따라 조용히 산책한 시간이 좋았어요."
-                  />
-                </Field>
-                <Tags
-                  options={q.experienceTags}
-                  value={likedTags}
-                  onChange={setLikedTags}
-                />
                 <Button
                   variant="secondary"
                   disabled={
                     !sig ||
-                    liked.length >= 30 ||
-                    liked.some((x) => x.sigCd === sig)
+                    likedRegions.length >= q.maxLikedRegions ||
+                    likedRegions.includes(sig)
                   }
                   onClick={() => {
-                    setLiked([...liked, { sigCd: sig, note, tags: likedTags }]);
+                    setLikedRegions([...likedRegions, sig]);
                     setSig("");
-                    setNote("");
-                    setLikedTags([]);
                   }}
                 >
-                  기억 추가
+                  지역 추가
                 </Button>
-                {liked.map((x) => (
-                  <div className="list-row" key={x.sigCd}>
-                    <span>
-                      {regions.find((r) => r.sigCd === x.sigCd)?.city} ·{" "}
-                      {x.note}
-                    </span>
+                {likedRegions.map((x) => (
+                  <div className="list-row" key={x}>
+                    <span>{regionLabel(x)}</span>
                     <Button
                       variant="ghost"
-                      onClick={() => setLiked(liked.filter((r) => r !== x))}
+                      onClick={() =>
+                        setLikedRegions(likedRegions.filter((r) => r !== x))
+                      }
                     >
                       제거
                     </Button>
@@ -351,7 +351,7 @@ export function Onboarding({ onComplete }) {
             result && (
               <Panel className="result">
                 <div className="eyebrow">YOUR RESULT</div>
-                <h1>{result.mbtiCode}</h1>
+                <h2>{result.profileText}</h2>
                 <Badge tone={result.tasteStatus === "READY" ? "" : "warn"}>
                   {labels[result.tasteStatus] || result.tasteStatus}
                 </Badge>

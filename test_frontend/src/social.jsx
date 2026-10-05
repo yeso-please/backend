@@ -20,6 +20,10 @@ import {
   KoreaMap,
   labels,
 } from "./ui";
+// 여행기 경험 태그 사전(backend OnboardingQuestionBank.EXPERIENCE_TAGS). AI Hub 설문 전환 후 질문 API에는 없다.
+const DIARY_EXPERIENCE_TAGS = [
+  "자연", "바다", "산", "산책", "골목", "역사", "시장", "로컬 음식", "카페", "휴식", "실내", "체험",
+];
 export function Links({ path, kind, title, disabled = false }) {
   const [links, setLinks] = useState([]),
     [url, setUrl] = useState(""),
@@ -381,7 +385,7 @@ export function Diary({ id, sharedDiary }) {
     [draft, setDraft] = useState(null),
     [error, setError] = useState(null),
     [busy, setBusy] = useState(false),
-    [tags, setTags] = useState([]);
+    [tags] = useState(DIARY_EXPERIENCE_TAGS);
   const readonly =
     !!sharedDiary ||
     new URLSearchParams(location.search).has("readonly") ||
@@ -412,9 +416,6 @@ export function Diary({ id, sharedDiary }) {
     if (sharedDiary) apply(sharedDiary);
     else {
       load();
-      api("/onboarding/questions")
-        .then((r) => setTags(r.experienceTags))
-        .catch(() => {});
     }
   }, [id]);
   const run = async (fn) => {
