@@ -9,12 +9,15 @@ import com.yeso.backend.profile.domain.DuplicateQuestionAnswerException;
 import com.yeso.backend.profile.domain.EmbeddingJob;
 import com.yeso.backend.profile.domain.EmbeddingOwnerType;
 import com.yeso.backend.profile.domain.InvalidChoiceException;
+import com.yeso.backend.profile.domain.InvalidTravelMotiveException;
+import com.yeso.backend.profile.domain.InvalidTravelStylesException;
 import com.yeso.backend.profile.domain.InvalidQuestionVersionException;
 import com.yeso.backend.profile.domain.InvalidScheduleDensityException;
 import com.yeso.backend.profile.domain.LikedTrip;
 import com.yeso.backend.profile.domain.MbtiScorer;
 import com.yeso.backend.profile.domain.MissingQuestionAnswerException;
 import com.yeso.backend.profile.domain.OnboardingAnswer;
+import com.yeso.backend.profile.domain.AiHubProfileTextComposer;
 import com.yeso.backend.profile.domain.OnboardingProfileTextComposer;
 import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.OnboardingRegionNotFoundException;
@@ -74,16 +77,23 @@ public class OnboardingService {
      */
     public UUID submit(Long userId, OnboardingSubmissionRequest request) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        OnboardingSubmission submission = buildAndPersistSubmission(user, request);
+        OnboardingSubmission submission;
+        int templateVersion;
+        if (OnboardingQuestionBank.LEGACY_QUESTION_VERSION.equals(request.questionVersion())) {
+            submission = buildAndPersistLegacySubmission(user, request);
+            templateVersion = OnboardingQuestionBank.LEGACY_TEMPLATE_VERSION;
+        } else if (OnboardingQuestionBank.QUESTION_VERSION.equals(request.questionVersion())) {
+            submission = buildAndPersistAiHubSubmission(user, request);
+            templateVersion = OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION;
+        } else {
+            throw new InvalidQuestionVersionException();
+        }
         user.setLatestOnboardingSubmissionId(submission.getId());
-        registerEmbeddingJob(submission, EmbeddingOwnerType.USER, userId);
+        registerEmbeddingJob(submission, EmbeddingOwnerType.USER, userId, templateVersion);
         return submission.getId();
     }
 
-    private OnboardingSubmission buildAndPersistSubmission(User user, OnboardingSubmissionRequest request) {
-        if (!OnboardingQuestionBank.QUESTION_VERSION.equals(request.questionVersion())) {
-            throw new InvalidQuestionVersionException();
-        }
+    private OnboardingSubmission buildAndPersistLegacySubmission(User user, OnboardingSubmissionRequest request) {
         ScheduleDensity scheduleDensity = parseScheduleDensity(request.scheduleDensity());
         Map<Integer, Integer> answersByNumber = validateAndCollectAnswers(request.answers());
         List<String> experienceTags = validateExperienceTags(request.experienceTags());
@@ -102,7 +112,7 @@ public class OnboardingService {
                         .toList());
 
         OnboardingSubmission submission = new OnboardingSubmission(
-                user, OnboardingQuestionBank.QUESTION_VERSION, mbtiCode, profileText,
+                user, request.questionVersion(), mbtiCode, profileText,
                 scheduleDensity, experienceTags, excludeTags);
         submissionRepository.save(submission);
 
@@ -117,10 +127,32 @@ public class OnboardingService {
         return submission;
     }
 
-    private void registerEmbeddingJob(OnboardingSubmission submission, EmbeddingOwnerType ownerType, Long ownerId) {
+    private OnboardingSubmission buildAndPersistAiHubSubmission(User user, OnboardingSubmissionRequest request) {
+        ScheduleDensity scheduleDensity = parseScheduleDensity(request.scheduleDensity());
+        Map<Integer, Integer> travelStyles = validateTravelStyles(request.travelStyles());
+        List<Integer> travelMotives = validateTravelMotives(request.travelMotives());
+        List<String> excludeTags = validateExcludeTags(request.excludeTags());
+        List<PreparedLikedTrip> likedRegions = validateLikedRegions(request.likedRegions());
+        List<String> likedRegionNames = likedRegions.stream()
+                .map(liked -> liked.region().displayName())
+                .toList();
+        String profileText = AiHubProfileTextComposer.compose(travelStyles, travelMotives, likedRegionNames);
+
+        OnboardingSubmission submission = new OnboardingSubmission(
+                user, OnboardingQuestionBank.QUESTION_VERSION, null, profileText,
+                scheduleDensity, List.of(), excludeTags, travelStyles, travelMotives);
+        submissionRepository.save(submission);
+        travelStyles.forEach((number, value) -> answerRepository.save(new OnboardingAnswer(submission, number, value)));
+        likedRegions.forEach(liked -> likedTripRepository.save(
+                new LikedTrip(submission, liked.region(), null, List.of())));
+        return submission;
+    }
+
+    private void registerEmbeddingJob(
+            OnboardingSubmission submission, EmbeddingOwnerType ownerType, Long ownerId, int templateVersion) {
         embeddingJobRepository.save(new EmbeddingJob(
                 submission, ownerType, ownerId,
-                embeddingProperties.getModelVersion(), embeddingProperties.getTemplateVersion()));
+                embeddingProperties.getModelVersion(), templateVersion));
         eventPublisher.publishEvent(new OnboardingSubmittedEvent(submission.getId()));
     }
 
@@ -128,7 +160,7 @@ public class OnboardingService {
     public OnboardingSubmissionResponse getSubmissionResponse(UUID submissionId) {
         OnboardingSubmission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new IllegalStateException("submission을 찾을 수 없습니다: " + submissionId));
-        return OnboardingSubmissionResponse.from(submission);
+        return response(submission);
     }
 
     @Transactional(readOnly = true)
@@ -141,7 +173,14 @@ public class OnboardingService {
                 .orElseThrow(() -> new IllegalStateException(
                         "latest_onboarding_submission_id가 존재하지 않는 submission을 가리킵니다: "
                                 + user.getLatestOnboardingSubmissionId()));
-        return OnboardingMeResponse.of(OnboardingSubmissionResponse.from(submission));
+        return OnboardingMeResponse.of(response(submission));
+    }
+
+    private OnboardingSubmissionResponse response(OnboardingSubmission submission) {
+        List<String> likedRegions = likedTripRepository.findAllBySubmission_IdOrderByIdAsc(submission.getId()).stream()
+                .map(trip -> trip.getRegion().getSigCd())
+                .toList();
+        return OnboardingSubmissionResponse.from(submission, likedRegions);
     }
 
     private static ScheduleDensity parseScheduleDensity(String value) {
@@ -186,6 +225,44 @@ public class OnboardingService {
             }
         }
         return tags;
+    }
+
+    private static Map<Integer, Integer> validateTravelStyles(Map<Integer, Integer> styles) {
+        if (!styles.keySet().equals(OnboardingQuestionBank.TRAVEL_STYLE_QUESTIONS.keySet())
+                || styles.values().stream().anyMatch(value -> value == null || value < 1 || value > 7)) {
+            throw new InvalidTravelStylesException();
+        }
+        return Map.copyOf(styles);
+    }
+
+    private static List<Integer> validateTravelMotives(List<Integer> motives) {
+        if (motives.size() > OnboardingQuestionBank.MAX_TRAVEL_MOTIVES
+                || new HashSet<>(motives).size() != motives.size()
+                || motives.stream().anyMatch(motive -> motive == null
+                        || !OnboardingQuestionBank.TRAVEL_MOTIVES.containsKey(motive))) {
+            throw new InvalidTravelMotiveException();
+        }
+        return List.copyOf(motives);
+    }
+
+    private List<PreparedLikedTrip> validateLikedRegions(List<String> likedRegions) {
+        if (likedRegions.size() > OnboardingQuestionBank.MAX_LIKED_REGIONS) {
+            throw new TooManyLikedRegionsException(OnboardingQuestionBank.MAX_LIKED_REGIONS, "선호 지역");
+        }
+        Set<String> seenSigCd = new HashSet<>();
+        List<PreparedLikedTrip> prepared = new ArrayList<>();
+        for (String sigCd : likedRegions) {
+            if (sigCd == null || sigCd.isBlank()) {
+                throw new OnboardingRegionNotFoundException(String.valueOf(sigCd));
+            }
+            if (!seenSigCd.add(sigCd)) {
+                throw new DuplicateLikedRegionException(String.valueOf(sigCd));
+            }
+            Region region = regionRepository.findById(sigCd)
+                    .orElseThrow(() -> new OnboardingRegionNotFoundException(sigCd));
+            prepared.add(new PreparedLikedTrip(region, null, List.of()));
+        }
+        return prepared;
     }
 
     private static List<String> validateExcludeTags(List<String> tags) {

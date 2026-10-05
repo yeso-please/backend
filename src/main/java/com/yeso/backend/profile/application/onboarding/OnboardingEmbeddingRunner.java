@@ -1,15 +1,14 @@
 package com.yeso.backend.profile.application.onboarding;
 
-import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.profile.domain.EmbeddingJob;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
+import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.infrastructure.EmbeddingClient;
 import com.yeso.backend.profile.infrastructure.EmbeddingJobRepository;
 import com.yeso.backend.profile.infrastructure.EmbeddingPermanentException;
-import com.yeso.backend.profile.infrastructure.EmbeddingProfile;
 import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.EmbeddingRequest;
 import com.yeso.backend.profile.infrastructure.EmbeddingResult;
@@ -24,9 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Base64;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.UUID;
 
 /**
@@ -62,8 +58,8 @@ public class OnboardingEmbeddingRunner {
 
         try {
             EmbeddingResult result = embeddingClient.embed(new EmbeddingRequest(
-                    String.valueOf(job.getId()), toProfile(submission),
-                    job.getModelVersion(), job.getTemplateVersion()));
+                    String.valueOf(job.getId()), job.getModelVersion(), job.getTemplateVersion(),
+                    profileFor(submission, job.getTemplateVersion())));
 
             if (result.dimension() != embeddingProperties.getExpectedDimension()) {
                 failPermanently(job, submission, "EMBEDDING_DIMENSION_MISMATCH");
@@ -80,27 +76,34 @@ public class OnboardingEmbeddingRunner {
         }
     }
 
-    private EmbeddingProfile toProfile(OnboardingSubmission submission) {
-        List<EmbeddingProfile.LikedTrip> likedTrips = likedTripRepository.findAllBySubmissionIdOrderBySigCd(submission.getId())
-                .stream()
-                .map(lt -> new EmbeddingProfile.LikedTrip(
-                        lt.getRegion().getSigCd(), regionName(lt.getRegion()), lt.getTags(),
-                        lt.getNote() == null ? "" : lt.getNote()))
-                .toList();
-        return new EmbeddingProfile(
-                submission.getMbtiCode() == null ? "" : submission.getMbtiCode(),
-                submission.getScheduleDensity().name(),
-                submission.getExperienceTags(),
-                submission.getExcludeTags(),
-                likedTrips);
+    private EmbeddingRequest.Profile profileFor(OnboardingSubmission submission, int templateVersion) {
+        var likedTrips = likedTripRepository.findAllBySubmission_IdOrderByIdAsc(submission.getId());
+        if (templateVersion == OnboardingQuestionBank.LEGACY_TEMPLATE_VERSION) {
+            return new EmbeddingRequest.Profile(
+                    nullToEmpty(submission.getMbtiCode()),
+                    submission.getScheduleDensity().name(),
+                    submission.getExperienceTags(),
+                    submission.getExcludeTags(),
+                    likedTrips.stream().map(trip -> new EmbeddingRequest.LikedTrip(
+                            trip.getRegion().getSigCd(), regionName(trip), trip.getTags(), nullToEmpty(trip.getNote())))
+                            .toList(),
+                    java.util.Map.of(), java.util.List.of(), java.util.List.of());
+        }
+        if (templateVersion != OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION) {
+            throw new IllegalArgumentException("지원하지 않는 회원 템플릿 버전입니다.");
+        }
+        return new EmbeddingRequest.Profile(
+                "", submission.getScheduleDensity().name(), java.util.List.of(), submission.getExcludeTags(),
+                java.util.List.of(), submission.getTravelStyles(), submission.getTravelMotives(),
+                likedTrips.stream().map(this::regionName).toList());
     }
 
-    /** "강원특별자치도 강릉시". 세종처럼 시도와 시군구가 같으면 한 번만 쓴다. */
-    private static String regionName(Region region) {
-        return Stream.of(region.getProvince(), region.getCity())
-                .filter(part -> part != null && !part.isBlank())
-                .distinct()
-                .collect(Collectors.joining(" "));
+    private String regionName(com.yeso.backend.profile.domain.LikedTrip trip) {
+        return trip.getRegion().displayName();
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private void applyReady(EmbeddingJob job, OnboardingSubmission submission, EmbeddingResult result) {

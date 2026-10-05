@@ -80,7 +80,7 @@ local DB 데이터를 지우는 `down -v`는 사용자가 요청할 때만 한�
 
 ## 알려진 연동 차이 — 실행 전에 현재 코드로 다시 확인
 
-2026-10-01에 backend를 ai 계약에 맞췄다: `HttpEmbeddingClient`가 `{requestId, modelVersion, templateVersion, profile}`을 보내고 `embedding.model-version=mminilm-l12-v1`이다. 이 변경이 들어가지 않은 backend 브랜치를 띄우면 온보딩 취향 임베딩이 409(버전) 또는 400(`profile` 없음)으로 실패한다. 서버 기동과 다른 API에는 영향이 없다. 그 경우 사용자에게 알리고, 요청 없이 코드를 고치지 않는다.
+backend는 ai 계약대로 `HttpEmbeddingClient`가 `{requestId, modelVersion, templateVersion, profile}`을 보내고 `embedding.model-version=mminilm-l12-v1`이다. 템플릿 버전은 제출의 설문 형식으로 정한다(AI Hub `aihub-traveler-v1` → 2, 구형 `demo-mbti-v1` → 1). 관광지 벡터는 `embedding.attraction-batch.enabled=true`로 한 번 실행하는 배치가 채운다(`docs/design/recommendation.md` 5절). 이 변경이 들어가지 않은 backend 브랜치를 띄우면 온보딩 취향 임베딩이 409(버전) 또는 400(`profile` 없음)으로 실패한다. 서버 기동과 다른 API에는 영향이 없다. 그 경우 사용자에게 알리고, 요청 없이 코드를 고치지 않는다.
 
 빠른 확인: `docker compose -f compose.dev.yaml logs backend | Select-String "Embedding service returned"`에 409/400이 보이면 위 차이다.
 

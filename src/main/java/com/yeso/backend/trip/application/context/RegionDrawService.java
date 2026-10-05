@@ -162,7 +162,8 @@ public class RegionDrawService {
         }
 
         if (requestedConditions.contains(DrawCondition.MY_TASTE)) {
-            Map<String, Double> scores = tasteReady(userId) ? tasteScores(candidates) : Map.of();
+            float[] requesterTaste = onboardingQueryService.findTasteVector(userId).orElse(null);
+            Map<String, Double> scores = requesterTaste == null ? Map.of() : tasteScores(candidates, requesterTaste);
             if (scores.isEmpty()) {
                 ignored.add(new DrawIgnoredCondition(DrawCondition.MY_TASTE, DrawIgnoredReason.TASTE_NOT_READY));
             } else {
@@ -211,18 +212,14 @@ public class RegionDrawService {
         return scores;
     }
 
-    /** 요청자의 취향 벡터와 지역의 추천 가능 관광지 벡터가 모두 준비된 지역만 담는다(#54 전에는 항상 빈 값). */
-    private Map<String, Double> tasteScores(List<EligibleRegion> candidates) {
+    /** 요청자의 취향 벡터와 지역의 추천 가능 관광지 벡터가 모두 준비된 지역만 담는다. */
+    private Map<String, Double> tasteScores(List<EligibleRegion> candidates, float[] requesterTaste) {
         Map<String, Double> scores = new java.util.HashMap<>();
         for (EligibleRegion candidate : candidates) {
-            OptionalDouble score = regionEligibilityService.tasteScore(candidate.sigCd(), null);
-            score.ifPresent(value -> scores.put(candidate.sigCd(), (value + 1) / 2));
+            OptionalDouble score = regionEligibilityService.tasteScore(candidate.sigCd(), requesterTaste);
+            score.ifPresent(value -> scores.put(candidate.sigCd(), value));
         }
         return scores;
-    }
-
-    private boolean tasteReady(Long userId) {
-        return onboardingQueryService.findTasteVector(userId).isPresent();
     }
 
     private String resolveDensity(String requestedDensity, TripPlan tripPlan, Long userId) {

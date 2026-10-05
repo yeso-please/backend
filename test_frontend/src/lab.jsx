@@ -56,7 +56,7 @@ const aiOperations = [
       modelVersion: "mminilm-l12-v1",
       templateVersion: 2,
       profile: {
-        travelStyles: { 1: 3, 2: 5 },
+        travelStyles: { 1: 3, 3: 4, 5: 5, 6: 4 },
         travelMotives: [1],
         likedRegions: ["강릉"],
       },
