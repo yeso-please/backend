@@ -33,9 +33,12 @@ class RdsMigrationPreflightIntegrationTest {
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .load();
 
+        // V14 이후 migration은 모두 대기 상태여야 한다. 새 migration이 추가돼도 이 테스트는 그대로 유효하다.
         assertThat(preflight.info().pending())
-                .extracting(info -> info.getVersion().getVersion())
-                .containsExactly("15");
+                .extracting(info -> Integer.parseInt(info.getVersion().getVersion()))
+                .isNotEmpty()
+                .startsWith(15)
+                .allMatch(version -> version > 14);
         assertThatCode(preflight::validate).doesNotThrowAnyException();
     }
 }
