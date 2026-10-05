@@ -99,7 +99,7 @@ public class OnboardingEmbeddingRunner {
     }
 
     private String regionName(com.yeso.backend.profile.domain.LikedTrip trip) {
-        return trip.getRegion().getProvince() + " " + trip.getRegion().getCity();
+        return trip.getRegion().displayName();
     }
 
     private static String nullToEmpty(String value) {

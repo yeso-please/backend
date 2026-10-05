@@ -134,7 +134,7 @@ public class OnboardingService {
         List<String> excludeTags = validateExcludeTags(request.excludeTags());
         List<PreparedLikedTrip> likedRegions = validateLikedRegions(request.likedRegions());
         List<String> likedRegionNames = likedRegions.stream()
-                .map(liked -> liked.region().getProvince() + " " + liked.region().getCity())
+                .map(liked -> liked.region().displayName())
                 .toList();
         String profileText = AiHubProfileTextComposer.compose(travelStyles, travelMotives, likedRegionNames);
 

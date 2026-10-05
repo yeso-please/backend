@@ -41,4 +41,9 @@ public class Region {
         this.province = province;
         this.city = city;
     }
+
+    /** "강원특별자치도 강릉시". 세종처럼 시도와 시군구 이름이 같으면 한 번만 쓴다. */
+    public String displayName() {
+        return city == null || city.isBlank() || city.equals(province) ? province : province + " " + city;
+    }
 }
