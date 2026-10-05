@@ -2,6 +2,7 @@ package com.yeso.backend.auth.infrastructure;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -34,7 +35,9 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /** 웹이 아닌 일회성 배치 실행(web-application-type=none)에서는 HttpSecurity가 없으므로 만들지 않는다. */
     @Bean
+    @ConditionalOnWebApplication
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
