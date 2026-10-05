@@ -30,6 +30,7 @@ public class RegionEligibilityService {
     private static final int MAX_DAYS = 7;
 
     private final RegionQualityRepository regionQualityRepository;
+    private final CourseMaterialService courseMaterialService;
 
     /** 지도에 그릴 지역 하나와 추첨 가능 여부. */
     public record RegionEligibility(
@@ -79,10 +80,44 @@ public class RegionEligibilityService {
 
     /**
      * 이 지역이 요청자 취향에 얼마나 맞는지(3-7 MY_TASTE). 관광지 임베딩(#54)을 아직 저장하지 않아
-     * 지금은 항상 빈 값이다. 빈 값이면 호출하는 쪽은 명세대로 취향 조건을 무시하고 경고를 붙인다.
+     * 호환 가능한 관광지 벡터 중 유사도 상위 5개 평균을 0~1로 정규화한다.
      */
     public OptionalDouble tasteScore(String sigCd, float[] requesterVector) {
-        return OptionalDouble.empty();
+        if (requesterVector == null || requesterVector.length == 0) {
+            return OptionalDouble.empty();
+        }
+        List<Long> attractionIds = findCourseCandidates(sigCd).stream()
+                .map(CourseCandidate::attractionId).toList();
+        List<float[]> vectors = courseMaterialService.findAttractionVectors(attractionIds).values().stream()
+                .filter(vector -> vector.length == requesterVector.length)
+                .toList();
+        if (vectors.isEmpty()) {
+            return OptionalDouble.empty();
+        }
+        double averageTopSimilarity = vectors.stream()
+                .mapToDouble(vector -> cosine(requesterVector, vector))
+                .boxed()
+                .sorted(java.util.Comparator.reverseOrder())
+                .limit(5)
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElseThrow();
+        return OptionalDouble.of((averageTopSimilarity + 1) / 2);
+    }
+
+    private static double cosine(float[] left, float[] right) {
+        double dot = 0;
+        double leftNorm = 0;
+        double rightNorm = 0;
+        for (int i = 0; i < left.length; i++) {
+            dot += left[i] * right[i];
+            leftNorm += left[i] * left[i];
+            rightNorm += right[i] * right[i];
+        }
+        if (leftNorm == 0 || rightNorm == 0) {
+            return 0;
+        }
+        return Math.max(-1, Math.min(1, dot / Math.sqrt(leftNorm * rightNorm)));
     }
 
     /** 코스 생성 후보(5-1). 추천 가능 관광지만, 관광지 ID 순. 없는 지역이면 {@code REGION_NOT_FOUND}. */

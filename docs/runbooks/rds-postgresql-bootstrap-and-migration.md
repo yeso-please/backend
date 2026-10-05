@@ -19,6 +19,8 @@
 - 원본 H2 SHA-256 `58a87f178e536867042a7f488b60a95d89745d8554b3a6034e931cf66b7a6fea`를 실행 ID `6b9ec367-899d-4cec-897b-45f574baf4f4`로 재이관했다. 총 21,838건, 격리 0, 상태 `SUCCEEDED`. validate 성공. 두 번째 실행은 실행 ID `37cb08f5-a573-4942-b289-1718741c4f90`로 삽입 0·수정 0·격리 0을 확인했다.
 - 최종 수량: 지역 250, 관광지 12,164, 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537. 음식점 좌표 누락 0, 이미지 검증 `VALID` 0, 코스 경유지 관광지 연결 234·음식점 연결 24, 사용자·여행·온보딩·지역 승인 콘텐츠 0.
 - 이미지 검증 `VALID` 0건, 지역 콘텐츠 승인 0건이므로 추천 준비가 완료됐다는 뜻은 아니다. 후속 TourAPI 이미지 검증·지역 소개 승인 작업이 남았다.
+- AI Hub 온보딩 V15 적용 검증 (2026-09-29): 사용자가 변경 전 수동 스냅샷 `tripin-dev-postgres-26-09-29`를 제공했다. 개발 RDS의 V1~V14 이력 체크섬을 대조하고 pending V15만 무시하는 사전 validate를 성공시킨 뒤 V15를 적용했다. Flyway info에서 현재 version 15/pending 없음, validate 성공을 확인했다. 스냅샷은 사용자가 생성했다고 알렸으며 에이전트는 AWS 콘솔/API로 상태를 독립 조회하지 못했다.
+- 적용 후 `tripin_app` 계정으로 `dev-rds` 프로파일 앱을 기동해 Flyway no-op 및 Hibernate `ddl-auto=validate` 성공을 확인했다. `/v3/api-docs` HTTP 200. TLS `verify-full` 연결에서 읽은 수량은 지역 250, 관광지 12,164, 관광지 이미지 10,933, 음식점 8,540, 공식 코스 347, 경유지 537이다. 앱 계정은 `app` schema `USAGE` 및 `regions SELECT`가 가능하고 `CREATE` 권한은 없는 것을 확인했다. 앱 프로세스는 검증 후 종료했다.
 
 ## 0. 이 문서를 사용하는 방법
 
@@ -683,6 +685,23 @@ PR CI는 외부 RDS를 변경하지 않는다. 운영 환경은 자동 대상이
 
 명령은 시작할 때 secret을 제외한 target host/database, 현재 version, pending version을 보여주고, 끝날 때 적용 version과 소요시간을 출력한다. `clean`, `repair`, `baselineOnMigrate=true`, out-of-order 적용은 제공하지 않는다.
 
+구현된 명령은 다음과 같다. `info`와 `validate`는 읽기 전용이고 `migrate`만 pending migration을 적용한다. 사전 `validate`는 `*:pending`만 무시해 새 migration이 대기 중이어도 기존 적용분의 이름·타입·체크섬 불일치를 검출한다. 누락된 로컬 migration이나 이미 적용된 migration 변경은 여전히 실패한다. `info`에는 대기 version이 그대로 표시되며, `migrate` 전 snapshot 확인은 별도로 필요하다.
+
+```powershell
+$env:MIGRATION_TARGET_ENV = "dev"
+$env:DB_URL = "jdbc:postgresql://<RDS endpoint>:5432/tripin_dev?sslmode=verify-full&sslrootcert=<URL-인코딩된-CA-절대경로>"
+$env:FLYWAY_USER = "tripin_migrator"
+$env:FLYWAY_PASSWORD = "<secret store에서 주입>"
+$env:RDS_CA_PATH = "<CA bundle 절대경로>"
+
+.\gradlew.bat rdsMigrationInfo
+.\gradlew.bat rdsMigrationValidate
+# 스냅샷과 validate 결과를 확인한 뒤에만 명시적으로 실행
+.\gradlew.bat rdsMigrate
+```
+
+가드는 `MIGRATION_TARGET_ENV=dev`, `tripin_dev`, `tripin_migrator`, `*.rds.amazonaws.com`, `sslmode=verify-full`, URL의 `sslrootcert`와 `RDS_CA_PATH` 일치를 모두 요구한다. 다른 DB, 로컬 PostgreSQL, 운영 이름, 비 TLS URL은 거부한다. 로그에는 endpoint/DB, 현재·pending·적용 version, 실행 수와 시간만 남고 연결 오류도 예외 유형만 출력해 secret과 드라이버 메시지가 노출되지 않도록 한다. 명령을 실행하기 전에 secret을 셸 기록에 직접 입력하지 말고 승인된 secret 주입 절차를 사용한다.
+
 ### 11.3 migration 파일 작성 규칙
 
 1. main 최신 상태에서 현재 최대 version을 확인한다.
@@ -738,6 +757,8 @@ CREATE INDEX idx_refresh_tokens_family_active
 - 새 NOT NULL/UNIQUE/FK/CHECK/index의 성공·실패 경계
 - 이미 적용된 migration 파일 변경 탐지
 
+`PostgresqlFoundationIntegrationTest`가 빈 DB 전체 적용, V1→최신 업그레이드, 재실행 no-op, Flyway validate와 `@SpringBootTest`의 Hibernate `ddl-auto=validate`를 검증한다. PR CI는 base 대비 기존 migration 경로의 수정·삭제가 있으면 실패한다(새 migration 추가는 허용). GitHub 저장소 설정의 branch protection/Ruleset에서 `CI / test`를 required check로 지정해야 병합이 강제된다.
+
 PR에 migration이 있는데 entity/test/docs가 없거나, entity schema가 바뀌었는데 migration이 없으면 CI를 실패시킨다. GitHub branch protection에서 이 job을 required check로 지정한다.
 
 ### 11.5 dev 자동 적용 방식
@@ -786,7 +807,9 @@ dev RDS가 public인 동안에도 GitHub-hosted runner가 RDS에 직접 접속�
 ### 11.8 자동화 완료 gate
 
 - [ ] migration 없는 entity schema 변경을 CI가 잡는다.
-- [ ] 모든 PR은 PostgreSQL 17에서 clean/upgrade/no-op을 검증한다.
+- [x] 모든 PR은 PostgreSQL 17에서 clean/upgrade/no-op을 검증한다.
+- [x] PR CI가 이미 존재하는 migration 파일의 수정·삭제를 거부한다.
+- [x] migration 전용 명령은 TLS 검증된 `tripin_dev` RDS와 migrator 계정만 허용한다.
 - [ ] merge 후 dev 배포에서 pending migration이 한 번만 적용된다.
 - [ ] migration 실패 시 새 instance가 ready가 되지 않는다.
 - [ ] `tripin_app`은 DDL 권한이 없다.

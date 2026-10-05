@@ -11,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -38,22 +40,25 @@ class RegionDrawIntegrationTest extends IntegrationTest {
                 """, sigCd);
     }
 
-    private void attraction(String sigCd) {
+    private Long attraction(String sigCd) {
         Long id = jdbc.queryForObject("""
                 insert into app.attractions (name, category, region_id, description, lat, lng, content_type_id, addr)
                 values ('관광지', '관광지', ?, '설명', 35.8, 129.2, 12, '주소') returning id
                 """, Long.class, sigCd);
         jdbc.update("insert into app.attraction_images (attraction_id, image_url, validation_status) values (?, ?, 'VALID')",
                 id, "https://img.example/" + id + ".jpg");
+        return id;
     }
 
     /** 1일 RELAXED로 추첨 가능한 지역(관광지 5곳). */
-    private void readyRegion(String sigCd, double lat, double lng) {
+    private List<Long> readyRegion(String sigCd, double lat, double lng) {
         region(sigCd, lat, lng);
         content(sigCd);
+        List<Long> ids = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            attraction(sigCd);
+            ids.add(attraction(sigCd));
         }
+        return ids;
     }
 
     private LocalDate inDays(int days) {
@@ -126,8 +131,8 @@ class RegionDrawIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("MY_TASTE는 관광지 취향 벡터가 아직 없어 항상 무시된다")
-        void conditional_myTaste_alwaysIgnoredForNow() throws Exception {
+        @DisplayName("관광지 벡터가 없으면 MY_TASTE를 무시한다")
+        void conditional_myTasteWithoutAttractionVectors_isIgnored() throws Exception {
             readyRegion(GYEONGJU, 35.85, 129.22);
             Member member = fixtures.onboardedMember();
             Long tripId = fixtures.createTrip(member.accessToken(), inDays(5), 0);
@@ -141,6 +146,32 @@ class RegionDrawIntegrationTest extends IntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.ignoredConditions[0].condition").value("MY_TASTE"))
                     .andExpect(jsonPath("$.ignoredConditions[0].reason").value("TASTE_NOT_READY"));
+        }
+
+        @Test
+        @DisplayName("요청자와 지역의 호환 벡터가 있으면 MY_TASTE를 적용한다")
+        void conditional_myTasteWithCompatibleVectors_isApplied() throws Exception {
+            List<Long> attractionIds = readyRegion(GYEONGJU, 35.85, 129.22);
+            Member member = fixtures.onboardedMember();
+            byte[] vector = new byte[384 * Float.BYTES];
+            for (Long attractionId : attractionIds) {
+                jdbc.update("""
+                        insert into app.attraction_embeddings (attraction_id, embedding, dimension, model_version, template_version)
+                        values (?, ?, 384, 'mminilm-l12-v1', 2)
+                        """, attractionId, vector);
+            }
+            Long tripId = fixtures.createTrip(member.accessToken(), inDays(5), 0);
+
+            mockMvc.perform(post("/api/trips/{tripId}/region", tripId)
+                            .header("Authorization", ApiFixtures.bearer(member.accessToken()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"mode":"CONDITIONAL","conditions":["MY_TASTE"],"version":0}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.appliedConditions[0]").value("MY_TASTE"))
+                    .andExpect(jsonPath("$.ignoredConditions.length()").value(0))
+                    .andExpect(jsonPath("$.warnings.length()").value(0));
         }
 
         @Test

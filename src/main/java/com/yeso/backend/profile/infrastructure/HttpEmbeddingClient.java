@@ -1,5 +1,9 @@
 package com.yeso.backend.profile.infrastructure;
 
+import com.yeso.backend.shared.embedding.AttractionEmbeddingBatchClient;
+import com.yeso.backend.shared.embedding.AttractionEmbeddingBatchRequest;
+import com.yeso.backend.shared.embedding.AttractionEmbeddingBatchResponse;
+import com.yeso.backend.shared.embedding.AttractionEmbeddingServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -15,7 +19,7 @@ import java.time.Duration;
  */
 @Slf4j
 @Component
-public class HttpEmbeddingClient implements EmbeddingClient {
+public class HttpEmbeddingClient implements EmbeddingClient, AttractionEmbeddingBatchClient {
 
     private final RestClient restClient;
     private final EmbeddingProperties properties;
@@ -40,8 +44,7 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         try {
             EmbeddingApiResponse response = restClient.post()
                     .uri("/embeddings")
-                    .body(new EmbeddingApiRequest(
-                            request.requestId(), request.modelVersion(), request.templateVersion(), request.profile()))
+                    .body(request)
                     .retrieve()
                     .body(EmbeddingApiResponse.class);
 
@@ -63,9 +66,37 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         }
     }
 
-    private record EmbeddingApiRequest(String requestId, String modelVersion, int templateVersion, EmbeddingProfile profile) {
+    @Override
+    public AttractionEmbeddingBatchResponse embedAttractions(AttractionEmbeddingBatchRequest request) {
+        try {
+            AttractionEmbeddingBatchApiResponse response = restClient.post()
+                    .uri("/embeddings/batch")
+                    .body(request)
+                    .retrieve()
+                    .body(AttractionEmbeddingBatchApiResponse.class);
+            if (response == null) {
+                throw new AttractionEmbeddingServiceException("MALFORMED_RESPONSE", false, null);
+            }
+            return new AttractionEmbeddingBatchResponse(response.dimension(), response.items() == null ? null
+                    : response.items().stream()
+                            .map(item -> new AttractionEmbeddingBatchResponse.Item(item.id(), item.embeddingBase64()))
+                            .toList());
+        } catch (RestClientResponseException e) {
+            int status = e.getStatusCode().value();
+            log.warn("Attraction embedding batch returned status={}", status);
+            throw new AttractionEmbeddingServiceException("HTTP_" + status, status == 429 || e.getStatusCode().is5xxServerError(), e);
+        } catch (ResourceAccessException e) {
+            log.warn("Attraction embedding batch unreachable/timeout: {}", e.getClass().getSimpleName());
+            throw new AttractionEmbeddingServiceException("TIMEOUT", true, e);
+        }
     }
 
     private record EmbeddingApiResponse(String embeddingBase64, int dimension) {
+    }
+
+    private record AttractionEmbeddingBatchApiResponse(int dimension, java.util.List<AttractionEmbeddingBatchApiItem> items) {
+    }
+
+    private record AttractionEmbeddingBatchApiItem(String id, String embeddingBase64) {
     }
 }

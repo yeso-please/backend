@@ -15,7 +15,6 @@ public class EmbeddingProperties {
      * — 실패는 job PENDING/FAILED로 흡수되고 submission 자체는 항상 성공해야 하기 때문이다. */
     private String baseUrl = "";
     private String modelVersion = "mminilm-l12-v1";
-    private int templateVersion = 1;
     private int expectedDimension = 384;
     private int timeoutMillis = 5000;
     private int maxAttempts = 5;
