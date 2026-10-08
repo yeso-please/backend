@@ -3,6 +3,9 @@ package com.yeso.backend.trip.application.course;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService;
+import com.yeso.backend.attraction.application.region.RestaurantQueryService;
+import com.yeso.backend.attraction.application.region.RestaurantQueryService.Candidate;
+import com.yeso.backend.attraction.application.region.RestaurantQueryService.RegionRestaurants;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService.CourseCandidate;
 import com.yeso.backend.attraction.domain.Attraction;
 import com.yeso.backend.attraction.domain.Region;
@@ -52,9 +55,12 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SplittableRandom;
+import java.util.random.RandomGenerator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -68,6 +74,7 @@ import java.util.stream.Collectors;
 public class CourseService {
 
     private static final String RELAXED = "RELAXED";
+    private static final int MEAL_RESTAURANT_RADIUS_METERS = 5_000;
 
     private final TripService tripService;
     private final TripPlanRepository tripPlanRepository;
@@ -79,6 +86,7 @@ public class CourseService {
     private final OnboardingQueryService onboardingQueryService;
     private final PreferenceService preferenceService;
     private final CourseGenerator courseGenerator;
+    private final RestaurantQueryService restaurantQueryService;
     private final EntityManager entityManager;
     private final Clock clock;
 
@@ -120,10 +128,14 @@ public class CourseService {
                 requesterVector, attractionVectors, officialCourses, randomOnly), new SplittableRandom());
 
         courseItemRepository.deleteByTripPlanId(tripId);
+        User requester = entityManager.getReference(User.class, userId);
+        LocalDateTime now = LocalDateTime.now(clock);
+        MealAssigner mealAssigner = new MealAssigner(region, restaurantQueryService.loadTourApi(region.getSigCd()));
         for (Day day : result.days()) {
             int order = 0;
+            CourseCandidate previousAttraction = null;
             for (Item item : day.items()) {
-                courseItemRepository.save(switch (item) {
+                CourseItem saved = courseItemRepository.save(switch (item) {
                     case AttractionItem attraction -> CourseItem.attraction(
                             trip, day.dayIndex(), order,
                             entityManager.getReference(Attraction.class, attraction.attraction().attractionId()),
@@ -131,12 +143,15 @@ public class CourseService {
                             CourseItemSource.RECOMMEND, attraction.reason());
                     case CourseGeneration.MealItem meal -> CourseItem.meal(trip, day.dayIndex(), order, meal.mealType());
                 });
+                if (item instanceof AttractionItem attraction) {
+                    previousAttraction = attraction.attraction();
+                } else {
+                    mealAssigner.assign(saved, previousAttraction, requester, now);
+                }
                 order++;
             }
         }
 
-        User requester = entityManager.getReference(User.class, userId);
-        LocalDateTime now = LocalDateTime.now(clock);
         trip.setScheduleDensity(density);
         trip.setTitle(result.title());
         trip.setTitleSource(CourseTitleSource.RULE);
@@ -153,6 +168,43 @@ public class CourseService {
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
                 .toList();
         return view(trip, CourseResponse.PARTICIPANT, densityWarnings);
+    }
+
+    /**
+     * 식사 슬롯마다 TourAPI 식당을 자동 배정한다(5-1). 지역 식당은 생성당 한 번만 읽고, 기준점은 5-5와 같다
+     * (그날 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 코스에서 같은 식당은 한 번만 쓴다.
+     */
+    private final class MealAssigner {
+        private final Region region;
+        private final RegionRestaurants restaurants;
+        private final MealRestaurantPicker picker = new MealRestaurantPicker();
+        private final RandomGenerator random = new SplittableRandom();
+        private final Set<String> used = new HashSet<>();
+
+        MealAssigner(Region region, RegionRestaurants restaurants) {
+            this.region = region;
+            this.restaurants = restaurants;
+        }
+
+        void assign(CourseItem meal, CourseCandidate previousAttraction, User requester, LocalDateTime now) {
+            double lat;
+            double lng;
+            if (previousAttraction != null) {
+                lat = previousAttraction.lat();
+                lng = previousAttraction.lng();
+            } else if (region.getLat() != null && region.getLng() != null) {
+                lat = region.getLat();
+                lng = region.getLng();
+            } else {
+                return;
+            }
+            List<Candidate> nearest = restaurants.nearest(lat, lng, MEAL_RESTAURANT_RADIUS_METERS, Integer.MAX_VALUE);
+            picker.pick(nearest, used, random).ifPresent(candidate -> {
+                used.add(candidate.externalId());
+                courseMealRestaurantRepository.save(CourseMealRestaurant.of(
+                        meal, RestaurantService.tourApiSnapshot(candidate), requester, now));
+            });
+        }
     }
 
     // ---------- 5-2 ----------

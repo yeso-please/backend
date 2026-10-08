@@ -165,13 +165,7 @@ public class CourseEditService {
         LocalDateTime now = LocalDateTime.now(clock);
         CourseMealRestaurant selected = restaurantRepository.findById(slot.getId()).orElse(null);
         if (selected == null) {
-            selected = new CourseMealRestaurant(slot, snapshot.provider(), snapshot.externalId(), snapshot.name(),
-                    snapshot.category(), snapshot.address(), snapshot.roadAddress(), snapshot.lat(), snapshot.lng(),
-                    snapshot.phone(), snapshot.placeUrl(), snapshot.imageUrl(), snapshot.representativeMenu(),
-                    snapshot.evidenceLabels(), snapshot.sources().stream()
-                            .map(source -> new CourseMealRestaurant.Source(source.name(), source.url(),
-                                    source.fetchedAt() == null ? null : source.fetchedAt().toString())).toList(),
-                    user, now);
+            selected = CourseMealRestaurant.of(slot, snapshot, user, now);
             restaurantRepository.save(selected);
         } else {
             selected.replace(snapshot, user, now);

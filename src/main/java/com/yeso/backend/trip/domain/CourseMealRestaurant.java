@@ -121,6 +121,19 @@ public class CourseMealRestaurant {
         this.selectedAt = selectedAt;
     }
 
+    public static CourseMealRestaurant of(
+            CourseItem courseItem, RestaurantSnapshot snapshot, User selectedBy, LocalDateTime selectedAt) {
+        return new CourseMealRestaurant(
+                courseItem, snapshot.provider(), snapshot.externalId(), snapshot.name(), snapshot.category(),
+                snapshot.address(), snapshot.roadAddress(), snapshot.lat(), snapshot.lng(), snapshot.phone(),
+                snapshot.placeUrl(), snapshot.imageUrl(), snapshot.representativeMenu(), snapshot.evidenceLabels(),
+                snapshot.sources().stream()
+                        .map(source -> new Source(source.name(), source.url(),
+                                source.fetchedAt() == null ? null : source.fetchedAt().toString()))
+                        .toList(),
+                selectedBy, selectedAt);
+    }
+
     public void replace(RestaurantSnapshot snapshot, User selectedBy, LocalDateTime selectedAt) {
         this.provider = snapshot.provider();
         this.externalId = snapshot.externalId();

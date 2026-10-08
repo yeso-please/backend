@@ -303,6 +303,94 @@ class CourseApiIntegrationTest extends IntegrationTest {
     }
 
     @Nested
+    @DisplayName("5-1 식사 슬롯 식당 자동 배정")
+    class MealRestaurants {
+
+        /** TourAPI 식당 하나를 넣는다. */
+        private void tourApiRestaurant(String externalId, double lat, double lng) {
+            Long id = jdbc.queryForObject("""
+                    insert into app.restaurants (region_id, name, category, lat, lng)
+                    values (?, ?, '한식', ?, ?) returning id
+                    """, Long.class, GYEONGJU, "식당" + externalId, lat, lng);
+            jdbc.update("""
+                    insert into app.restaurant_sources (restaurant_id, provider, external_id, content_type_id, source_name, fetched_at)
+                    values (?, 'TOUR_API', ?, 39, '한국관광공사', now())
+                    """, id, externalId);
+        }
+
+        /** 어느 관광지에서 시작해도 반경 5,000m 안에 식당이 있도록 관광지마다 근처에 셋씩 둔다. */
+        private void restaurantsNearEveryAttraction() {
+            for (int spot = 0; spot < 12; spot++) {
+                for (int i = 0; i < 3; i++) {
+                    tourApiRestaurant("t" + spot + "-" + i, 35.80 + spot * 0.005 + i * 0.0005, 129.20 + spot * 0.005);
+                }
+            }
+        }
+
+        private List<String> assignedExternalIds() {
+            return jdbc.queryForList("select external_id from app.course_meal_restaurants order by external_id", String.class);
+        }
+
+        @Test
+        @DisplayName("식당이 충분하면 모든 식사 슬롯에 TourAPI 식당이 중복 없이 채워진다")
+        void fillsEveryMealSlotWithoutDuplicates() throws Exception {
+            restaurantsNearEveryAttraction();
+            Long tripId = tripInGyeongju(creator);
+
+            MvcResult result = generate(creator, tripId, "{\"version\":0}");
+
+            String body = result.getResponse().getContentAsString();
+            List<Object> restaurants = JsonPath.read(body, "$.days[*].items[?(@.type == 'MEAL')].restaurant");
+            assertThat(restaurants).hasSize(4).doesNotContainNull();
+            assertThat(assignedExternalIds()).hasSize(4).doesNotHaveDuplicates();
+            assertThat(jdbc.queryForList("select distinct provider from app.course_meal_restaurants", String.class))
+                    .containsExactly("TOUR_API");
+            assertThat(jdbc.queryForObject("select count(distinct selected_by_user_id) from app.course_meal_restaurants",
+                    Integer.class)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("식당이 슬롯보다 적으면 있는 만큼만 중복 없이 채우고 나머지는 null이다")
+        void fewerRestaurantsThanSlots() throws Exception {
+            tourApiRestaurant("t1", 35.828, 129.228);
+            tourApiRestaurant("t2", 35.829, 129.228);
+            Long tripId = tripInGyeongju(creator);
+
+            MvcResult result = generate(creator, tripId, "{\"version\":0}");
+
+            assertThat(result.getResponse().getStatus()).isEqualTo(201);
+            assertThat(assignedExternalIds()).containsExactly("t1", "t2");
+            List<Object> restaurants = JsonPath.read(result.getResponse().getContentAsString(),
+                    "$.days[*].items[?(@.type == 'MEAL')].restaurant");
+            assertThat(restaurants.stream().filter(java.util.Objects::isNull).count()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("기준점에서 반경 5,000m 밖이거나 다른 지역 식당뿐이면 배정하지 않고 오류도 없다")
+        void noCandidateInRadius() throws Exception {
+            tourApiRestaurant("far", 36.20, 129.225);
+            Long tripId = tripInGyeongju(creator);
+
+            MvcResult result = generate(creator, tripId, "{\"version\":0}");
+
+            assertThat(result.getResponse().getStatus()).isEqualTo(201);
+            assertThat(assignedExternalIds()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("재생성하면 이전 배정은 지우고 새로 뽑는다")
+        void regenerateRedraws() throws Exception {
+            restaurantsNearEveryAttraction();
+            Long tripId = tripInGyeongju(creator);
+            generate(creator, tripId, "{\"version\":0}");
+
+            generate(creator, tripId, "{\"version\":1}");
+
+            assertThat(assignedExternalIds()).hasSize(4).doesNotHaveDuplicates();
+        }
+    }
+
+    @Nested
     @DisplayName("취향 반영 방식")
     class TasteMode {
 

@@ -877,7 +877,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
-| `items[].restaurant` | 식사 슬롯에 고른 식당 스냅샷(`RestaurantSnapshot`). 없으면 `null`이고 화면에는 "미정"으로 보인다 |
+| `items[].restaurant` | 식사 슬롯의 식당 스냅샷(`RestaurantSnapshot`). 코스 생성 시 자동 배정([5-1](#5-1-코스-생성재생성))되거나 사용자가 고른다. 후보가 없거나 해제했으면 `null`이고 화면에는 "미정"으로 보인다 |
 | 관광지 표시 정보 | 관광지 항목의 `name`·`category`·`thumbnailUrl`·`address`·`lat`·`lng`는 코스를 볼 때마다 현재 관광지 데이터로 채운다(생성 당시 복사가 아니다, 2026-09-27). 추천 대상에서 빠졌으면 `ATTRACTION_NO_LONGER_RECOMMENDABLE` 경고를 붙인다 |
 | `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
 
@@ -989,6 +989,7 @@ POST /api/courses/{tripId}/generate
 - 바꾼 밀도에 지역의 후보가 모자라도(7-1 기준 추첨 불가여도) 거부하지 않는다. 들어가는 만큼 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다. `422 COURSE_INSUFFICIENT_CANDIDATES`는 폴백까지 거쳐도 **하루 최소 1곳**을 채우지 못하는 날이 있을 때만이다.
 - 폴백: 취향 벡터 → `PERSONALIZED`, 없으면 같은 지역 TourAPI 공식 코스 → `TOUR_OFFICIAL`, 부족하면 규칙 코스 → `RULE_BASED`. 모두 실패하면 422.
 - **같은 조건으로 다시 생성해도 다른 코스가 나온다.** 점수 상위 후보(필요한 관광지 수의 3배) 안에서 무작위로 고른다. 점수가 높을수록 뽑힐 확률이 높고, 직전 코스에 있던 곳도 다시 나올 수 있다. 랜덤 여행이 서비스 컨셉이다(2026-09-27).
+- 식당 자동 배정: 식사 슬롯마다 **TourAPI 음식점** 중 하나를 자동으로 채운다. 기준점은 5-5와 같다(그날 그 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 지역의 반경 5,000m 안 식당을 기준점에서 가까운 순으로 정렬해 **이미 이 코스에 배정한 식당을 뺀 상위 10개 중 무작위 1개**를 고른다. 취향은 반영하지 않는다(식당에는 임베딩이 없고 설문에 음식 취향 문항이 없다). 후보가 없으면 배정하지 않고 `restaurant: null`("미정")로 둔다. 같은 코스에서 같은 식당을 두 번 배정하지 않는다. 사용자는 5-3 `SET_RESTAURANT`로 바꾸거나 `CLEAR_RESTAURANT`로 해제한다. 관광지 순서 변경·교체 같은 편집은 식당을 다시 뽑지 않고, 재생성하면 새로 뽑는다.
 - 제목은 장소·순서가 정해진 뒤 만든다. MVP는 규칙 제목(`RULE`)이다. LLM 제목은 선택 기능으로 서버 설정(예: `course.title.llm-enabled`, 기본 `false`)으로 켜며, 실패·timeout이면 규칙 제목으로 대신하고 코스 생성은 성공한다. MVP에 LLM 제공자 계약은 필요 없다.
 
 **Response `201 Created`** — `Course` (`version`은 요청의 `version` + 1)
@@ -1008,7 +1009,7 @@ POST /api/courses/{tripId}/generate
 {"days": [{"dayIndex": 1, "required": 1, "available": 0}]}
 ```
 
-**Side effects** — 기존 항목을 지우고 `course_items`(관광지·식사 순서 목록)에 새 항목을 저장한다. 고른 식당(`course_meal_restaurants`)도 함께 지워진다. 제목·추천 모드·취향 기준 회원은 `trip_plans`에 저장하고, 첫 생성이면 `course_first_generated_at`을 기록한다. `scheduleDensity`를 보냈으면 `trip_plans.schedule_density`도 바꾼다. 임베딩 서버를 요청마다 재시도하지 않는다.
+**Side effects** — 기존 항목을 지우고 `course_items`(관광지·식사 순서 목록)에 새 항목을 저장한다. 고른 식당(`course_meal_restaurants`)도 함께 지우고, 새 식사 슬롯에 자동 배정한 식당(`provider: TOUR_API`, 선택자는 요청자)을 스냅샷으로 저장한다. 제목·추천 모드·취향 기준 회원은 `trip_plans`에 저장하고, 첫 생성이면 `course_first_generated_at`을 기록한다. `scheduleDensity`를 보냈으면 `trip_plans.schedule_density`도 바꾼다. 임베딩 서버를 요청마다 재시도하지 않는다.
 
 ---
 
@@ -1155,6 +1156,8 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 | `radius` | 아니오 | 미터. 기본 5000, 최대 20000 |
 
 검색 기준점은 그날 순서에서 그 식사보다 앞에 있는 관광지 중 **가장 가까운(마지막) 관광지**다. 사이에 다른 식사가 있으면 건너뛴다. 그날 식사 앞에 관광지가 없으면 지역 중심 좌표를 쓴다.
+
+코스 생성(5-1)이 식사 슬롯에 자동 배정하는 식당도 이 추천과 같은 후보·기준점에서 고른다(거리순 상위 10 중 무작위). 사용자는 이 추천이나 5-6으로 다른 식당을 고를 수 있다.
 
 **후보 조건**
 
