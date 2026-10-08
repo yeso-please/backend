@@ -106,6 +106,10 @@ public class TripPlan extends BaseTimeEntity {
     @Column(name = "course_first_generated_at")
     private LocalDateTime courseFirstGeneratedAt;
 
+    /** 종료일이 지난 뒤에 만든 사후 기록 여행인지(지난 여행 기록하기). 만들 때 정해지고 바뀌지 않는다. */
+    @Column(nullable = false)
+    private boolean retroactive;
+
     @Version
     @Column(nullable = false)
     private int version;
@@ -126,6 +130,11 @@ public class TripPlan extends BaseTimeEntity {
     /** 종료일이 오늘보다 앞이면 끝난 여행이다(오늘이 종료일이면 아직 진행 중). */
     public boolean isEnded(LocalDate today) {
         return endDate.isBefore(today);
+    }
+
+    /** 만드는 시점에 이미 끝난 여행이면 사후 기록 여행으로 표시한다. */
+    public void markRetroactiveIfEnded(LocalDate today) {
+        this.retroactive = isEnded(today);
     }
 
     /** 참여자 정원. 가득 차면 초대를 수락할 수 없다(docs/api/trip.md 4장). */

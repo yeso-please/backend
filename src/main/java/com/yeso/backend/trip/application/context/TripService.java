@@ -20,6 +20,7 @@ import com.yeso.backend.trip.domain.TripParticipant;
 import com.yeso.backend.trip.domain.TripPeriod;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripVersionConflictException;
+import com.yeso.backend.trip.infrastructure.TravelDiaryRepository;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
@@ -58,6 +59,7 @@ public class TripService {
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
+    private final TravelDiaryRepository travelDiaryRepository;
     private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final Clock clock;
@@ -87,6 +89,7 @@ public class TripService {
         requireNoConflict(userId, startDate, startDate.plusDays(nights));
 
         TripPlan tripPlan = new TripPlan(user, startDate, nights, transport, request.originLat(), request.originLng());
+        tripPlan.markRetroactiveIfEnded(LocalDate.now(clock));
         tripPlanRepository.save(tripPlan);
         tripParticipantRepository.save(TripParticipant.creator(tripPlan, user));
 
@@ -184,7 +187,7 @@ public class TripService {
      */
     public boolean joinAsMember(Long userId, Long tripId, Long invitationId) {
         TripPlan tripPlan = tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
-        requireNotEnded(tripPlan);
+        requireInvitable(tripPlan);
         User user = lockOnboardedUser(userId);
         if (tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId)) {
             return false;
@@ -213,8 +216,31 @@ public class TripService {
         return tripPlan;
     }
 
-    /** 종료일이 지난 여행은 읽기 전용이다. 여행을 바꾸는 유스케이스가 먼저 호출한다. */
+    /**
+     * 여행 행을 잠그고 참여자 여행을 돌려준다. 여행기가 만들어지는 순간 코스·지역 편집과 겹치지 않게 한다
+     * (여행기는 만들 때의 지역·제목을 복사한다).
+     */
+    public TripPlan requireParticipantTripForUpdate(Long userId, Long tripId) {
+        requireParticipantTrip(userId, tripId);
+        return tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
+    }
+
+    /**
+     * 종료일이 지난 여행은 읽기 전용이다. 여행을 바꾸는 유스케이스가 먼저 호출한다. 예외로 사후 기록 여행은
+     * 여행기(어느 참여자의 것이든)가 하나도 없는 동안 고칠 수 있다.
+     */
     public void requireNotEnded(TripPlan tripPlan) {
+        if (!tripPlan.isEnded(LocalDate.now(clock))) {
+            return;
+        }
+        if (tripPlan.isRetroactive() && !travelDiaryRepository.existsByTripId(tripPlan.getId())) {
+            return;
+        }
+        throw new TripEndedException(tripPlan.getId());
+    }
+
+    /** 초대 발급·수락 검사. 사후 기록 여행은 혼자 쓰는 기록이라 종료일이 지나면 항상 막는다. */
+    public void requireInvitable(TripPlan tripPlan) {
         if (tripPlan.isEnded(LocalDate.now(clock))) {
             throw new TripEndedException(tripPlan.getId());
         }
@@ -262,7 +288,7 @@ public class TripService {
     }
 
     private LocalDate validateStartDate(LocalDate startDate) {
-        if (startDate == null || !startDate.isAfter(LocalDate.now(clock))) {
+        if (startDate == null) {
             throw new InvalidStartDateException();
         }
         return startDate;

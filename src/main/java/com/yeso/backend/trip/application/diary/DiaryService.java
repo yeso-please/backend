@@ -62,7 +62,7 @@ public class DiaryService {
     private final Clock clock;
 
     public DiaryResponse create(Long userId, Long tripId, CreateDiaryRequest request) {
-        TripPlan trip = tripService.requireParticipantTrip(userId, tripId);
+        TripPlan trip = tripService.requireParticipantTripForUpdate(userId, tripId);
         if (!trip.isEnded(LocalDate.now(clock))) {
             throw error(ErrorCode.TRIP_NOT_ENDED, "여행 종료일이 지난 뒤 여행기를 작성할 수 있습니다.");
         }
@@ -140,10 +140,6 @@ public class DiaryService {
         DiaryPhoto photo = photoRepository.findByIdAndDiaryId(photoId, diaryId)
                 .orElseThrow(() -> error(ErrorCode.DIARY_PHOTO_NOT_FOUND, "여행기 사진을 찾을 수 없습니다."));
         List<DiaryPhoto> photos = photoRepository.findByDiaryIdOrderByOrderIndexAscIdAsc(diaryId);
-        if (diary.getStatus() == DiaryStatus.PUBLISHED && photos.size() == 1) {
-            throw error(ErrorCode.DIARY_NOT_PUBLISHABLE, "발행된 여행기는 사진을 한 장 이상 유지해야 합니다.",
-                    Map.of("missing", List.of("PHOTO")));
-        }
         String objectKey = photo.getObjectKey();
         String thumbnailKey = photo.getThumbnailKey();
         photoRepository.delete(photo);
@@ -180,7 +176,6 @@ public class DiaryService {
         if (diary.getStatus() == DiaryStatus.PUBLISHED) return response(userId, diary, true);
         List<String> missing = new ArrayList<>();
         if (diary.getTitle() == null || diary.getTitle().isBlank()) missing.add("TITLE");
-        if (photoRepository.countByDiaryId(diaryId) == 0) missing.add("PHOTO");
         if (!missing.isEmpty()) {
             throw error(ErrorCode.DIARY_NOT_PUBLISHABLE, "여행기를 발행할 수 없습니다.", Map.of("missing", missing));
         }

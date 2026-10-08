@@ -11,6 +11,7 @@
 - 추천은 **요청한 사람의 취향**으로 한다. 최초 코스는 생성자만 만들고(생성자가 탈퇴했으면 남은 참여자), 이후 재생성·대체 후보는 누른 사람 기준이다.
 - 참여하지 않은 사람(비회원 포함)에게는 공유 링크로 **이미 만들어진 코스의 조회만** 허용한다(4-13). share session은 `/api/shared/**`에서만 인정한다(2026-09-25).
 - **종료일이 지난 여행은 읽기 전용**이다. 지역·코스·이동수단 변경, 초대 발급·수락은 `409 TRIP_ENDED`. 조회, 공유 링크, 탈퇴는 된다. "종료일이 지났다"는 `endDate < 오늘`(Asia/Seoul).
+- **예외: 사후 기록(`retroactive`) 여행.** 시작일에 과거를 고를 수 있고(3-3), 종료일이 오늘 이전이면 여행이 `retroactive: true`로 만들어진다. 이 여행은 **여행기가 하나도 없는 동안** 지역·코스·이동수단을 정하고 고칠 수 있다(`TRIP_ENDED` 대신 통과). 어느 참여자든 여행기를 만들면(6-1) 그 여행은 일반 종료 여행처럼 읽기 전용이 되고, 여행기를 모두 삭제하면 다시 편집할 수 있다. 사후 기록 여행의 초대 발급·수락은 항상 `409 TRIP_ENDED`다(혼자 쓰는 기록). 일반 여행(`retroactive: false`)은 종료일이 지나면 계속 읽기 전용이다.
 
 ---
 
@@ -34,12 +35,14 @@
   "regionSelection": null,
   "scheduleDensity": null,
   "hasCourse": false,
+  "retroactive": false,
   "version": 0
 }
 ```
 
 | 필드 | 설명 |
 |---|---|
+| `retroactive` | 사후 기록 여행인지. 만들 때 종료일이 오늘(Asia/Seoul) 이전이면 `true`, 이후 바뀌지 않는다. 날짜가 같은 일반 여행이 시간이 지나 끝나도 `false`로 남는다 |
 | `transport` | `WALK` \| `CAR` \| `PUBLIC_TRANSIT` |
 | `regionSigCd`, `regionSelection`, `scheduleDensity` | 지역을 정하기(3-7) 전에는 `null`. `regionSelection`은 `RANDOM` \| `CONDITIONAL` \| `MANUAL`. `scheduleDensity`는 3-7에서 정하고, 코스가 생긴 뒤에는 5-1에서만 바뀐다 |
 | `hasCourse` | 코스에 일정 항목이 있는지. 3-7 `replaceCourse`로 비운 코스는 `false` |
@@ -49,7 +52,7 @@
 
 | code | HTTP | 상황 |
 |---|---:|---|
-| `TRIP_INVALID_START_DATE` | 400 | 시작일이 오늘이거나 과거 |
+| `TRIP_INVALID_START_DATE` | 400 | 시작일이 없거나 날짜 형식이 아님(과거 날짜는 허용) |
 | `TRIP_INVALID_NIGHTS` | 400 | `nights`가 0~6 밖 |
 | `TRIP_INVALID_TRANSPORT` | 400 | 허용하지 않는 이동수단 |
 | `TRIP_INVALID_ORIGIN` | 400 | 출발지 lat·lng 중 하나만 있거나 범위 밖 |
@@ -57,7 +60,7 @@
 | `TRIP_DATE_OVERLAP` | 409 | 내가 만들었거나 참여 중인 여행과 날짜가 겹침. `details.conflicts` 포함 |
 | `TRIP_CONTEXT_LOCKED` | 409 | 코스가 있는 여행의 지역·밀도를 `replaceCourse: true` 없이 바꾸려 함(3-7). 메시지는 확인 후 다시 보내라고 안내한다 |
 | `TRIP_VERSION_CONFLICT` | 409 | 보낸 `version`이 현재 값과 다름(3-5·3-7·5-1·5-3 공통) |
-| `TRIP_ENDED` | 409 | 종료일이 지난 여행을 바꾸려 함 |
+| `TRIP_ENDED` | 409 | 종료일이 지난 여행을 바꾸려 함. 사후 기록 여행은 여행기를 만든 뒤부터, 초대는 처음부터 |
 | `ONBOARDING_REQUIRED` | 409 | 최초 설문을 마치지 않고 여행을 만들려 함 |
 | `DRAW_INVALID_MODE` | 400 | `mode` 값 오류 |
 | `DRAW_NO_CONDITION_SELECTED` | 400 | `CONDITIONAL`인데 조건이 비었음 |
@@ -125,7 +128,7 @@ POST /api/trips/context/check
 }
 ```
 
-`available=false`여도 200이다. 캘린더에 바로 표시하기 위한 API이기 때문이다.
+`available=false`여도 200이다. 캘린더에 바로 표시하기 위한 API이기 때문이다. 과거 날짜도 시작일로 받는다(3-3).
 
 - `eligibleRegionCount`: 요청한 `nights`의 일수로 RELAXED 기준 추첨 가능한 지역 수(7-1의 `eligibleCount`와 같은 계산). 0이면 프론트는 "이 기간에 맞는 지역이 아직 없어요"라고 경고한다. 만들기를 막지는 않는다.
 - `conflicts[].title`: 코스 제목이 없으면 서버가 대체 제목 `M월 D일부터 N박 N+1일 여행`(당일치기는 `M월 D일 당일 여행`)을 준다(예: `10월 10일부터 2박 3일 여행`).
@@ -152,7 +155,7 @@ POST /api/trips
 
 | 필드 | 타입 | 필수 | 제약 |
 |---|---|---|---|
-| `startDate` | `string` | 예 | 내일 이후 |
+| `startDate` | `string` | 예 | 날짜(과거 가능). 종료일(`startDate + nights`)이 오늘 이전이면 사후 기록 여행(`retroactive: true`)이 된다 |
 | `nights` | `number` | 예 | 0~6 |
 | `transport` | `string` | 예 | `WALK` \| `CAR` \| `PUBLIC_TRANSIT` |
 | `originLat`, `originLng` | `number` | 아니오 | 함께 주거나 함께 생략. 거리 조건 추첨에 쓴다 |
@@ -165,7 +168,9 @@ POST /api/trips
 | 최초 설문 미완료 | 409 | `ONBOARDING_REQUIRED` |
 | 내 여행과 겹침 | 409 | `TRIP_DATE_OVERLAP` |
 
-**Side effects** — `trip_plans` 1건, `trip_participants`에 만든 사람 1건. 같은 사용자의 동시 생성 요청은 직렬화되어 겹치는 두 여행이 함께 생기지 않는다.
+과거 날짜로 만들 때도 최대 6박 제한과 날짜 중복 차단은 그대로다.
+
+**Side effects** — `trip_plans` 1건(`retroactive` 포함), `trip_participants`에 만든 사람 1건. 같은 사용자의 동시 생성 요청은 직렬화되어 겹치는 두 여행이 함께 생기지 않는다.
 
 ---
 
@@ -246,6 +251,7 @@ GET /api/trips?period=UPCOMING
     "nights": 2,
     "participants": [{"userId": 1, "nickname": "나"}, {"userId": 12, "nickname": "여행친구"}],
     "hasCourse": true,
+    "retroactive": false,
     "myDiaryId": null,
     "updatedAt": "2026-10-01T21:00:00"
   }
@@ -253,6 +259,7 @@ GET /api/trips?period=UPCOMING
 ```
 
 - `title`은 코스 제목이다. 코스 제목이 없으면 서버가 대체 제목 `M월 D일부터 N박 N+1일 여행`(당일치기는 `M월 D일 당일 여행`)을 준다(예: `10월 10일부터 2박 3일 여행`). `null`이 아니다.
+- `retroactive`는 사후 기록 여행인지다([3장](#3-여행-context지역) `TripContext`). 프론트는 "지난 여행 기록" 표시와 편집 가능 여부(여행기를 만들기 전까지)에 쓴다.
 - `myDiaryId`는 이 여행에 내가 쓴 여행기 ID, 없으면 `null`이다([6장](#6-여행기사진-지도)).
 - `period`: `UPCOMING`은 `endDate >= 오늘`, `PAST`는 `endDate < 오늘`(Asia/Seoul).
 
@@ -1261,7 +1268,7 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 - 계약 상태: agreed (2026-09-29 결정)
 - 정책 소스: [결정](../product.md#여행기사진-지도-추가-기능)
-- 정책: **여행 종료일이 지난** 여행에 참여자마다 여행기 하나. 여행기는 쓴 사람의 것이며 다른 참여자와 공유되지 않는다. 사진 1~30장. 내 지도에서 핀을 눌러 다시 본다. 친구 공개는 상호 수락 친구만, 링크 공유는 그 여행기만 읽기 전용이다. 전체 지도 공개·피드·댓글·좋아요는 없다.
+- 정책: **여행 종료일이 지난** 여행에 참여자마다 여행기 하나. 여행기는 쓴 사람의 것이며 다른 참여자와 공유되지 않는다. 사진은 선택이며 0~30장. 내 지도에서 핀을 눌러 다시 본다. 친구 공개는 상호 수락 친구만, 링크 공유는 그 여행기만 읽기 전용이다. 전체 지도 공개·피드·댓글·좋아요는 없다.
 - 사진은 private S3 객체에 저장하고 서버 경유 multipart로 업로드한다. 서버가 형식·크기와 이미지 디코딩 가능 여부를 검사하고 썸네일을 생성하며 EXIF를 제거한다. 원본·썸네일은 공개하지 않고, 권한 확인 뒤 5분 만료 서명 URL을 응답한다.
 - 작성자는 초안·발행 상태 모두 여행기를 삭제할 수 있다. 삭제는 하위 사진과 공유 링크·세션을 폐기하고 관련 취향 신호를 제거한다.
 - `LINK`는 링크 소지자에게만 공개한다. 친구에게 자동 공개하지 않으며 친구 공개는 `FRIENDS`를 선택한다.
@@ -1336,7 +1343,8 @@ POST /api/courses/{tripId}/diary
 
 - 제목 기본값은 코스 제목, 코스가 없으면 `"{시작일} 여행"`이다.
 - `courseTitle`, `regionSigCd`, `visitedFrom`, `visitedTo`는 만들 때의 값을 복사해 둔다. 이후 여행이 바뀌거나 삭제돼도 여행기는 그대로다.
-- "여행이 끝났다"는 `endDate < 오늘`(Asia/Seoul)이다.
+- "여행이 끝났다"는 `endDate < 오늘`(Asia/Seoul)이다. 사후 기록 여행(`retroactive`)도 같은 규칙이다.
+- 여행기를 만들면 그 여행은 읽기 전용이 된다(사후 기록 여행의 지역·코스 변경이 `409 TRIP_ENDED`). 코스와 여행기가 어긋나지 않게 하기 위해서다.
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -1391,7 +1399,7 @@ DELETE /api/diaries/{diaryId}/photos/{photoId}
 |---|---:|---|
 | 없거나 작성자가 아님 | 404 | `DIARY_NOT_FOUND`, `DIARY_PHOTO_NOT_FOUND` |
 
-**Response `204 No Content`** — 대표 사진을 지우면 `coverPhotoId`는 남은 첫 사진, 없으면 `null`이 된다. 발행된 여행기의 마지막 사진은 지울 수 없다(`422 DIARY_NOT_PUBLISHABLE`).
+**Response `204 No Content`** — 대표 사진을 지우면 `coverPhotoId`는 남은 첫 사진, 없으면 `null`이 된다. 발행된 여행기의 마지막 사진도 지울 수 있다.
 
 ---
 
@@ -1442,7 +1450,7 @@ POST /api/diaries/{diaryId}/publish
 
 | 오류 | HTTP | code |
 |---|---:|---|
-| 제목 없음·사진 0장 | 422 | `DIARY_NOT_PUBLISHABLE` (`details.missing: ["TITLE", "PHOTO"]`) |
+| 제목 없음 | 422 | `DIARY_NOT_PUBLISHABLE` (`details.missing: ["TITLE"]`). 사진은 없어도 발행된다 |
 
 **Side effects** — `includeInTasteProfile`이 `true`면 취향 신호를 저장한다.
 
@@ -1483,11 +1491,12 @@ GET /api/me/travel-map?from=2026-01-01&to=2026-12-31
 ```json
 [
   {"diaryId": 31, "title": "비 오는 날의 경주", "courseTitle": "신라의 시간을 걷는 2일", "coverPhotoUrl": "https://…",
-   "visitedAt": "2026-10-10", "lat": 35.856, "lng": 129.225, "locationPrecision": "CITY", "visibility": "FRIENDS", "status": "PUBLISHED"}
+   "visitedAt": "2026-10-10", "regionSigCd": "47130", "regionName": "경상북도 경주시", "lat": 35.856, "lng": 129.225, "locationPrecision": "CITY", "visibility": "FRIENDS", "status": "PUBLISHED"}
 ]
 ```
 
 - 핀 위치는 대표 사진 위치, 없으면 지역 중심이다.
+- `regionSigCd`·`regionName`은 여행기를 만들 때 복사해 둔 여행 지역이다(`regionName`은 3-6과 같은 `시도 시군구` 형식). 클라이언트가 지역별로 묶거나 지역 화면에 내 기록을 보여 줄 때 쓴다. 지역을 정하기 전에 만든 여행기는 둘 다 `null`이다(지역은 여행기를 만든 뒤 바뀌지 않는다). 친구 지도(6-8)도 같은 필드를 주며, 위치 정밀도와 무관하게 지역 단위 정보만 담는다.
 - 대표 사진이 없으면 `coverPhotoUrl`은 `null`이다(클라이언트가 기본 이미지를 표시). 다른 사진 URL이나 EXIF는 넣지 않는다.
 
 ---

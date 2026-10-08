@@ -22,7 +22,18 @@ import {
 } from "./ui";
 // 여행기 경험 태그 사전(backend OnboardingQuestionBank.EXPERIENCE_TAGS). AI Hub 설문 전환 후 질문 API에는 없다.
 const DIARY_EXPERIENCE_TAGS = [
-  "자연", "바다", "산", "산책", "골목", "역사", "시장", "로컬 음식", "카페", "휴식", "실내", "체험",
+  "자연",
+  "바다",
+  "산",
+  "산책",
+  "골목",
+  "역사",
+  "시장",
+  "로컬 음식",
+  "카페",
+  "휴식",
+  "실내",
+  "체험",
 ];
 export function Links({ path, kind, title, disabled = false }) {
   const [links, setLinks] = useState([]),
@@ -362,7 +373,8 @@ export function TravelMap() {
                 <Badge>{labels[p.status]}</Badge>
                 <h2>{p.title}</h2>
                 <p>
-                  {p.visitedAt} · {labels[p.visibility]}
+                  {p.regionName || "지역 미정"} · {p.visitedAt} ·{" "}
+                  {labels[p.visibility]}
                 </p>
                 <Button
                   variant="secondary"
@@ -683,7 +695,7 @@ export function Diary({ id, sharedDiary }) {
                   저장
                 </Button>
                 <Button
-                  disabled={busy || !draft.title.trim() || !diary.photos.length}
+                  disabled={busy || !draft.title.trim()}
                   onClick={() =>
                     run(async () => {
                       await save();
@@ -697,7 +709,7 @@ export function Diary({ id, sharedDiary }) {
                 </Button>
               </div>
               <Notice>
-                발행하려면 제목과 사진 1장 이상이 필요합니다. LINK 공개는
+                발행하려면 제목이 필요합니다. 사진은 선택입니다. LINK 공개는
                 친구에게 자동 공개되지 않습니다.
               </Notice>
               {diary.visibility === "LINK" && diary.status === "PUBLISHED" && (

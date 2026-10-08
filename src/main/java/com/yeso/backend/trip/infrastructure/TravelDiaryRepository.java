@@ -14,6 +14,8 @@ public interface TravelDiaryRepository extends JpaRepository<TravelDiary, Long> 
 
     boolean existsByTripIdAndAuthorId(Long tripId, Long authorId);
 
+    boolean existsByTripId(Long tripId);
+
     List<TravelDiary> findByAuthorIdOrderByVisitedFromDescIdDesc(Long authorId);
 
     List<TravelDiary> findByAuthorIdAndVisitedFromGreaterThanEqualAndVisitedFromLessThanEqualOrderByVisitedFromDescIdDesc(
