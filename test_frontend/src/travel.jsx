@@ -11,7 +11,7 @@ import {
   Search,
   Settings2,
 } from "lucide-react";
-import { api, query, tomorrow, seoulToday } from "./api";
+import { api, query, tomorrow, seoulToday, addDays } from "./api";
 import { navigate } from "./main";
 import {
   Button,
@@ -240,7 +240,6 @@ export function Discover({ user }) {
                 <Field
                   label="출발일"
                   type="date"
-                  min={tomorrow()}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
@@ -307,6 +306,13 @@ export function Discover({ user }) {
                 현재 위치 사용
               </Button>
             </details>
+            {date && addDays(date, nights) < seoulToday() && (
+              <Notice>
+                이미 끝난 날짜입니다. 지난 여행 기록으로 만들어지고, 여행기를
+                쓰기 전까지 지역과 코스를 정할 수 있습니다. 친구 초대는 할 수
+                없습니다.
+              </Notice>
+            )}
             {unavailable.length > 0 && (
               <Notice>
                 선택한 기간에 기존 여행 {unavailable.length}개가 있습니다.
@@ -525,7 +531,9 @@ export function Trips() {
                 <MapPin size={29} />
                 <Badge>
                   {t.endDate < seoulToday()
-                    ? "지난 여행"
+                    ? t.retroactive
+                      ? "지난 여행 기록"
+                      : "지난 여행"
                     : t.hasCourse
                       ? "코스 준비됨"
                       : "여행 준비 중"}
@@ -604,9 +612,13 @@ export function Course({ id, user, sharedCourse }) {
     [pins, setPins] = useState(null),
     [pinCategory, setPinCategory] = useState(""),
     [detail, setDetail] = useState(null),
-    [move, setMove] = useState(null);
+    [move, setMove] = useState(null),
+    [hasDiary, setHasDiary] = useState(false);
   const readonly = !!sharedCourse || course?.myRole === "VIEWER";
-  const ended = (course?.endDate || context?.endDate || "9999") < seoulToday();
+  const pastEnded =
+    (course?.endDate || context?.endDate || "9999") < seoulToday();
+  // 지난 여행 기록(retroactive)은 여행기를 쓰기 전까지 고칠 수 있다. 초대는 항상 막힌다.
+  const ended = pastEnded && !(context?.retroactive && !hasDiary);
   const load = async () => {
     if (readonly) return;
     setError(null);
@@ -618,6 +630,12 @@ export function Course({ id, user, sharedCourse }) {
       if (ctx.hasCourse) setCourse(await api(`/courses/${id}`));
       else setCourse(null);
       setParticipants(await api(`/trips/${id}/participants`));
+      if (ctx.retroactive) {
+        const mine = await api("/trips?period=PAST");
+        setHasDiary(
+          !!mine.find((t) => String(t.tripId) === String(id))?.myDiaryId,
+        );
+      }
     } catch (e) {
       setError(e);
     }
@@ -712,10 +730,16 @@ export function Course({ id, user, sharedCourse }) {
           있습니다.
         </Notice>
       )}
+      {pastEnded && !ended && (
+        <Notice>
+          지난 여행 기록 중입니다. 여행기를 쓰면 지역과 코스를 더 바꿀 수
+          없습니다.
+        </Notice>
+      )}
       {links && (
         <TripCollaboration
           id={id}
-          ended={ended}
+          ended={pastEnded}
           participants={participants}
           onError={setError}
         />

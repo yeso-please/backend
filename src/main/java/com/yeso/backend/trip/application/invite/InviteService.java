@@ -50,7 +50,7 @@ public class InviteService {
 
     public InviteResponse createInvite(Long userId, Long tripId, CreateInviteRequest request) {
         TripPlan tripPlan = tripService.requireParticipantTrip(userId, tripId);
-        tripService.requireNotEnded(tripPlan);
+        tripService.requireInvitable(tripPlan);
         int expiresInDays = resolveExpiresInDays(request.expiresInDays());
         User inviter = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
 

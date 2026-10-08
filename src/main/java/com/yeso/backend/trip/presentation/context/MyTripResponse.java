@@ -19,6 +19,7 @@ public record MyTripResponse(
         int nights,
         List<ParticipantSummaryResponse> participants,
         boolean hasCourse,
+        boolean retroactive,
         Long myDiaryId,
         LocalDateTime updatedAt
 ) {
@@ -34,6 +35,7 @@ public record MyTripResponse(
                 tripPlan.getNights(),
                 participants,
                 hasCourse,
+                tripPlan.isRetroactive(),
                 null,
                 tripPlan.getUpdatedAt());
     }

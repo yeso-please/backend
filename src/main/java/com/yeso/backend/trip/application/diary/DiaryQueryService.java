@@ -142,7 +142,9 @@ public class DiaryQueryService {
         }
         var cover = diaryService.coverResponse(diary);
         return new DiaryMapPinResponse(diary.getId(), diary.getTitle(), diary.getCourseTitle(),
-                cover == null ? null : cover.thumbnailUrl(), diary.getVisitedFrom(), lat, lng, precision,
+                cover == null ? null : cover.thumbnailUrl(), diary.getVisitedFrom(),
+                region == null ? null : region.getSigCd(),
+                region == null ? null : region.getProvince() + " " + region.getCity(), lat, lng, precision,
                 diary.getVisibility(), diary.getStatus());
     }
 

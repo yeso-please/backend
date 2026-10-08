@@ -55,7 +55,7 @@ public class FriendInviteService {
         if (!friendQueryService.areFriends(userId, friendUserId)) {
             throw new NotFriendException(friendUserId);
         }
-        tripService.requireNotEnded(tripPlan);
+        tripService.requireInvitable(tripPlan);
         // 같은 여행의 초대 보내기를 직렬화해 대기 중인 초대가 둘 생기지 않게 한다.
         tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
         if (tripService.isParticipant(friendUserId, tripId)) {
@@ -94,7 +94,7 @@ public class FriendInviteService {
         TripPlan tripPlan = tripPlanRepository.lockById(tripId).orElseThrow(FriendInvitationNotFoundException::new);
         TripFriendInvitation invitation = lockReceived(userId, invitationId);
 
-        tripService.requireNotEnded(tripPlan);
+        tripService.requireInvitable(tripPlan);
         if (!invitation.isPending()) {
             throw new InviteAlreadyHandledException();
         }

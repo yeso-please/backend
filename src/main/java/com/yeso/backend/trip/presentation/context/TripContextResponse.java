@@ -16,6 +16,7 @@ public record TripContextResponse(
         String regionSelection,
         String scheduleDensity,
         boolean hasCourse,
+        boolean retroactive,
         int version
 ) {
     public static TripContextResponse of(TripPlan tripPlan, boolean hasCourse) {
@@ -31,6 +32,7 @@ public record TripContextResponse(
                 tripPlan.getRegionSelection(),
                 tripPlan.getScheduleDensity(),
                 hasCourse,
+                tripPlan.isRetroactive(),
                 tripPlan.getVersion());
     }
 }

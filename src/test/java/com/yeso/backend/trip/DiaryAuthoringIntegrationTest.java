@@ -178,16 +178,15 @@ class DiaryAuthoringIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("사진이 없는 여행기는 발행할 수 없다")
-        void publish_withoutPhoto_returnsUnprocessable() throws Exception {
+        @DisplayName("사진이 없는 여행기도 제목이 있으면 발행할 수 있다")
+        void publish_withoutPhoto_succeeds() throws Exception {
             ApiFixtures.Member member = fixtures.onboardedMember();
             Long diaryId = createDiary(member);
 
             mockMvc.perform(post("/api/diaries/{diaryId}/publish", diaryId)
                             .header("Authorization", member.bearer()))
-                    .andExpect(status().isUnprocessableEntity())
-                    .andExpect(jsonPath("$.code").value("DIARY_NOT_PUBLISHABLE"))
-                    .andExpect(jsonPath("$.details.missing[0]").value("PHOTO"));
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PUBLISHED"));
         }
 
         @Test
@@ -214,8 +213,8 @@ class DiaryAuthoringIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("발행된 여행기의 마지막 사진은 삭제할 수 없다")
-        void deleteLastPhoto_fromPublishedDiary_returnsUnprocessable() throws Exception {
+        @DisplayName("발행된 여행기의 마지막 사진도 삭제할 수 있다")
+        void deleteLastPhoto_fromPublishedDiary_succeeds() throws Exception {
             ApiFixtures.Member member = fixtures.onboardedMember();
             Long diaryId = createDiary(member);
             MvcResult upload = mockMvc.perform(multipart("/api/diaries/{diaryId}/photos", diaryId)
@@ -228,9 +227,8 @@ class DiaryAuthoringIntegrationTest extends IntegrationTest {
 
             mockMvc.perform(delete("/api/diaries/{diaryId}/photos/{photoId}", diaryId, photoId)
                             .header("Authorization", member.bearer()))
-                    .andExpect(status().isUnprocessableEntity())
-                    .andExpect(jsonPath("$.code").value("DIARY_NOT_PUBLISHABLE"));
-            assertThat(fakeDiaryPhotoStorage.size()).isEqualTo(2);
+                    .andExpect(status().isNoContent());
+            assertThat(fakeDiaryPhotoStorage.size()).isZero();
         }
 
         @Test

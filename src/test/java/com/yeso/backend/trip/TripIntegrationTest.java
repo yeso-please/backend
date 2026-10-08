@@ -170,20 +170,12 @@ class TripIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("startDate가 오늘이거나 과거면 400 TRIP_INVALID_START_DATE이고 내일이면 허용된다")
-        void create_startDateNotInFuture_returnsBadRequest() throws Exception {
+        @DisplayName("startDate는 과거와 오늘도 허용한다(지난 여행 기록하기)")
+        void create_startDateInPastOrToday_isAllowed() throws Exception {
             String token = onboardedToken();
 
-            for (LocalDate startDate : new LocalDate[]{clock.today(), inDays(-1)}) {
-                mockMvc.perform(post("/api/trips")
-                                .header("Authorization", ApiFixtures.bearer(token))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(createBody(startDate, 1, "WALK")))
-                        .andExpect(status().isBadRequest())
-                        .andExpect(jsonPath("$.code").value("TRIP_INVALID_START_DATE"));
-            }
-
-            assertThat(createTripStatus(token, inDays(1), 1)).isEqualTo(201);
+            assertThat(createTripStatus(token, inDays(-10), 1)).isEqualTo(201);
+            assertThat(createTripStatus(token, clock.today(), 0)).isEqualTo(201);
         }
 
         @Test
