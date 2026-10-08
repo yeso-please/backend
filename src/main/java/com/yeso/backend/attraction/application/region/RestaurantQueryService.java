@@ -23,15 +23,33 @@ public class RestaurantQueryService {
     }
 
     public List<Candidate> findTourApi(String sigCd, double originLat, double originLng, int radiusMeters) {
-        return repository.findTourApi(sigCd).stream()
-                .map(row -> new Candidate(row.externalId(), row.name(), row.category(), row.address(),
-                        row.roadAddress(), row.phone(), row.lat(), row.lng(), row.placeUrl(), row.imageUrl(),
-                        row.representativeMenu(), row.sourceName(), row.sourceUrl(), row.fetchedAt(),
-                        (int) Math.round(distanceKm(originLat, originLng, row.lat(), row.lng()) * 1000)))
-                .filter(candidate -> candidate.distanceMeters() <= radiusMeters)
-                .sorted(Comparator.comparingInt(Candidate::distanceMeters).thenComparing(Candidate::externalId))
-                .limit(20)
-                .toList();
+        return loadTourApi(sigCd).nearest(originLat, originLng, radiusMeters, 20);
+    }
+
+    /** 지역의 TourAPI 식당을 한 번 읽어 둔다. 기준점이 여러 개여도 DB를 다시 읽지 않고 {@link RegionRestaurants#nearest}로 거른다. */
+    public RegionRestaurants loadTourApi(String sigCd) {
+        return new RegionRestaurants(repository.findTourApi(sigCd));
+    }
+
+    public static final class RegionRestaurants {
+        private final List<RestaurantQueryRepository.Row> rows;
+
+        private RegionRestaurants(List<RestaurantQueryRepository.Row> rows) {
+            this.rows = rows;
+        }
+
+        /** 기준점에서 {@code radiusMeters} 이내인 식당을 가까운 순으로 최대 {@code limit}개. */
+        public List<Candidate> nearest(double originLat, double originLng, int radiusMeters, int limit) {
+            return rows.stream()
+                    .map(row -> new Candidate(row.externalId(), row.name(), row.category(), row.address(),
+                            row.roadAddress(), row.phone(), row.lat(), row.lng(), row.placeUrl(), row.imageUrl(),
+                            row.representativeMenu(), row.sourceName(), row.sourceUrl(), row.fetchedAt(),
+                            (int) Math.round(distanceKm(originLat, originLng, row.lat(), row.lng()) * 1000)))
+                    .filter(candidate -> candidate.distanceMeters() <= radiusMeters)
+                    .sorted(Comparator.comparingInt(Candidate::distanceMeters).thenComparing(Candidate::externalId))
+                    .limit(limit)
+                    .toList();
+        }
     }
 
     private static double distanceKm(double lat1, double lng1, double lat2, double lng2) {

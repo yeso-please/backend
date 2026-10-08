@@ -68,13 +68,7 @@ public class RestaurantService {
             return new OriginAndCandidates(origin, candidates);
         });
         List<RestaurantCandidateResponse> tourApi = found.candidates().stream().map(candidate -> {
-            RestaurantSnapshot snapshot = new RestaurantSnapshot(
-                    "TOUR_API", candidate.externalId(), candidate.name(), candidate.category(),
-                    candidate.address(), candidate.roadAddress(), candidate.lat(), candidate.lng(),
-                    candidate.phone(), candidate.placeUrl(), candidate.imageUrl(), candidate.representativeMenu(),
-                    List.of("한국관광공사 등록 음식점"),
-                    List.of(new RestaurantSnapshot.Source(candidate.sourceName(), candidate.sourceUrl(),
-                            candidate.fetchedAt())));
+            RestaurantSnapshot snapshot = tourApiSnapshot(candidate);
             return RestaurantCandidateResponse.of(
                     selectionTokenService.issue(tripId, itemId, snapshot), snapshot, candidate.distanceMeters());
         }).toList();
@@ -83,6 +77,17 @@ public class RestaurantService {
                 new Section("FARM_RESTAURANT", "농촌진흥청 농가맛집", List.of()),
                 new Section("MODEL_RESTAURANT", "지자체 모범·향토음식점", List.of()),
                 new Section("GOOD_PRICE", "착한가격업소", List.of())));
+    }
+
+    /** 5-5 추천과 코스 생성의 자동 배정(5-1)이 같은 스냅샷을 쓴다. */
+    static RestaurantSnapshot tourApiSnapshot(Candidate candidate) {
+        return new RestaurantSnapshot(
+                "TOUR_API", candidate.externalId(), candidate.name(), candidate.category(),
+                candidate.address(), candidate.roadAddress(), candidate.lat(), candidate.lng(),
+                candidate.phone(), candidate.placeUrl(), candidate.imageUrl(), candidate.representativeMenu(),
+                List.of("한국관광공사 등록 음식점"),
+                List.of(new RestaurantSnapshot.Source(candidate.sourceName(), candidate.sourceUrl(),
+                        candidate.fetchedAt())));
     }
 
     private record OriginAndCandidates(RestaurantOriginResponse origin, List<Candidate> candidates) {
