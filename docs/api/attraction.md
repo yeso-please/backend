@@ -113,8 +113,10 @@ GET /api/regions/{sigCd}/card
   "province": "경상북도",
   "city": "경주시",
   "title": "천년의 시간이 머무는 도시",
+  "tagline": "왕릉 사이 고요한 길을 걷는 곳",
+  "tags": ["역사", "야경", "산책"],
   "introduction": ["첫 문단…", "둘째 문단…"],
-  "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 1유형"},
+  "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 1유형", "attractionId": null},
   "characteristics": ["역사 유적", "야경"],
   "historyHighlights": ["신라의 수도"],
   "landmarks": [{"attractionId": 5012, "name": "대릉원", "thumbnailUrl": "https://…"}],
@@ -130,10 +132,15 @@ GET /api/regions/{sigCd}/card
 | `introduction` | 소개 콘텐츠가 있을 때 문단 배열. 콘텐츠가 없으면 빈 배열 |
 | `landmarks` | 승인된 소개문이 근거로 쓴 대표 관광지 중 추천 가능한 것 최대 3개, 소개문에 나온 순서. 나중에 추천 불가가 된 곳은 빠진다 |
 | `characteristics`, `historyHighlights` | 승인된 지역 소개 콘텐츠의 태그. 없으면 빈 배열 |
-| `heroImage` | 승인된 콘텐츠의 이미지가 검증되지 않았거나 소개 콘텐츠가 없으면 `null` |
+| `tagline` | 지도에서 지역을 눌렀을 때 보이는 한 줄 소개(30자 이내). **사람이 승인한 것만**. 없으면 `null` ([한 줄 소개와 태그](#한-줄-소개와-태그-89)) |
+| `tags` | [태그 사전](#태그-사전)의 값 0~4개, 승인된 것만. 없으면 빈 배열. 화면은 `#`을 붙여 그린다 |
+| `heroImage` | ① 승인된 지역 소개의 검증된 이미지 → ② 없으면 **지역 대표 관광지의 검증된(`VALID`) 첫 이미지** → ③ 둘 다 없으면 `null` |
+| `heroImage.attractionId` | ②로 채웠을 때 그 관광지 ID(화면에서 관광지 상세로 이을 수 있다). ①이면 `null` |
 | `heroImage.license` | 원천이 밝힌 이용 조건. 없으면 `null` |
 
-승인 콘텐츠가 없는 지역에는 도시명을 제목으로 쓰고, 소개·태그·관광지·출처는 빈 배열, `heroImage`와 `updatedAt`은 `null`로 응답한다. 임시 문구·허구 소개를 만들지 않는다.
+승인 콘텐츠가 없는 지역에는 도시명을 제목으로 쓰고, 소개·특징·관광지·출처는 빈 배열, `updatedAt`은 `null`로 응답한다. 임시 문구·허구 소개를 만들지 않는다. `tagline`·`tags`는 지역 소개(`region_contents`)와 따로 승인하므로 소개가 없어도 나올 수 있다.
+
+**대표 관광지**(②와 한 줄 소개 생성의 근거) — 그 지역의 추천 가능 관광지 중 **TourAPI 추천코스(관광공사)에 지점으로 자주 나오는 순**, 같으면 상세 설명이 긴 순, 그다음 ID 순. 대표 사진은 원천 이미지라 생성물이 아니므로 승인 없이 쓴다(2026-10-10). AI Hub 방문 빈도는 쓰지 않는다(이용 조건상 학습·평가용).
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -206,7 +213,10 @@ GET /api/attractions/{attractionId}
   "estimated": true,
   "recommendable": true,
   "notRecommendableReasons": [],
-  "sources": [{"name": "한국관광공사 TourAPI", "contentId": "126207", "fetchedAt": "2026-09-30T00:00:00"}]
+  "sources": [{"name": "한국관광공사 TourAPI", "contentId": "126207", "fetchedAt": "2026-09-30T00:00:00"}],
+  "oneLine": "왕릉 사이로 난 고요한 길을 걷는 곳",
+  "tags": ["역사", "산책"],
+  "summaryBasis": "SOURCE_SUMMARY"
 }
 ```
 
@@ -217,7 +227,37 @@ GET /api/attractions/{attractionId}
 | `useTime`, `restDate` | 원천 문자열 그대로. 없으면 `null` |
 | `estimatedDurationMinutes` | 유형별 기본 체류시간(60·90·120분). 실측이 아니다 |
 | `notRecommendableReasons` | `MISSING_DESCRIPTION` \| `MISSING_IMAGE` \| `MISSING_COORDINATE` \| `QUALITY_ISSUE` |
+| `oneLine` | 카드용 한 줄 소개(50자 이내). **사람이 승인한 것만**. 없으면 `null`. `description`(원천)과 다른 필드다 |
+| `tags` | [태그 사전](#태그-사전)의 값 0~4개, 승인된 것만. 없으면 빈 배열 |
+| `summaryBasis` | `SOURCE_SUMMARY`(원천 설명을 요약) \| `NAME_CATEGORY`(설명이 없어 이름·분류만으로 쓴 문장 — 화면에 "AI가 이름·분류로 만든 소개"를 표시한다) \| `oneLine`이 없으면 `null` |
 
 | 오류 | HTTP | code |
 |---|---:|---|
 | 없는 관광지, 또는 쇼핑·숙박·음식점·캠핑장(코스 후보가 아닌 장소) | 404 | `ATTRACTION_NOT_FOUND` |
+
+---
+
+### 한 줄 소개와 태그 (#89)
+
+지역 카드(7-2)의 `tagline`·`tags`와 관광지 상세(7-4)의 `oneLine`·`tags`·`summaryBasis`는 **LLM 초안 → 사람 승인**으로 만든다(2026-10-10).
+
+- **저장**: `attraction_summaries`(관광지당 1행), `region_summaries`(지역당 1행). 원천 설명(`attractions.description`)과 지역 소개(`region_contents`)를 덮어쓰지 않는다. 상태는 `DRAFT` → `APPROVED` \| `REJECTED`이고 **`APPROVED`만 API에 나간다**.
+- **생성**: ai `POST /summaries/attractions`(10곳씩), `POST /summaries/region`. 입력은 TourAPI 공개 데이터(이름·분류·지역·설명)뿐이다. 회원 정보는 보내지 않는다.
+- **원천 설명이 없는 관광지**는 이름·분류만으로 초안을 만든다(`NAME_CATEGORY`). "LLM으로 없는 설명을 지어내지 않는다"는 규칙의 예외라서 ① 프롬프트가 입력에 없는 사실(경관·역사·메뉴·시설)을 금지하고 ② 사람이 승인해야 나가며 ③ `summaryBasis`로 화면에 구분해 표시한다. `description` 필드는 여전히 원천만 쓴다.
+- **재생성**: 근거(이름·분류·설명·대표 관광지)와 프롬프트 버전의 해시(`source_hash`)가 바뀌면 다시 만든다. 이때 행은 `DRAFT`로 돌아가 다시 승인해야 한다. 같은 입력으로 다시 실행하면 아무것도 바뀌지 않는다.
+- **표시용**이다. 임베딩 문장에 넣지 않는다(넣으면 템플릿 버전을 올리고 벡터를 다시 만들어야 한다).
+- 배치·검수 절차: [runbook](../runbooks/summary-review.md).
+
+#### 태그 사전
+
+2026-10-10 팀 확정. 사전에 없는 태그는 저장하지 않는다(DB 제약).
+
+| 묶음 | 태그 | 정하는 방식 |
+|---|---|---|
+| 자연 | 바다, 산, 숲, 호수·강, 섬, 꽃 | 분류코드 규칙 (꽃은 설명 키워드도) |
+| 역사·문화 | 역사, 전통, 박물관, 사찰 | 분류코드 규칙 |
+| 도시·생활 | 시장, 카페, 야경, 골목 | 분류코드 규칙 + 설명 키워드 |
+| 활동 | 액티비티, 산책, 체험 | 분류코드 규칙 (산책은 설명 키워드도) |
+| 분위기 | 감성여행, 힐링, 가족여행, 데이트 | LLM이 사전 안에서 선택 (일부 분류는 규칙: 웰니스 → 힐링, 동물원·수족관 → 가족여행) |
+
+지역 태그는 지역 관광지 분류 분포에서 8% 이상·3곳 이상인 것(최대 3개)을 규칙으로 붙이고 분위기 태그를 더한다. 규칙 코드표는 ai `tripin_ai/summary/tags.py`.

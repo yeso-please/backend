@@ -9,14 +9,19 @@ import com.yeso.backend.attraction.domain.InvalidAttractionQueryException;
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.attraction.domain.RegionContentNotReadyException;
 import com.yeso.backend.attraction.domain.RegionNotFoundException;
+import com.yeso.backend.attraction.domain.SummaryTags;
 import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository;
 import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.Bounds;
 import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.DetailRow;
 import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.PinRow;
+import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.AttractionSummaryRow;
 import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.RegionContentRow;
+import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.RegionSummaryRow;
+import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.RepresentativeRow;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
 import com.yeso.backend.attraction.presentation.region.AttractionDetailResponse;
 import com.yeso.backend.attraction.presentation.region.AttractionDetailResponse.NotRecommendableReason;
+import com.yeso.backend.attraction.presentation.region.AttractionDetailResponse.SummaryBasis;
 import com.yeso.backend.attraction.presentation.region.AttractionPinsResponse;
 import com.yeso.backend.attraction.presentation.region.RegionCardResponse;
 import com.yeso.backend.attraction.presentation.region.RegionListResponse;
@@ -113,12 +118,15 @@ public class RegionQueryService {
                 .toList();
 
         boolean hasValidHeroImage = content != null && "VALID".equals(content.heroImageStatus());
+        RegionSummaryRow summary = attractionQueryRepository.findApprovedRegionSummary(sigCd).orElse(null);
         return new RegionCardResponse(
                 region.getSigCd(), region.getProvince(), region.getCity(), content == null ? region.getCity() : content.title(),
+                summary == null ? null : summary.tagline(),
+                summary == null ? List.of() : tags(summary.tagsJson()),
                 content == null ? List.of() : paragraphs(content.introduction()),
                 hasValidHeroImage ? new RegionCardResponse.HeroImage(
                         content.heroImageUrl(), content.heroImageSourceName(), content.heroImageSourceUrl(),
-                        content.heroImageLicense()) : null,
+                        content.heroImageLicense(), null) : representativeHeroImage(sigCd),
                 content == null ? List.of() : readList(content.characteristicsJson(), new TypeReference<List<String>>() { }),
                 content == null ? List.of() : commaSeparated(content.historyTags()),
                 landmarks,
@@ -179,14 +187,35 @@ public class RegionQueryService {
                 : List.of(new AttractionDetailResponse.Source(
                         fromTourApi ? TOUR_API_DATASET_NAME : row.sourceSystem(), row.sourceContentId(), row.detailFetchedAt()));
 
+        AttractionSummaryRow summary = attractionQueryRepository.findApprovedAttractionSummary(attractionId).orElse(null);
         return new AttractionDetailResponse(
                 row.id(), row.regionSigCd(), row.name(), AttractionCategory.fromContentType(row.contentTypeId()),
                 row.address(), row.lat(), row.lng(), row.description(), images, row.useTime(), row.restDate(),
                 AttractionCategory.stayMinutesOf(row.contentTypeId()), true, reasons.isEmpty(), List.copyOf(reasons),
-                sources);
+                sources,
+                summary == null ? null : summary.oneLine(),
+                summary == null ? List.of() : tags(summary.tagsJson()),
+                summary == null ? null : SummaryBasis.valueOf(summary.basis()));
     }
 
     // ---------- helpers ----------
+
+    /** 승인된 지역 소개에 쓸 사진이 없으면 대표 관광지의 검증된 사진으로 채운다(원천 이미지라 승인 없이 쓴다). */
+    private RegionCardResponse.HeroImage representativeHeroImage(String sigCd) {
+        return attractionQueryRepository.findRepresentativeAttractions(sigCd, 1).stream()
+                .findFirst()
+                .map(RegionQueryService::heroImageOf)
+                .orElse(null);
+    }
+
+    private static RegionCardResponse.HeroImage heroImageOf(RepresentativeRow row) {
+        return new RegionCardResponse.HeroImage(row.imageUrl(), TOUR_API.equals(row.sourceSystem()) ? TOUR_API_SOURCE_NAME : null,
+                null, row.imageLicense(), row.id());
+    }
+
+    private List<String> tags(String json) {
+        return SummaryTags.filterKnown(readList(json, new TypeReference<List<String>>() { }));
+    }
 
     private Region requireRegion(String sigCd) {
         return regionRepository.findById(sigCd).orElseThrow(() -> new RegionNotFoundException(sigCd));
