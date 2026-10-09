@@ -14,10 +14,17 @@ Docker Desktop만 있으면 Spring backend, `ai` 임베딩 서버, `test_fronten
    ```
 
    다른 곳에 두었으면 실행 전에 `TRIPIN_AI_DIR` 환경변수로 ai 경로를 지정한다.
-3. **`backend/.env`**: 팀에서 안전한 경로로 받는다(git에 없다). 필요한 키는 `DB_URL`, `DB_PASSWORD`, `FLYWAY_PASSWORD`, `JWT_SECRET`(32바이트 이상)이다. 선택 키는 `KAKAO_REST_API_KEY`, `COURSE_RESTAURANT_SELECTION_SECRET`, `GEMINI_API_KEY`다.
+3. **파인튜닝 임베딩 모델**: 추천 모델(`mminilm-l12-ft-b64-v2`, 약 470MB)은 git에 없다. 팀 공유 위치에서 받아 아래 폴더에 푼다.
+
+   ```text
+   ai/data/interim/models/mminilm-l12-ft-b64-v2/final/   ← model.safetensors, config.json, tokenizer.json …
+   ```
+
+   다른 곳에 두었으면 `TRIPIN_MODEL_DIR`로 그 `final` 폴더를 지정한다. 모델이 없으면 AI 서버는 뜨지만 임베딩이 실패하고(`/health`의 `loadError`), backend는 취향 없이 추천한다. backend의 `embedding.model-version`과 AI의 `MODEL_VERSION`이 같아야 하며, 다르면 임베딩 요청이 409다. 학습·평가 근거는 ai `reports/evaluation_rationale.md`.
+4. **`backend/.env`**: 팀에서 안전한 경로로 받는다(git에 없다). 필요한 키는 `DB_URL`, `DB_PASSWORD`, `FLYWAY_PASSWORD`, `JWT_SECRET`(32바이트 이상)이다. 선택 키는 `KAKAO_REST_API_KEY`, `COURSE_RESTAURANT_SELECTION_SECRET`, `GEMINI_API_KEY`다.
    - `DB_URL`의 `sslrootcert` 경로는 각자 PC 기준이어도 된다. RDS CA 인증서는 이미지에 들어 있고 컨테이너가 경로를 바꾼다.
    - 값에 `$`가 있으면 `$$`로 적는다(Compose가 변수로 해석한다).
-4. **RDS 보안 그룹에 내 공인 IP 등록**: AWS 콘솔 권한이 있는 팀원에게 `내 IP/32` 추가를 요청한다. 빠지면 backend가 DB 연결 시간 초과로 뜨지 않는다. `0.0.0.0/0`으로 열지 않는다. 집·학교처럼 네트워크가 바뀌면 IP도 바뀌니 다시 등록한다.
+5. **RDS 보안 그룹에 내 공인 IP 등록**: AWS 콘솔 권한이 있는 팀원에게 `내 IP/32` 추가를 요청한다. 빠지면 backend가 DB 연결 시간 초과로 뜨지 않는다. `0.0.0.0/0`으로 열지 않는다. 집·학교처럼 네트워크가 바뀌면 IP도 바뀌니 다시 등록한다.
 
 ## 2. 실행
 

@@ -121,14 +121,16 @@ class HttpEmbeddingClientTest {
         HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
         var request = new AttractionEmbeddingBatchRequest("mminilm-l12-v1", 2, List.of(
                 new AttractionEmbeddingBatchRequest.Item("101", "경복궁", 14, "서울특별시 종로구",
-                        List.of("궁궐", "역사"), "조선의 법궁")));
+                        List.of("궁궐", "역사"), "조선의 법궁", "HS", "HS01", "HS010100")));
 
         var result = client.embedAttractions(request);
 
         assertThat(requestBody.get()).contains("\"templateVersion\":2")
                 .contains("\"contentTypeId\":14")
                 .contains("\"regionName\":\"서울특별시 종로구\"")
-                .contains("\"description\":\"조선의 법궁\"");
+                .contains("\"description\":\"조선의 법궁\"")
+                .contains("\"lclsSystm1\":\"HS\"")
+                .contains("\"lclsSystm3\":\"HS010100\"");
         assertThat(result.dimension()).isEqualTo(384);
         assertThat(result.items()).singleElement().satisfies(item -> {
             assertThat(item.id()).isEqualTo("101");

@@ -32,7 +32,7 @@ public class AttractionEmbeddingBatchProcessor {
     private final AttractionEmbeddingBatchRepository repository;
     private final AttractionEmbeddingBatchClient embeddingClient;
 
-    @Value("${embedding.model-version:mminilm-l12-v1}")
+    @Value("${embedding.model-version:mminilm-l12-ft-b64-v2}")
     private String modelVersion;
 
     @Value("${embedding.expected-dimension:384}")
@@ -77,7 +77,8 @@ public class AttractionEmbeddingBatchProcessor {
                 : Arrays.stream(candidate.tags().split(",")).map(String::trim).filter(tag -> !tag.isEmpty()).toList();
         return new Item(String.valueOf(candidate.id()), candidate.name(), candidate.contentTypeId(),
                 candidate.province() + " " + candidate.city(), tags,
-                candidate.description() == null ? "" : candidate.description());
+                candidate.description() == null ? "" : candidate.description(),
+                candidate.lclsSystm1(), candidate.lclsSystm2(), candidate.lclsSystm3());
     }
 
     private Map<Long, byte[]> validateAndDecode(List<Candidate> candidates, AttractionEmbeddingBatchResponse response) {

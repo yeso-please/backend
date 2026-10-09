@@ -60,7 +60,8 @@ app:
 # 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
 embedding:
   base-url: ${EMBEDDING_SERVICE_BASE_URL:}
-  model-version: ${EMBEDDING_MODEL_VERSION:mminilm-l12-v1}
+  # 파인튜닝 모델(ai docs/templates.md, reports/evaluation_rationale.md). ai 서버가 같은 MODEL_VERSION으로 떠 있어야 한다.
+  model-version: ${EMBEDDING_MODEL_VERSION:mminilm-l12-ft-b64-v2}
   expected-dimension: 384
   attraction-batch:
     enabled: false
