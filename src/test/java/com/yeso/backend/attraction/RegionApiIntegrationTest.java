@@ -60,6 +60,13 @@ class RegionApiIntegrationTest extends IntegrationTest {
         return attraction(name, 35.84, 129.21, "설명", 12, "VALID");
     }
 
+    /** 콘텐츠 유형은 레포츠(28)지만 분류가 숙박 > 캠핑(AC05)인 곳. 나머지 조건은 추천 가능하다. */
+    private Long camping(String name) {
+        Long id = attraction(name, 35.84, 129.21, "설명", 28, "VALID");
+        jdbc.update("update app.attractions set lcls_systm1 = 'AC', lcls_systm2 = 'AC05', lcls_systm3 = 'AC050200' where id = ?", id);
+        return id;
+    }
+
     private void approvedContent(String heroStatus, String landmarksJson) {
         jdbc.update("""
                 insert into app.region_contents (region_id, title, introduction, history_tags, hero_image_url,
@@ -201,13 +208,14 @@ class RegionApiIntegrationTest extends IntegrationTest {
     class Pins {
 
         @Test
-        @DisplayName("코스에 못 넣는 곳은 흐린 핀으로 주고, 좌표 없는 곳과 쇼핑·숙박·음식점은 뺀다")
+        @DisplayName("코스에 못 넣는 곳은 흐린 핀으로 주고, 좌표 없는 곳과 쇼핑·숙박·음식점·캠핑장은 뺀다")
         void includesNotRecommendable() throws Exception {
             Long good = recommendable("대릉원");
             Long noImage = attraction("사진 없는 곳", 35.84, 129.21, "설명", 12, null);
             attraction("좌표 없는 곳", null, null, "설명", 12, "VALID");
             attraction("식당", 35.84, 129.21, "설명", 39, "VALID");
             attraction("호텔", 35.84, 129.21, "설명", 32, "VALID");
+            camping("오토캠핑장");
 
             mockMvc.perform(authed(get("/api/regions/{sigCd}/attractions", GYEONGJU)))
                     .andExpect(status().isOk())
@@ -320,10 +328,11 @@ class RegionApiIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("없는 관광지와 쇼핑·숙박·음식점은 404 ATTRACTION_NOT_FOUND다")
+        @DisplayName("없는 관광지와 쇼핑·숙박·음식점, 캠핑장(분류 AC05)은 404 ATTRACTION_NOT_FOUND다")
         void notFound() throws Exception {
             Long shop = attraction("쇼핑몰", 35.84, 129.21, "설명", 38, "VALID");
-            for (Long id : List.of(999_999L, shop)) {
+            Long camping = camping("오토캠핑장");
+            for (Long id : List.of(999_999L, shop, camping)) {
                 mockMvc.perform(authed(get("/api/attractions/{id}", id)))
                         .andExpect(status().isNotFound())
                         .andExpect(jsonPath("$.code").value("ATTRACTION_NOT_FOUND"));

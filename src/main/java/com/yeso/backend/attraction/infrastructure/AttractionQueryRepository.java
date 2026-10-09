@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * 지도 핀·관광지 상세·지역 카드 조회(docs/api/attraction.md 7-2~7-4). 조건을 붙였다 뗐다 하는 조회라 SQL을 직접 쓴다.
  * 추천 가능 여부는 {@link RegionQualityRepository#RECOMMENDABLE}을 그대로 써서 추첨 판정과 어긋나지 않게 한다.
- * 쇼핑(38)·숙박(32)·음식점(39)은 코스 후보가 아니라서 핀·상세에 나오지 않는다.
+ * 쇼핑(38)·숙박(32)·음식점(39)과 캠핑장(분류 AC05)은 코스 후보가 아니라서 핀·상세에 나오지 않는다.
  */
 @Repository
 public class AttractionQueryRepository {
@@ -21,7 +21,9 @@ public class AttractionQueryRepository {
     private static final String CATEGORY_SQL =
             "case coalesce(a.content_type_id, 0) when 14 then 'HISTORY_CULTURE' when 28 then 'ACTIVITY' else 'ETC' end";
 
-    private static final String COURSE_TYPE_SQL = "coalesce(a.content_type_id, 12) not in (32, 38, 39)";
+    /** 콘텐츠 유형이 레포츠(28)여도 분류가 숙박 > 캠핑(AC05)이면 코스 후보가 아니다. */
+    private static final String COURSE_TYPE_SQL =
+            "coalesce(a.content_type_id, 12) not in (32, 38, 39) and coalesce(a.lcls_systm2, '') <> 'AC05'";
 
     private final NamedParameterJdbcTemplate jdbc;
     private final String schema;
