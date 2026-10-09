@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Compass, Check, ArrowRight, RefreshCw } from "lucide-react";
 import { api } from "./api";
+import { KakaoLoginButton } from "./kakao";
 import {
   Button,
   Field,
@@ -102,6 +103,8 @@ export function Auth({ onAuth }) {
             <ArrowRight size={17} />
           </Button>
         </form>
+        <div className="auth-divider">또는</div>
+        <KakaoLoginButton />
         <p className="auth-switch">
           {signup ? "이미 계정이 있나요?" : "처음 방문했나요?"}{" "}
           <button

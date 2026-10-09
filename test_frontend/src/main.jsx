@@ -25,6 +25,7 @@ import { Auth, Onboarding } from "./profile";
 import { Discover, Trips, Course } from "./travel";
 import { Friends, TravelMap, Diary, LinkRoute } from "./social";
 import { Lab } from "./lab";
+import { KakaoCallback, CALLBACK_PATH } from "./kakao";
 import "./style.css";
 import { Diagnostics } from "./diagnostics";
 export function useRoute() {
@@ -48,12 +49,15 @@ function App() {
     [debug, setDebug] = useState(false),
     [connection, setConnection] = useState("확인 전");
   useEffect(() => {
-    refresh()
-      .then((r) =>
-        setUser({ ...r.user, onboardingCompleted: r.onboardingCompleted }),
-      )
-      .catch(() => {})
-      .finally(() => setBoot(false));
+    // 카카오 콜백은 스스로 로그인한다. 동시에 refresh가 실패하면 방금 받은 토큰을 지우므로 건너뛴다.
+    if (location.pathname === CALLBACK_PATH) setBoot(false);
+    else
+      refresh()
+        .then((r) =>
+          setUser({ ...r.user, onboardingCompleted: r.onboardingCompleted }),
+        )
+        .catch(() => {})
+        .finally(() => setBoot(false));
     const fn = () => setUser(null);
     window.addEventListener("session-expired", fn);
     return () => window.removeEventListener("session-expired", fn);
@@ -84,7 +88,9 @@ function App() {
   ];
   const shared = /^\/(invite|friend\/|shared)/.test(route);
   let page;
-  if (boot) page = <Loading />;
+  if (route === CALLBACK_PATH)
+    page = <KakaoCallback onAuth={onAuth} navigate={navigate} />;
+  else if (boot) page = <Loading />;
   else if (shared)
     page = <LinkRoute route={route} user={user} onAuth={onAuth} />;
   else if (route === "/lab") page = <Lab user={user} />;

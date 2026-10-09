@@ -10,3 +10,10 @@ course:
   restaurant:
     # 테스트 전용 서명 키(32 byte 이상). 운영에서 쓰지 않는다.
     selection-secret: test-only-restaurant-selection-secret-0123456789
+
+auth:
+  kakao:
+    # 통합 테스트는 FakeKakaoOAuthClient를 쓰므로 실제 카카오를 부르지 않는다.
+    client-id: test-kakao-client-id
+    client-secret: test-kakao-client-secret
+    allowed-redirect-uris: http://localhost:5173/auth/kakao/callback
