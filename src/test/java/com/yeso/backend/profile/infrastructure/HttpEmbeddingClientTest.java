@@ -53,8 +53,8 @@ class HttpEmbeddingClientTest {
         });
         HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
         EmbeddingRequest request = new EmbeddingRequest("req-1", "mminilm-l12-v1", 2,
-                new EmbeddingRequest.Profile("", "RELAXED", List.of(), List.of(), List.of(),
-                        Map.of(1, 1, 3, 4), List.of(2, 7), List.of("서울특별시 종로구")));
+                new EmbeddingRequest.Profile("RELAXED", List.of(), Map.of(1, 1, 3, 4), List.of(2, 7),
+                        List.of("서울특별시 종로구")));
 
         client.embed(request);
 
@@ -65,7 +65,8 @@ class HttpEmbeddingClientTest {
                 .contains("\"3\":4")
                 .contains("\"travelMotives\":[2,7]")
                 .contains("\"likedRegions\":[\"서울특별시 종로구\"]")
-                .doesNotContain("\"text\"");
+                .doesNotContain("\"text\"")
+                .doesNotContain("travelMbti");
     }
 
     @Test
@@ -80,8 +81,8 @@ class HttpEmbeddingClientTest {
         HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
 
         assertThatThrownBy(() -> client.embed(new EmbeddingRequest("req-1", "model", 1,
-                new EmbeddingRequest.Profile("", "RELAXED", java.util.List.of(), java.util.List.of(),
-                        java.util.List.of(), java.util.Map.of(), java.util.List.of(), java.util.List.of()))))
+                new EmbeddingRequest.Profile("RELAXED", java.util.List.of(), java.util.Map.of(),
+                        java.util.List.of(), java.util.List.of()))))
                 .isInstanceOf(EmbeddingTransientException.class)
                 .satisfies(e -> assertThat(((EmbeddingTransientException) e).errorCode()).isEqualTo("HTTP_500"));
     }
@@ -98,8 +99,8 @@ class HttpEmbeddingClientTest {
         HttpEmbeddingClient client = new HttpEmbeddingClient(properties);
 
         assertThatThrownBy(() -> client.embed(new EmbeddingRequest("req-1", "model", 1,
-                new EmbeddingRequest.Profile("", "RELAXED", java.util.List.of(), java.util.List.of(),
-                        java.util.List.of(), java.util.Map.of(), java.util.List.of(), java.util.List.of()))))
+                new EmbeddingRequest.Profile("RELAXED", java.util.List.of(), java.util.Map.of(),
+                        java.util.List.of(), java.util.List.of()))))
                 .isInstanceOf(EmbeddingPermanentException.class)
                 .satisfies(e -> assertThat(((EmbeddingPermanentException) e).errorCode()).isEqualTo("HTTP_400"));
     }
