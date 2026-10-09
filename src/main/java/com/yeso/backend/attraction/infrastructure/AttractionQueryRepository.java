@@ -35,7 +35,7 @@ public class AttractionQueryRepository {
     public AttractionQueryRepository(
             NamedParameterJdbcTemplate jdbc,
             @Value("${spring.jpa.properties.hibernate.default_schema}") String schema,
-            @Value("${embedding.model-version:mminilm-l12-v1}") String modelVersion,
+            @Value("${embedding.model-version:mminilm-l12-ft-b64-v2}") String modelVersion,
             @Value("${embedding.attraction-batch.template-version:2}") int embeddingTemplateVersion,
             @Value("${embedding.expected-dimension:384}") int embeddingDimension) {
         this.jdbc = jdbc;

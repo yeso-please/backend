@@ -15,8 +15,13 @@ services:
       context: ${TRIPIN_AI_DIR:-../ai}
     ports:
       - "127.0.0.1:8000:8000"
+    # 파인튜닝 모델은 git에 없다(약 470MB). 팀 공유 위치에서 받아 아래 폴더에 둔다(docs/runbooks/local-dev-stack.md).
+    volumes:
+      - ${TRIPIN_MODEL_DIR:-../ai/data/interim/models/mminilm-l12-ft-b64-v2/final}:/models/final:ro
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MODEL_NAME: /models/final
+      MODEL_VERSION: mminilm-l12-ft-b64-v2
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
