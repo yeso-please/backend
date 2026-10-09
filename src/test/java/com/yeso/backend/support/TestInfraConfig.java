@@ -1,5 +1,6 @@
 package com.yeso.backend.support;
 
+import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
@@ -18,7 +19,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *
  * <ul>
  *   <li>PostgreSQL 컨테이너 1개(context와 수명을 같이 한다)</li>
- *   <li>외부 API fake: {@link FakeEmbeddingClient}, {@link FakeKakaoLocalClient}. 새 외부 client fake도 여기에 {@code @Primary}로 추가한다.</li>
+ *   <li>외부 API fake: {@link FakeEmbeddingClient}, {@link FakeKakaoLocalClient}, {@link FakeKakaoOAuthClient}. 새 외부 client fake도 여기에 {@code @Primary}로 추가한다.</li>
  *   <li>{@link MutableClock}: 운영 {@code Clock} bean을 대신한다.</li>
  * </ul>
  */
@@ -44,6 +45,12 @@ public class TestInfraConfig {
     @Primary
     FakeKakaoLocalClient fakeKakaoLocalClient() {
         return new FakeKakaoLocalClient();
+    }
+
+    @Bean
+    @Primary
+    FakeKakaoOAuthClient fakeKakaoOAuthClient() {
+        return new FakeKakaoOAuthClient();
     }
 
     @Bean

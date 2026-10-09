@@ -1,5 +1,6 @@
 package com.yeso.backend.support;
 
+import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
@@ -45,6 +46,9 @@ public abstract class IntegrationTest {
     protected FakeKakaoLocalClient fakeKakaoLocalClient;
 
     @Autowired
+    protected FakeKakaoOAuthClient fakeKakaoOAuthClient;
+
+    @Autowired
     protected FakeDiaryPhotoStorage fakeDiaryPhotoStorage;
 
     @Autowired
@@ -55,6 +59,7 @@ public abstract class IntegrationTest {
         databaseCleaner.truncateAll();
         fakeEmbeddingClient.reset();
         fakeKakaoLocalClient.reset();
+        fakeKakaoOAuthClient.reset();
         fakeDiaryPhotoStorage.reset();
         clock.reset();
     }
