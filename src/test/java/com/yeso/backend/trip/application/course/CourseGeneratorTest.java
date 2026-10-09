@@ -401,4 +401,64 @@ class CourseGeneratorTest {
             assertThat(attractions(result.days().get(0))).allSatisfy(item -> assertThat(item.reason()).isNull());
         }
     }
+
+    @Nested
+    @DisplayName("여행기 신호")
+    class DiarySignal {
+
+        private TasteEvidence natureDiary() {
+            return TasteEvidence.NONE.withDiary(new DiarySignalAffinity.Result(
+                    Map.of(AttractionCategory.NATURE, 1.0), Map.of(AttractionCategory.NATURE, "바다")));
+        }
+
+        @Test
+        @DisplayName("취향 유사도가 같으면 여행기 친화도가 높은 유형이 후보군 앞에 온다")
+        void affinityBreaksTies() {
+            List<CourseCandidate> list = candidates(40);
+            Map<Long, float[]> vectors = new HashMap<>();
+            list.forEach(c -> vectors.put(c.attractionId(), new float[]{1, 0}));
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors,
+                    List.of(), false, natureDiary());
+
+            for (int seed = 0; seed < 10; seed++) {
+                Result result = generator.generate(request, new Random(seed));
+                assertThat(attractions(result.days().get(0)))
+                        .allSatisfy(item -> assertThat(item.attraction().category()).isEqualTo(AttractionCategory.NATURE));
+            }
+        }
+
+        @Test
+        @DisplayName("여행기 보정은 최대 0.05라 취향 유사도 차이가 크면 순위를 뒤집지 않는다")
+        void affinityDoesNotOverrideTaste() {
+            List<CourseCandidate> list = candidates(40);
+            Map<Long, float[]> vectors = new HashMap<>();
+            for (CourseCandidate c : list) {
+                // 역사·문화는 요청자와 같은 방향(코사인 1), 자연은 수직(코사인 0)
+                vectors.put(c.attractionId(), c.category() == AttractionCategory.HISTORY_CULTURE
+                        ? new float[]{1, 0} : new float[]{0, 1});
+            }
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors,
+                    List.of(), false, natureDiary());
+
+            Result result = generator.generate(request, new Random(1));
+
+            assertThat(attractions(result.days().get(0))).allSatisfy(item ->
+                    assertThat(item.attraction().category()).isEqualTo(AttractionCategory.HISTORY_CULTURE));
+        }
+
+        @Test
+        @DisplayName("여행기 근거가 있는 유형에는 '지난 여행에서 좋았던 …' 이유가 붙는다")
+        void diaryReason() {
+            List<CourseCandidate> list = candidates(40);
+            Map<Long, float[]> vectors = new HashMap<>();
+            list.forEach(c -> vectors.put(c.attractionId(), new float[]{1, 0}));
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors,
+                    List.of(), false, natureDiary());
+
+            Result result = generator.generate(request, new Random(1));
+
+            assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason)
+                    .filteredOn("지난 여행에서 좋았던 '바다'와 비슷해요"::equals).hasSize(CourseGenerator.MAX_SAME_REASON);
+        }
+    }
 }

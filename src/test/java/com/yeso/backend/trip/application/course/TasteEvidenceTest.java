@@ -53,4 +53,22 @@ class TasteEvidenceTest {
         assertThat(evidence.reasonsFor(AttractionCategory.ACTIVITY))
                 .containsExactly(TasteEvidence.ACTIVITY_STYLE, "'운동과 건강' 여행 동기와 맞아요");
     }
+
+    @Test
+    @DisplayName("여행기 친화도 0.5 이상인 유형에만 여행기 근거 문장을 설문 근거 뒤에 붙인다(받침에 따라 와/과)")
+    void withDiary() {
+        var diary = new DiarySignalAffinity.Result(
+                Map.of(AttractionCategory.WALK_REST, 0.7, AttractionCategory.NATURE, 0.6, AttractionCategory.ACTIVITY, 0.3),
+                Map.of(AttractionCategory.WALK_REST, "산책", AttractionCategory.NATURE, "바다", AttractionCategory.ACTIVITY, "체험"));
+
+        TasteEvidence evidence = TasteEvidence.from(Map.of(5, 2), List.of()).withDiary(diary);
+
+        assertThat(evidence.reasonsFor(AttractionCategory.WALK_REST))
+                .containsExactly(TasteEvidence.REST_STYLE, "지난 여행에서 좋았던 '산책'과 비슷해요");
+        assertThat(evidence.reasonsFor(AttractionCategory.NATURE)).containsExactly("지난 여행에서 좋았던 '바다'와 비슷해요");
+        assertThat(evidence.reasonsFor(AttractionCategory.ACTIVITY)).isEmpty();
+        assertThat(evidence.affinity(AttractionCategory.ACTIVITY)).isEqualTo(0.3);
+        assertThat(evidence.affinity(AttractionCategory.ETC)).isZero();
+        assertThat(TasteEvidence.NONE.withDiary(DiarySignalAffinity.Result.NONE)).isSameAs(TasteEvidence.NONE);
+    }
 }
