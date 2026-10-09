@@ -56,10 +56,16 @@ public class OnboardingEmbeddingRunner {
         }
         OnboardingSubmission submission = job.getSubmission();
 
+        if (job.getTemplateVersion() != OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION) {
+            // 구형 설문(템플릿 1)은 폐기했다. 남은 job은 다시 시도하지 않게 영구 실패로 끝낸다.
+            failPermanently(job, submission, "UNSUPPORTED_TEMPLATE_VERSION");
+            return;
+        }
+
         try {
             EmbeddingResult result = embeddingClient.embed(new EmbeddingRequest(
                     String.valueOf(job.getId()), job.getModelVersion(), job.getTemplateVersion(),
-                    profileFor(submission, job.getTemplateVersion())));
+                    profileFor(submission)));
 
             if (result.dimension() != embeddingProperties.getExpectedDimension()) {
                 failPermanently(job, submission, "EMBEDDING_DIMENSION_MISMATCH");
@@ -76,34 +82,13 @@ public class OnboardingEmbeddingRunner {
         }
     }
 
-    private EmbeddingRequest.Profile profileFor(OnboardingSubmission submission, int templateVersion) {
+    private EmbeddingRequest.Profile profileFor(OnboardingSubmission submission) {
         var likedTrips = likedTripRepository.findAllBySubmission_IdOrderByIdAsc(submission.getId());
-        if (templateVersion == OnboardingQuestionBank.LEGACY_TEMPLATE_VERSION) {
-            return new EmbeddingRequest.Profile(
-                    nullToEmpty(submission.getMbtiCode()),
-                    submission.getScheduleDensity().name(),
-                    submission.getExperienceTags(),
-                    submission.getExcludeTags(),
-                    likedTrips.stream().map(trip -> new EmbeddingRequest.LikedTrip(
-                            trip.getRegion().getSigCd(), regionName(trip), trip.getTags(), nullToEmpty(trip.getNote())))
-                            .toList(),
-                    java.util.Map.of(), java.util.List.of(), java.util.List.of());
-        }
-        if (templateVersion != OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION) {
-            throw new IllegalArgumentException("지원하지 않는 회원 템플릿 버전입니다.");
-        }
+        // MBTI는 표시용이라 보내지 않는다(docs/design/recommendation.md 5절).
         return new EmbeddingRequest.Profile(
-                "", submission.getScheduleDensity().name(), java.util.List.of(), submission.getExcludeTags(),
-                java.util.List.of(), submission.getTravelStyles(), submission.getTravelMotives(),
-                likedTrips.stream().map(this::regionName).toList());
-    }
-
-    private String regionName(com.yeso.backend.profile.domain.LikedTrip trip) {
-        return trip.getRegion().displayName();
-    }
-
-    private static String nullToEmpty(String value) {
-        return value == null ? "" : value;
+                submission.getScheduleDensity().name(), submission.getExcludeTags(),
+                submission.getTravelStyles(), submission.getTravelMotives(),
+                likedTrips.stream().map(trip -> trip.getRegion().displayName()).toList());
     }
 
     private void applyReady(EmbeddingJob job, OnboardingSubmission submission, EmbeddingResult result) {

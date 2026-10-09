@@ -1,5 +1,6 @@
 package com.yeso.backend.profile.presentation.onboarding;
 
+import com.yeso.backend.profile.domain.OnboardingQuestion;
 import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.OnboardingQuestionBank.TravelStyleQuestion;
 
@@ -12,7 +13,8 @@ public record OnboardingQuestionsResponse(
         int maxTravelMotives,
         int maxLikedRegions,
         List<String> excludeTags,
-        List<String> scheduleDensityOptions
+        List<String> scheduleDensityOptions,
+        List<MbtiQuestionDto> mbtiQuestions
 ) {
     public static OnboardingQuestionsResponse current() {
         List<TravelStyleDto> styles = OnboardingQuestionBank.TRAVEL_STYLE_QUESTIONS.values().stream()
@@ -30,7 +32,8 @@ public record OnboardingQuestionsResponse(
                 OnboardingQuestionBank.MAX_TRAVEL_MOTIVES,
                 OnboardingQuestionBank.MAX_LIKED_REGIONS,
                 OnboardingQuestionBank.EXCLUDE_TAGS,
-                List.of("RELAXED", "PACKED"));
+                List.of("RELAXED", "PACKED"),
+                OnboardingQuestionBank.MBTI_QUESTIONS.stream().map(MbtiQuestionDto::from).toList());
     }
 
     public record TravelStyleDto(
@@ -49,4 +52,14 @@ public record OnboardingQuestionsResponse(
     }
 
     public record TravelMotiveDto(int code, String label) {}
+
+    /** 선택지가 어느 글자로 이어지는지는 내려주지 않는다(화면이 답을 유도하지 않게). */
+    public record MbtiQuestionDto(int number, String question, List<ChoiceDto> choices) {
+        static MbtiQuestionDto from(OnboardingQuestion question) {
+            return new MbtiQuestionDto(question.number(), question.prompt(), List.of(
+                    new ChoiceDto(1, question.choice1Text()), new ChoiceDto(2, question.choice2Text())));
+        }
+    }
+
+    public record ChoiceDto(int choice, String label) {}
 }

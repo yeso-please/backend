@@ -4,26 +4,23 @@ import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.attraction.domain.Region;
+import com.yeso.backend.profile.domain.AiHubProfileTextComposer;
 import com.yeso.backend.profile.domain.DuplicateLikedRegionException;
-import com.yeso.backend.profile.domain.DuplicateQuestionAnswerException;
 import com.yeso.backend.profile.domain.EmbeddingJob;
 import com.yeso.backend.profile.domain.EmbeddingOwnerType;
 import com.yeso.backend.profile.domain.InvalidChoiceException;
-import com.yeso.backend.profile.domain.InvalidTravelMotiveException;
-import com.yeso.backend.profile.domain.InvalidTravelStylesException;
 import com.yeso.backend.profile.domain.InvalidQuestionVersionException;
 import com.yeso.backend.profile.domain.InvalidScheduleDensityException;
+import com.yeso.backend.profile.domain.InvalidTravelMotiveException;
+import com.yeso.backend.profile.domain.InvalidTravelStylesException;
 import com.yeso.backend.profile.domain.LikedTrip;
 import com.yeso.backend.profile.domain.MbtiScorer;
 import com.yeso.backend.profile.domain.MissingQuestionAnswerException;
 import com.yeso.backend.profile.domain.OnboardingAnswer;
-import com.yeso.backend.profile.domain.AiHubProfileTextComposer;
-import com.yeso.backend.profile.domain.OnboardingProfileTextComposer;
 import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.OnboardingRegionNotFoundException;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
 import com.yeso.backend.profile.domain.ScheduleDensity;
-import com.yeso.backend.profile.domain.TooManyExperienceTagsException;
 import com.yeso.backend.profile.domain.TooManyLikedRegionsException;
 import com.yeso.backend.profile.domain.UnknownTagException;
 import com.yeso.backend.profile.infrastructure.EmbeddingJobRepository;
@@ -32,8 +29,6 @@ import com.yeso.backend.profile.infrastructure.LikedTripRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingAnswerRepository;
 import com.yeso.backend.profile.infrastructure.OnboardingSubmissionRepository;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
-import com.yeso.backend.profile.presentation.onboarding.AnswerRequest;
-import com.yeso.backend.profile.presentation.onboarding.LikedTripRequest;
 import com.yeso.backend.profile.presentation.onboarding.OnboardingMeResponse;
 import com.yeso.backend.profile.presentation.onboarding.OnboardingQuestionsResponse;
 import com.yeso.backend.profile.presentation.onboarding.OnboardingSubmissionRequest;
@@ -44,11 +39,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 @Service
@@ -77,82 +72,44 @@ public class OnboardingService {
      */
     public UUID submit(Long userId, OnboardingSubmissionRequest request) {
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
-        OnboardingSubmission submission;
-        int templateVersion;
-        if (OnboardingQuestionBank.LEGACY_QUESTION_VERSION.equals(request.questionVersion())) {
-            submission = buildAndPersistLegacySubmission(user, request);
-            templateVersion = OnboardingQuestionBank.LEGACY_TEMPLATE_VERSION;
-        } else if (OnboardingQuestionBank.QUESTION_VERSION.equals(request.questionVersion())) {
-            submission = buildAndPersistAiHubSubmission(user, request);
-            templateVersion = OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION;
-        } else {
+        String version = request.questionVersion();
+        if (!OnboardingQuestionBank.QUESTION_VERSION.equals(version)
+                && !OnboardingQuestionBank.V1_QUESTION_VERSION.equals(version)) {
             throw new InvalidQuestionVersionException();
         }
+        OnboardingSubmission submission = buildAndPersistSubmission(user, version, request);
         user.setLatestOnboardingSubmissionId(submission.getId());
-        registerEmbeddingJob(submission, EmbeddingOwnerType.USER, userId, templateVersion);
+        registerEmbeddingJob(submission, EmbeddingOwnerType.USER, userId);
         return submission.getId();
     }
 
-    private OnboardingSubmission buildAndPersistLegacySubmission(User user, OnboardingSubmissionRequest request) {
-        ScheduleDensity scheduleDensity = parseScheduleDensity(request.scheduleDensity());
-        Map<Integer, Integer> answersByNumber = validateAndCollectAnswers(request.answers());
-        List<String> experienceTags = validateExperienceTags(request.experienceTags());
-        List<String> excludeTags = validateExcludeTags(request.excludeTags());
-        List<PreparedLikedTrip> likedTrips = validateLikedTrips(request.likedTrips());
-
-        String mbtiCode = MbtiScorer.score(answersByNumber);
-        String profileText = OnboardingProfileTextComposer.compose(
-                mbtiCode,
-                scheduleDensity,
-                experienceTags,
-                excludeTags,
-                likedTrips.stream()
-                        .map(lt -> new OnboardingProfileTextComposer.LikedTripInput(
-                                lt.region().getSigCd(), lt.note(), lt.tags()))
-                        .toList());
-
-        OnboardingSubmission submission = new OnboardingSubmission(
-                user, request.questionVersion(), mbtiCode, profileText,
-                scheduleDensity, experienceTags, excludeTags);
-        submissionRepository.save(submission);
-
-        answersByNumber.forEach((number, choice) ->
-                answerRepository.save(new OnboardingAnswer(submission, number, choice)));
-
-        for (PreparedLikedTrip likedTrip : likedTrips) {
-            likedTripRepository.save(
-                    new LikedTrip(submission, likedTrip.region(), likedTrip.note(), likedTrip.tags()));
-        }
-
-        return submission;
-    }
-
-    private OnboardingSubmission buildAndPersistAiHubSubmission(User user, OnboardingSubmissionRequest request) {
+    private OnboardingSubmission buildAndPersistSubmission(User user, String version, OnboardingSubmissionRequest request) {
         ScheduleDensity scheduleDensity = parseScheduleDensity(request.scheduleDensity());
         Map<Integer, Integer> travelStyles = validateTravelStyles(request.travelStyles());
         List<Integer> travelMotives = validateTravelMotives(request.travelMotives());
         List<String> excludeTags = validateExcludeTags(request.excludeTags());
-        List<PreparedLikedTrip> likedRegions = validateLikedRegions(request.likedRegions());
-        List<String> likedRegionNames = likedRegions.stream()
-                .map(liked -> liked.region().displayName())
-                .toList();
-        String profileText = AiHubProfileTextComposer.compose(travelStyles, travelMotives, likedRegionNames);
+        List<Region> likedRegions = validateLikedRegions(request.likedRegions());
+        // MBTI는 v2에만 있고 표시용이다. 임베딩 문장(profileText)에는 넣지 않는다.
+        Map<Integer, Integer> mbtiAnswers = OnboardingQuestionBank.QUESTION_VERSION.equals(version)
+                ? validateMbtiAnswers(request.mbtiAnswers())
+                : null;
+        String mbtiCode = mbtiAnswers == null ? null : MbtiScorer.score(mbtiAnswers);
+        String profileText = AiHubProfileTextComposer.compose(
+                travelStyles, travelMotives, likedRegions.stream().map(Region::displayName).toList());
 
         OnboardingSubmission submission = new OnboardingSubmission(
-                user, OnboardingQuestionBank.QUESTION_VERSION, null, profileText,
-                scheduleDensity, List.of(), excludeTags, travelStyles, travelMotives);
+                user, version, mbtiCode, profileText,
+                scheduleDensity, List.of(), excludeTags, travelStyles, travelMotives, mbtiAnswers);
         submissionRepository.save(submission);
         travelStyles.forEach((number, value) -> answerRepository.save(new OnboardingAnswer(submission, number, value)));
-        likedRegions.forEach(liked -> likedTripRepository.save(
-                new LikedTrip(submission, liked.region(), null, List.of())));
+        likedRegions.forEach(region -> likedTripRepository.save(new LikedTrip(submission, region, null, List.of())));
         return submission;
     }
 
-    private void registerEmbeddingJob(
-            OnboardingSubmission submission, EmbeddingOwnerType ownerType, Long ownerId, int templateVersion) {
+    private void registerEmbeddingJob(OnboardingSubmission submission, EmbeddingOwnerType ownerType, Long ownerId) {
         embeddingJobRepository.save(new EmbeddingJob(
                 submission, ownerType, ownerId,
-                embeddingProperties.getModelVersion(), templateVersion));
+                embeddingProperties.getModelVersion(), OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION));
         eventPublisher.publishEvent(new OnboardingSubmittedEvent(submission.getId()));
     }
 
@@ -191,40 +148,25 @@ public class OnboardingService {
         }
     }
 
-    private static Map<Integer, Integer> validateAndCollectAnswers(List<AnswerRequest> answers) {
-        Map<Integer, Integer> byNumber = new HashMap<>();
-        for (AnswerRequest answer : answers) {
-            Integer number = answer.questionNumber();
-            Integer choice = answer.choice();
-            if (number == null || number < 1 || number > OnboardingQuestionBank.QUESTIONS.size()) {
+    /** 1~12번 모두, 각 1 또는 2. 문항 번호 순서로 정렬해 저장한다. */
+    private static Map<Integer, Integer> validateMbtiAnswers(Map<Integer, Integer> answers) {
+        int count = OnboardingQuestionBank.MBTI_QUESTIONS.size();
+        for (Map.Entry<Integer, Integer> answer : answers.entrySet()) {
+            Integer number = answer.getKey();
+            Integer choice = answer.getValue();
+            if (number == null || number < 1 || number > count) {
                 throw new InvalidChoiceException(number == null ? -1 : number);
-            }
-            if (byNumber.containsKey(number)) {
-                throw new DuplicateQuestionAnswerException(number);
             }
             if (choice == null || (choice != 1 && choice != 2)) {
                 throw new InvalidChoiceException(number);
             }
-            byNumber.put(number, choice);
         }
-        for (int number = 1; number <= OnboardingQuestionBank.QUESTIONS.size(); number++) {
-            if (!byNumber.containsKey(number)) {
+        for (int number = 1; number <= count; number++) {
+            if (!answers.containsKey(number)) {
                 throw new MissingQuestionAnswerException(number);
             }
         }
-        return byNumber;
-    }
-
-    private static List<String> validateExperienceTags(List<String> tags) {
-        if (tags.size() > OnboardingQuestionBank.MAX_EXPERIENCE_TAGS) {
-            throw new TooManyExperienceTagsException();
-        }
-        for (String tag : tags) {
-            if (!OnboardingQuestionBank.EXPERIENCE_TAGS.contains(tag)) {
-                throw new UnknownTagException(tag);
-            }
-        }
-        return tags;
+        return new TreeMap<>(answers);
     }
 
     private static Map<Integer, Integer> validateTravelStyles(Map<Integer, Integer> styles) {
@@ -245,24 +187,22 @@ public class OnboardingService {
         return List.copyOf(motives);
     }
 
-    private List<PreparedLikedTrip> validateLikedRegions(List<String> likedRegions) {
+    private List<Region> validateLikedRegions(List<String> likedRegions) {
         if (likedRegions.size() > OnboardingQuestionBank.MAX_LIKED_REGIONS) {
             throw new TooManyLikedRegionsException(OnboardingQuestionBank.MAX_LIKED_REGIONS, "선호 지역");
         }
         Set<String> seenSigCd = new HashSet<>();
-        List<PreparedLikedTrip> prepared = new ArrayList<>();
+        List<Region> regions = new ArrayList<>();
         for (String sigCd : likedRegions) {
             if (sigCd == null || sigCd.isBlank()) {
                 throw new OnboardingRegionNotFoundException(String.valueOf(sigCd));
             }
             if (!seenSigCd.add(sigCd)) {
-                throw new DuplicateLikedRegionException(String.valueOf(sigCd));
+                throw new DuplicateLikedRegionException(sigCd);
             }
-            Region region = regionRepository.findById(sigCd)
-                    .orElseThrow(() -> new OnboardingRegionNotFoundException(sigCd));
-            prepared.add(new PreparedLikedTrip(region, null, List.of()));
+            regions.add(regionRepository.findById(sigCd).orElseThrow(() -> new OnboardingRegionNotFoundException(sigCd)));
         }
-        return prepared;
+        return regions;
     }
 
     private static List<String> validateExcludeTags(List<String> tags) {
@@ -272,30 +212,5 @@ public class OnboardingService {
             }
         }
         return tags;
-    }
-
-    private List<PreparedLikedTrip> validateLikedTrips(List<LikedTripRequest> likedTrips) {
-        if (likedTrips.size() > OnboardingQuestionBank.MAX_LIKED_TRIPS) {
-            throw new TooManyLikedRegionsException();
-        }
-        Set<String> seenSigCd = new HashSet<>();
-        List<PreparedLikedTrip> prepared = new ArrayList<>();
-        for (LikedTripRequest request : likedTrips) {
-            if (!seenSigCd.add(request.sigCd())) {
-                throw new DuplicateLikedRegionException(request.sigCd());
-            }
-            Region region = regionRepository.findById(request.sigCd())
-                    .orElseThrow(() -> new OnboardingRegionNotFoundException(request.sigCd()));
-            for (String tag : request.tags()) {
-                if (!OnboardingQuestionBank.EXPERIENCE_TAGS.contains(tag)) {
-                    throw new UnknownTagException(tag);
-                }
-            }
-            prepared.add(new PreparedLikedTrip(region, request.note(), request.tags()));
-        }
-        return prepared;
-    }
-
-    private record PreparedLikedTrip(Region region, String note, List<String> tags) {
     }
 }

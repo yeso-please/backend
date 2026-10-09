@@ -131,6 +131,7 @@ export function Onboarding({ onComplete }) {
     [density, setDensity] = useState("RELAXED"),
     [exclude, setExclude] = useState([]),
     [likedRegions, setLikedRegions] = useState([]),
+    [mbti, setMbti] = useState({}),
     [sig, setSig] = useState(""),
     [step, setStep] = useState(0),
     [result, setResult] = useState(null),
@@ -177,10 +178,11 @@ export function Onboarding({ onComplete }) {
             likedRegions,
             scheduleDensity: density,
             excludeTags: exclude,
+            ...(q.mbtiQuestions ? { mbtiAnswers: mbti } : {}),
           },
         }),
       );
-      setStep(2);
+      setStep(3);
     } catch (e) {
       setError(e);
     } finally {
@@ -195,7 +197,7 @@ export function Onboarding({ onComplete }) {
           <h1>나를 닮은 여행 취향</h1>
           <p>서버에서 받은 AI Hub 설문 형식 질문으로 취향 프로필을 만듭니다.</p>
         </div>
-        <Badge>{step + 1} / 3</Badge>
+        <Badge>{step + 1} / 4</Badge>
       </div>
       <ErrorBox error={error} onRetry={load} />
       {!q ? (
@@ -203,7 +205,7 @@ export function Onboarding({ onComplete }) {
       ) : (
         <>
           <div className="stepper">
-            {["여행 스타일", "동기와 지역", "분석 결과"].map((x, i) => (
+            {["여행 스타일", "여행 MBTI", "동기와 지역", "분석 결과"].map((x, i) => (
               <span key={x} className={i === step ? "active" : ""}>
                 {i + 1} {x}
               </span>
@@ -250,11 +252,52 @@ export function Onboarding({ onComplete }) {
                     window.scrollTo(0, 0);
                   }}
                 >
-                  다음 · 동기와 지역
+                  다음 · 여행 MBTI
                 </Button>
               </div>
             </>
           ) : step === 1 ? (
+            <>
+              <div className="question-list">
+                {(q.mbtiQuestions || []).map((x) => (
+                  <Panel key={x.number}>
+                    <small>MBTI {String(x.number).padStart(2, "0")}</small>
+                    <h3>{x.question}</h3>
+                    <div className="row">
+                      {x.choices.map((c) => (
+                        <Button
+                          key={c.choice}
+                          variant={mbti[x.number] === c.choice ? "" : "secondary"}
+                          onClick={() => setMbti({ ...mbti, [x.number]: c.choice })}
+                        >
+                          {c.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Panel>
+                ))}
+              </div>
+              <div className="row spread">
+                <Button variant="secondary" onClick={() => setStep(0)}>
+                  이전
+                </Button>
+                <span>
+                  {Object.keys(mbti).length} / {(q.mbtiQuestions || []).length}
+                </span>
+                <Button
+                  disabled={
+                    Object.keys(mbti).length < (q.mbtiQuestions || []).length
+                  }
+                  onClick={() => {
+                    setStep(2);
+                    window.scrollTo(0, 0);
+                  }}
+                >
+                  다음 · 동기와 지역
+                </Button>
+              </div>
+            </>
+          ) : step === 2 ? (
             <>
               <Panel>
                 <h2>왜 여행을 떠나나요?</h2>
@@ -339,7 +382,7 @@ export function Onboarding({ onComplete }) {
                 ))}
               </Panel>
               <div className="row spread">
-                <Button variant="secondary" onClick={() => setStep(0)}>
+                <Button variant="secondary" onClick={() => setStep(1)}>
                   이전
                 </Button>
                 <Button disabled={busy} onClick={submit}>
@@ -352,6 +395,9 @@ export function Onboarding({ onComplete }) {
               <Panel className="result">
                 <div className="eyebrow">YOUR RESULT</div>
                 <h2>{result.profileText}</h2>
+                <p>
+                  여행 MBTI: <strong>{result.mbtiCode ?? "아직 없음"}</strong>
+                </p>
                 <Badge tone={result.tasteStatus === "READY" ? "" : "warn"}>
                   {labels[result.tasteStatus] || result.tasteStatus}
                 </Badge>

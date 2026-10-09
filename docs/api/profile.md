@@ -12,15 +12,15 @@
 
 | code | 상황 |
 |---|---|
-| `ONBOARDING_INVALID_QUESTION_VERSION` | 지원하지 않는 `questionVersion` |
+| `ONBOARDING_INVALID_QUESTION_VERSION` | 지원하지 않는 `questionVersion`. 현재 `aihub-traveler-v2`, 호환 `aihub-traveler-v1`만 받는다. 구형 `demo-mbti-v1`도 이 코드로 거부한다 |
 | `ONBOARDING_INVALID_TRAVEL_STYLES` | 스타일 1·3·5·6 중 누락이 있거나 점수가 1~7 밖 |
 | `ONBOARDING_INVALID_TRAVEL_MOTIVE` | 동기 코드가 1~9 밖, 중복 또는 3개 초과 |
-| `ONBOARDING_MISSING_QUESTION_ANSWER`, `ONBOARDING_DUPLICATE_QUESTION_ANSWER`, `ONBOARDING_INVALID_CHOICE` | 구형 `demo-mbti-v1` 호환 요청에만 적용 |
+| `ONBOARDING_MISSING_QUESTION_ANSWER` | v2에서 `mbtiAnswers`에 1~12번 중 빠진 문항이 있음 |
+| `ONBOARDING_INVALID_CHOICE` | v2에서 `mbtiAnswers`의 문항 번호가 1~12 밖이거나 답이 1·2가 아님 |
 | `ONBOARDING_INVALID_SCHEDULE_DENSITY` | `scheduleDensity`가 `RELAXED`·`PACKED`가 아님 |
-| `ONBOARDING_TOO_MANY_EXPERIENCE_TAGS` | 구형 `demo-mbti-v1` 호환 요청에만 적용 |
 | `ONBOARDING_UNKNOWN_TAG` | 태그 사전에 없는 값 |
 | `ONBOARDING_DUPLICATE_LIKED_REGION` | 같은 `sigCd`를 두 번 담음 |
-| `ONBOARDING_TOO_MANY_LIKED_REGIONS` | 현재 설문에서 선호 지역 3개 또는 구형 설문에서 좋았던 여행지 30개 초과 |
+| `ONBOARDING_TOO_MANY_LIKED_REGIONS` | 선호 지역 3개 초과 |
 | `ONBOARDING_REGION_NOT_FOUND` | 존재하지 않는 `sigCd` |
 
 ---
@@ -37,7 +37,7 @@ GET /api/onboarding/questions
 
 ```json
 {
-  "questionVersion": "aihub-traveler-v1",
+  "questionVersion": "aihub-traveler-v2",
   "travelStyles": [
     {"number": 1, "leftPole": "자연", "rightPole": "도시", "minValue": 1, "maxValue": 7, "neutralValue": 4, "evidence": "OFFICIAL"},
     {"number": 3, "leftPole": "새로운 지역", "rightPole": "익숙한 지역", "minValue": 1, "maxValue": 7, "neutralValue": 4, "evidence": "INFERRED"},
@@ -54,7 +54,11 @@ GET /api/onboarding/questions
   "maxTravelMotives": 3,
   "maxLikedRegions": 3,
   "excludeTags": ["계단·경사 많은 곳", "물놀이", "야간 이동", "오래 걷기"],
-  "scheduleDensityOptions": ["RELAXED", "PACKED"]
+  "scheduleDensityOptions": ["RELAXED", "PACKED"],
+  "mbtiQuestions": [
+    {"number": 1, "question": "여행을 떠날 때 계획은", "choices": [{"choice": 1, "label": "내가 걷는 길이 곧 여행코스"}, {"choice": 2, "label": "계획은 필수"}]},
+    "… 12번까지"
+  ]
 }
 ```
 
@@ -62,8 +66,8 @@ GET /api/onboarding/questions
 - AI Hub 데이터 카드에서 원문 확인이 된 스타일 1만 `OFFICIAL`이다. 3·5·6의 좌우 의미는 행동 데이터에서 추정한 내부 안내 문구이며 AI Hub 원문을 인용한 것이 아니다(`INFERRED`). 문구가 공식 원문처럼 보이면 안 되며, 실제 원문 확인 후 새 `questionVersion`으로 바꾼다.
 - 모델 관련성이 확인된 스타일 1·3·5·6만 현재 설문에 포함한다. 2(숙박/당일), 4(숙소 가격), 7(계획/즉흥)은 관광지 추천 관련성이 낮고 8(사진)은 방향이 확인되지 않아 수집하지 않는다.
 - 동기는 AI Hub 코드 1~9를 표시한다. 코드 10(기타)은 현재 모델 템플릿에서 사용하지 않아 제외한다.
-- 구형 MBTI 제출 데이터는 보존하며, 기존 배포 클라이언트 호환을 위해 `demo-mbti-v1`도 제출 API에서 처리한다. 새 클라이언트는 이 GET 응답의 `questionVersion`을 그대로 제출한다.
-- 클라이언트는 받은 `questionVersion`을 그대로 제출에 담는다.
+- `mbtiQuestions`는 여행 MBTI 12문항이다(부록). **선택지가 어느 글자(E/I 등)로 이어지는지는 내려주지 않는다.** 화면이 답을 유도하지 않게 하기 위해서다. MBTI는 **표시용 분류**이며 임베딩·추천·추천 이유에 쓰지 않는다.
+- 클라이언트는 받은 `questionVersion`을 그대로 제출에 담는다. 구형 `demo-mbti-v1` 제출은 받지 않는다(기존 제출 행·벡터는 보존).
 - `RELAXED`는 "여유롭게 둘러볼래요"(하루 관광지 최대 4곳), `PACKED`는 "가능한 많이 둘러볼래요"(최대 6곳)로 표시한다.
 
 ---
@@ -82,33 +86,35 @@ POST /api/onboarding/submissions
 
 ```json
 {
-  "questionVersion": "aihub-traveler-v1",
+  "questionVersion": "aihub-traveler-v2",
   "travelStyles": {"1": 1, "3": 4, "5": 6, "6": 7},
   "travelMotives": [2, 7],
   "likedRegions": ["11110", "41110"],
   "scheduleDensity": "RELAXED",
-  "excludeTags": ["오래 걷기"]
+  "excludeTags": ["오래 걷기"],
+  "mbtiAnswers": {"1": 1, "2": 2, "3": 1, "4": 2, "5": 1, "6": 1, "7": 2, "8": 2, "9": 1, "10": 1, "11": 2, "12": 1}
 }
 ```
 
 | 필드 | 타입 | 필수 | 제약 |
 |---|---|---|---|
-| `questionVersion` | `string` | 예 | 현재 서버 값 `aihub-traveler-v1`과 일치 |
+| `questionVersion` | `string` | 예 | `aihub-traveler-v2`(현재) 또는 `aihub-traveler-v1`(호환, MBTI 없음) |
 | `travelStyles` | `object<number,number>` | 예 | 키는 1·3·5·6 모두, 각 점수 1~7. 4는 중립 |
 | `travelMotives` | `number[]` | 아니오 | 코드 1~9 중 중복 없이 최대 3개. 기본 `[]` |
 | `likedRegions` | `string[]` | 아니오 | 존재하는 `SIG_CD`, 중복 없이 최대 3개. 기본 `[]` |
 | `scheduleDensity` | `string` | 예 | `RELAXED` \| `PACKED` |
 | `excludeTags` | `string[]` | 아니오 | 제외 태그 사전의 부분집합. 기본 `[]` |
+| `mbtiAnswers` | `object<number,number>` | v2면 예 | 키는 1~12 모두, 값은 선택지 1 또는 2. v1이면 무시한다 |
 
-`scheduleDensity`와 `excludeTags`는 여행 일정·필터 규칙에 사용하고 임베딩 입력에는 포함하지 않는다. AI에 보내는 프로필은 `travelStyles`, `travelMotives`, `likedRegions`의 구조화 객체이며 문장 생성은 AI 서비스가 소유한다.
+`scheduleDensity`와 `excludeTags`는 여행 일정·필터 규칙에 사용하고 임베딩 입력에는 포함하지 않는다. `mbtiAnswers`로 계산한 `mbtiCode`도 표시용이며 임베딩 입력이 아니다. AI에 보내는 프로필은 `travelStyles`, `travelMotives`, `likedRegions`의 구조화 객체이며 문장 생성은 AI 서비스가 소유한다.
 
 **Response `201 Created`** — `OnboardingSubmission`
 
 ```json
 {
   "submissionId": "6c9f4b1e-2f7a-4e0a-9c34-5f9d2c1a0000",
-  "questionVersion": "aihub-traveler-v1",
-  "mbtiCode": null,
+  "questionVersion": "aihub-traveler-v2",
+  "mbtiCode": "ESTP",
   "scheduleDensity": "RELAXED",
   "profileText": "자연을 매우 선호, 체험 활동을 꽤 선호, 잘 알려진 명소를 매우 선호하는 여행자. 여행에서 원하는 것은 휴식과 재충전, 새로운 경험. 좋아하는 여행지는 서울특별시 종로구, 경기도 수원시.",
   "travelStyles": {"1": 1, "3": 4, "5": 6, "6": 7},
@@ -119,6 +125,8 @@ POST /api/onboarding/submissions
   "createdAt": "2026-09-21T20:00:00"
 }
 ```
+
+- `mbtiCode`: v2면 `mbtiAnswers`로 계산한 4글자(부록 규칙), v1이면 `null`.
 
 `tasteStatus`는 임베딩 호출이 끝난 뒤의 최종 상태다. 임베딩이 실패해도 온보딩은 성공한다.
 
@@ -137,8 +145,9 @@ POST /api/onboarding/submissions
 
 - `onboarding_submissions` 1건, `onboarding_answers` 스타일 4건, `liked_trips` 최대 3건 생성. 이전 제출은 지우지 않는다.
 - `users.latest_onboarding_submission_id`를 새 제출로 바꾼다. 추천은 최신 제출만 쓴다.
-- `embedding_jobs` 1건 생성, 커밋 후 AI Hub 구조화 프로필을 MiniLM 모델의 template v2로 호출한다. 성공하면 `user_taste_vectors` 생성·갱신.
-- 구형 `demo-mbti-v1` 요청은 template v1로 분기해 이미 배포된 프론트와 대기 중인 구형 job을 보존한다. 과거 제출은 재해석하거나 수정하지 않는다.
+- v2면 `onboarding_submissions.mbti_answers`에 12개 답을 저장한다(문항 번호가 스타일 1·3·5·6과 겹쳐 `onboarding_answers`에 넣지 않는다).
+- `embedding_jobs` 1건 생성, 커밋 후 AI Hub 구조화 프로필(스타일·동기·선호 지역)을 template v2로 호출한다. MBTI는 보내지 않는다. 성공하면 `user_taste_vectors` 생성·갱신.
+- template v1로 남아 있던 구형 job은 처리하지 않고 영구 실패(`UNSUPPORTED_TEMPLATE_VERSION`)로 끝낸다. 과거 제출 행과 벡터는 지우거나 재해석하지 않는다. 그 회원은 재검사하면 템플릿 v2 벡터가 생긴다.
 
 **멱등성** — 없다. 호출마다 새 제출이다.
 
@@ -377,11 +386,9 @@ PATCH /api/me/preferences
 
 ---
 
-## 부록. 구형 설문 기록 (`demo-mbti-v1`, legacy)
+## 부록. 여행 MBTI 12문항 (`aihub-traveler-v2`)
 
-아래 문항은 이전 버전 기록과 구형 배포 클라이언트 호환을 위한 것이다. 현재 신규 온보딩의 기준은 2-1의 `aihub-traveler-v1`이다. 구형 문항으로 생성된 제출·벡터는 삭제하거나 새 AI Hub 응답으로 재해석하지 않는다.
-
-### 여행 MBTI 12문항
+v2 온보딩의 MBTI 문항이다. 문구를 바꾸면 새 `questionVersion`을 만든다. MBTI는 **표시용 분류**이며 임베딩·추천·추천 이유에 쓰지 않는다(2026-10-10). 2-1 응답의 `mbtiQuestions`에는 질문과 선택지 문구만 내려가고, 아래의 "→ 글자"는 서버만 안다.
 
 | No | 축 | 질문 | 선택 1 → 글자 | 선택 2 → 글자 |
 |---:|---|---|---|---|
@@ -400,41 +407,25 @@ PATCH /api/me/preferences
 
 축별 선택 글자의 개수를 비교한다. 동점이면 뒤 글자 `I/N/F/P`를 선택한다. 최종 코드는 `EI + SN + TF + JP` 순서다.
 
-### 일정 밀도 선호
+`mbtiAnswers`가 1~12번을 모두 담고 각 값이 1 또는 2여야 계산한다. 빠지면 `ONBOARDING_MISSING_QUESTION_ANSWER`, 번호·값이 범위 밖이면 `ONBOARDING_INVALID_CHOICE`다.
 
-MBTI 12문항과 별도의 필수 선택이다. MBTI 글자 계산에는 포함하지 않는다.
+### 일정 밀도
 
 | 값 | 사용자 문구 | 서버 의미 |
 |---|---|---|
 | `RELAXED` | 여유롭게 둘러볼래요 | 하루 목표 관광지 4곳 |
 | `PACKED` | 가능한 많이 둘러볼래요 | 하루 목표 관광지 6곳 |
 
-이는 기본 선호이며 지역 정하기(3-7)·코스 재생성(5-1)에서 여행별로 바꿀 수 있다. 목표 개수는 보장이 아니다. 지역 후보가 모자라면 더 적은 장소와 `DENSITY_TARGET_NOT_MET` 경고를 반환한다.
+기본 선호이며 지역 정하기(3-7)·코스 재생성(5-1)에서 여행별로 바꿀 수 있다. 목표 개수는 보장이 아니다.
 
-### 경험·제외 조건
+### 경험 태그 사전
 
-경험 태그는 최대 5개다.
+온보딩에서는 더 이상 받지 않지만 여행기(6장)의 `experienceTags` 사전으로 쓴다.
 
 ```text
 자연, 바다, 산, 산책, 골목, 역사, 시장, 로컬 음식, 카페, 휴식, 실내, 체험
 ```
 
-제외 조건은 복수 선택 가능하다.
+### 구형 설문 (`demo-mbti-v1`, 폐기)
 
-```text
-계단·경사 많은 곳, 물놀이, 야간 이동, 오래 걷기
-```
-
-### 좋았던 여행지
-
-- 0~30개, 같은 `SIG_CD`는 한 제출에 한 번만 허용한다.
-- 각 항목은 `sigCd`, 선택적 `note`, 위 경험 태그의 부분집합을 가진다.
-- 알려지지 않은 지역 코드는 400이다. 미입력은 중립이며 싫어한다는 뜻이 아니다.
-- 메모는 임베딩 입력에 쓰지만 원문을 로그에 남기지 않는다.
-
-### 제출과 재검사
-
-- 제출은 회원(`user_id`)에게 귀속한다.
-- 모든 제출은 `scheduleDensity`로 `RELAXED|PACKED` 중 하나를 가진다.
-- 제출은 immutable이다. 프로필 재검사는 새 submission을 만들고 최신 완료 ID만 바꾼다.
-- 질문 version이 다르면 400 `ONBOARDING_INVALID_QUESTION_VERSION`이다. 클라이언트는 2-1로 현재 질문을 다시 받는다.
+구형 설문(MBTI 12문항 + 경험 태그 + 좋았던 여행지 메모, 임베딩 템플릿 1)은 2026-10-10에 폐기했다. 제출 API는 이 버전을 `ONBOARDING_INVALID_QUESTION_VERSION`으로 거부한다. 이미 저장된 제출 행·답·좋았던 여행지·벡터는 지우거나 재해석하지 않는다.
