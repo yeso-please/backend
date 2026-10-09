@@ -47,7 +47,7 @@ class CourseGeneratorTest {
     }
 
     private static Request request(int days, String density, List<CourseCandidate> candidates) {
-        return new Request("경주시", days, density, Transport.CAR, candidates, null, Map.of(), List.of(), false);
+        return new Request("경주시", days, density, Transport.CAR, candidates, null, Map.of(), List.of(), false, null);
     }
 
     private static List<AttractionItem> attractions(Day day) {
@@ -191,7 +191,7 @@ class CourseGeneratorTest {
                 double angle = Math.toRadians(c.attractionId() * 2);
                 vectors.put(c.attractionId(), new float[]{(float) Math.cos(angle), (float) Math.sin(angle)});
             }
-            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors, List.of(), false);
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors, List.of(), false, null);
 
             for (int seed = 0; seed < 30; seed++) {
                 Result result = generator.generate(request, new Random(seed));
@@ -200,7 +200,10 @@ class CourseGeneratorTest {
             }
             Result result = generator.generate(request, new Random(1));
             assertThat(result.warnings()).doesNotContain(new Warning("PERSONALIZATION_FALLBACK", null));
-            assertThat(attractions(result.days().get(0)).get(0).reason()).contains("취향");
+            // 설문 근거가 없으면 취향 유사도 상위 3곳에만 이유가 붙고 나머지는 null이다
+            assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason)
+                    .containsOnly(CourseGenerator.SIMILAR_REASON, null)
+                    .filteredOn(CourseGenerator.SIMILAR_REASON::equals).hasSize(CourseGenerator.SIMILAR_TOP);
         }
 
         @Test
@@ -208,7 +211,7 @@ class CourseGeneratorTest {
         void personalizedNeedsEnoughVectors() {
             List<CourseCandidate> list = candidates(10);
             Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0},
-                    Map.of(1L, new float[]{1, 0}), List.of(), false);
+                    Map.of(1L, new float[]{1, 0}), List.of(), false, null);
 
             assertThat(generator.generate(request, new Random(1)).mode()).isEqualTo(RecommendationMode.RULE_BASED);
         }
@@ -218,7 +221,7 @@ class CourseGeneratorTest {
         void tourOfficial() {
             List<CourseCandidate> list = candidates(20);
             OfficialCourse official = new OfficialCourse("신라 역사 탐방", List.of(3L, 7L, 999L));
-            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, null, Map.of(), List.of(official), false);
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, null, Map.of(), List.of(official), false, null);
 
             Result result = generator.generate(request, new Random(1));
 
@@ -238,21 +241,20 @@ class CourseGeneratorTest {
             Map<Long, float[]> vectors = new HashMap<>();
             list.forEach(c -> vectors.put(c.attractionId(), new float[]{1, 0}));
             Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors,
-                    List.of(new OfficialCourse("신라 역사 탐방", List.of(3L))), true);
+                    List.of(new OfficialCourse("신라 역사 탐방", List.of(3L))), true, null);
 
             Result result = generator.generate(request, new Random(1));
 
             assertThat(result.mode()).isEqualTo(RecommendationMode.RANDOM);
             assertThat(result.warnings()).doesNotContain(new Warning("PERSONALIZATION_FALLBACK", null));
-            assertThat(attractions(result.days().get(0)))
-                    .allSatisfy(item -> assertThat(item.reason()).doesNotContain("취향", "관광공사"));
+            assertThat(attractions(result.days().get(0))).allSatisfy(item -> assertThat(item.reason()).isNull());
         }
 
         @Test
         @DisplayName("공식 코스 장소가 하나도 추천 가능하지 않으면 규칙 코스다")
         void officialWithoutUsableStops() {
             Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, candidates(10), null, Map.of(),
-                    List.of(new OfficialCourse("없는 곳 코스", List.of(999L))), false);
+                    List.of(new OfficialCourse("없는 곳 코스", List.of(999L))), false, null);
 
             assertThat(generator.generate(request, new Random(1)).mode()).isEqualTo(RecommendationMode.RULE_BASED);
         }
@@ -324,6 +326,79 @@ class CourseGeneratorTest {
             assertThat(CourseGenerator.shortRegionName("경주시")).isEqualTo("경주");
             assertThat(CourseGenerator.shortRegionName("양양군")).isEqualTo("양양");
             assertThat(CourseGenerator.shortRegionName("중구")).isEqualTo("중구");
+        }
+    }
+
+    @Nested
+    @DisplayName("추천 이유")
+    class Reasons {
+
+        private Request personalized(List<CourseCandidate> list, TasteEvidence evidence) {
+            Map<Long, float[]> vectors = new HashMap<>();
+            for (CourseCandidate c : list) {
+                double angle = Math.toRadians(c.attractionId());
+                vectors.put(c.attractionId(), new float[]{(float) Math.cos(angle), (float) Math.sin(angle)});
+            }
+            return new Request("경주시", 1, "PACKED", Transport.CAR, list, new float[]{1, 0}, vectors, List.of(), false,
+                    evidence);
+        }
+
+        private List<CourseCandidate> sameCategory(int count, AttractionCategory category) {
+            List<CourseCandidate> list = new ArrayList<>();
+            for (int i = 1; i <= count; i++) {
+                list.add(candidate(i, category, 35.80 + i * 0.001, 129.20 + i * 0.001));
+            }
+            return list;
+        }
+
+        @Test
+        @DisplayName("설문 근거가 장소 유형과 맞으면 그 문장을 쓰고, 같은 문장은 코스 안에서 최대 2번이다")
+        void evidenceSentence_atMostTwice() {
+            TasteEvidence evidence = TasteEvidence.from(Map.of(1, 1, 3, 4, 5, 4, 6, 4), List.of());
+            Result result = generator.generate(personalized(sameCategory(30, AttractionCategory.NATURE), evidence),
+                    new Random(3));
+
+            List<String> reasons = attractions(result.days().get(0)).stream().map(AttractionItem::reason).toList();
+            assertThat(reasons).hasSize(6);
+            assertThat(reasons).filteredOn(TasteEvidence.NATURE_STYLE::equals).hasSize(CourseGenerator.MAX_SAME_REASON);
+            assertThat(reasons).containsOnly(TasteEvidence.NATURE_STYLE, CourseGenerator.SIMILAR_REASON, null);
+        }
+
+        @Test
+        @DisplayName("근거가 여러 개면 순서대로 쓰고, 다 쓰면 다음 근거로 넘어간다")
+        void evidenceSentence_movesToNextEvidence() {
+            TasteEvidence evidence = TasteEvidence.from(Map.of(1, 4, 3, 4, 5, 6, 6, 4), List.of(6, 7));
+            Result result = generator.generate(personalized(sameCategory(30, AttractionCategory.ACTIVITY), evidence),
+                    new Random(3));
+
+            List<String> reasons = attractions(result.days().get(0)).stream().map(AttractionItem::reason).toList();
+            assertThat(reasons).filteredOn(TasteEvidence.ACTIVITY_STYLE::equals).hasSize(2);
+            assertThat(reasons).filteredOn("'운동과 건강' 여행 동기와 맞아요"::equals).hasSize(2);
+            assertThat(reasons).filteredOn("'새로운 경험' 여행 동기와 맞아요"::equals).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("기타 유형에는 설문 근거를 쓰지 않는다")
+        void etc_hasNoEvidenceSentence() {
+            TasteEvidence evidence = TasteEvidence.from(Map.of(1, 1, 3, 4, 5, 1, 6, 4), List.of(2, 6, 7, 8));
+            Result result = generator.generate(personalized(sameCategory(30, AttractionCategory.ETC), evidence),
+                    new Random(3));
+
+            assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason)
+                    .containsOnly(CourseGenerator.SIMILAR_REASON, null);
+        }
+
+        @Test
+        @DisplayName("규칙 코스는 설문 근거가 있어도 이유를 붙이지 않는다")
+        void ruleBased_hasNoReason() {
+            TasteEvidence evidence = TasteEvidence.from(Map.of(1, 1, 3, 4, 5, 4, 6, 4), List.of());
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, sameCategory(10, AttractionCategory.NATURE),
+                    null, Map.of(), List.of(), false, evidence);
+
+            Result result = generator.generate(request, new Random(1));
+
+            assertThat(result.mode()).isEqualTo(RecommendationMode.RULE_BASED);
+            assertThat(attractions(result.days().get(0))).allSatisfy(item -> assertThat(item.reason()).isNull());
         }
     }
 }

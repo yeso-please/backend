@@ -416,6 +416,44 @@ class CourseEditIntegrationTest extends IntegrationTest {
         }
 
         @Test
+        @DisplayName("교체 후보의 이유는 같은 유형·동선 같은 실제 근거로 최대 2개를 잇는다")
+        void replacementReasons() throws Exception {
+            Long tripId = trip();
+            MvcResult first = generate(tripId);
+            String second = JsonPath.read(first.getResponse().getContentAsString(), "$.days[0].items[1].itemId");
+
+            MvcResult result = mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
+                            .header("Authorization", member.bearer()).param("itemId", second))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.groups[1].category").value("HISTORY_CULTURE"))
+                    .andReturn();
+            List<String> reasons = JsonPath.read(result.getResponse().getContentAsString(), "$.groups[1].items[*].reason");
+            List<Integer> minutes = JsonPath.read(result.getResponse().getContentAsString(),
+                    "$.groups[1].items[*].travelFromPreviousMinutes");
+
+            assertThat(reasons).isNotEmpty();
+            for (int i = 0; i < reasons.size(); i++) {
+                assertThat(reasons.get(i)).isEqualTo(
+                        "바꾸려는 곳과 같은 역사·문화 장소예요 · 앞 장소에서 약 " + minutes.get(i) + "분이에요");
+            }
+        }
+
+        @Test
+        @DisplayName("추가 후보(itemId 없음)는 근거가 없으면 이유가 없다")
+        void additionWithoutEvidence_hasNoReason() throws Exception {
+            Long tripId = trip();
+            generate(tripId);
+
+            MvcResult result = mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
+                            .header("Authorization", member.bearer()))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            List<Object> reasons = JsonPath.read(result.getResponse().getContentAsString(), "$.groups[*].items[*].reason");
+
+            assertThat(reasons).containsOnlyNulls();
+        }
+
+        @Test
         @DisplayName("잘못된 검색어와 식사 항목은 각각 400 오류다")
         void invalidQueryAndItem() throws Exception {
             Long tripId = trip();
