@@ -76,6 +76,11 @@ public class OnboardingSubmission {
     @Column(name = "travel_motives", nullable = false, columnDefinition = "jsonb")
     private List<Integer> travelMotives = List.of();
 
+    /** v2 여행 MBTI 답(문항 번호 → 1·2). 문항 번호가 스타일 1·3·5·6과 겹쳐 onboarding_answers에 넣지 않는다. v1은 null. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "mbti_answers", columnDefinition = "jsonb")
+    private Map<Integer, Integer> mbtiAnswers;
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
@@ -89,22 +94,10 @@ public class OnboardingSubmission {
             String profileText,
             ScheduleDensity scheduleDensity,
             List<String> experienceTags,
-            List<String> excludeTags
-    ) {
-        this(user, questionVersion, mbtiCode, profileText, scheduleDensity, experienceTags, excludeTags,
-                Map.of(), List.of());
-    }
-
-    public OnboardingSubmission(
-            User user,
-            String questionVersion,
-            String mbtiCode,
-            String profileText,
-            ScheduleDensity scheduleDensity,
-            List<String> experienceTags,
             List<String> excludeTags,
             Map<Integer, Integer> travelStyles,
-            List<Integer> travelMotives
+            List<Integer> travelMotives,
+            Map<Integer, Integer> mbtiAnswers
     ) {
         this.id = UUID.randomUUID();
         this.user = user;
@@ -116,6 +109,7 @@ public class OnboardingSubmission {
         this.excludeTags = excludeTags;
         this.travelStyles = travelStyles;
         this.travelMotives = travelMotives;
+        this.mbtiAnswers = mbtiAnswers;
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.completedAt = now;

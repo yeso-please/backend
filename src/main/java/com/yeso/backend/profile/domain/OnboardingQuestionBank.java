@@ -9,15 +9,17 @@ import static com.yeso.backend.profile.domain.OnboardingAxis.SN;
 import static com.yeso.backend.profile.domain.OnboardingAxis.TF;
 
 /**
- * 현재 AI Hub 온보딩 정책과 구형 MBTI 제출 호환 데이터를 담는 버전별 서버 상수다.
+ * 온보딩 문항·선택지·임베딩 템플릿 매핑의 버전별 서버 상수다(docs/api/profile.md 2장).
  * 문항·선택·템플릿 매핑을 바꾸면 기존 version 값을 고치지 말고 새 {@code questionVersion}을 만든다.
  */
 public final class OnboardingQuestionBank {
 
-    public static final String QUESTION_VERSION = "aihub-traveler-v1";
-    public static final String LEGACY_QUESTION_VERSION = "demo-mbti-v1";
+    /** 현재 설문: AI Hub 스타일·동기·선호 지역 + 여행 MBTI 12문항. */
+    public static final String QUESTION_VERSION = "aihub-traveler-v2";
+    /** 호환 설문: MBTI 없이 AI Hub 항목만. 계속 받는다. */
+    public static final String V1_QUESTION_VERSION = "aihub-traveler-v1";
+    /** 회원 임베딩 템플릿. MBTI는 표시용이라 v1·v2 모두 같은 템플릿을 쓴다. */
     public static final int AIHUB_TEMPLATE_VERSION = 2;
-    public static final int LEGACY_TEMPLATE_VERSION = 1;
 
     public static final Map<Integer, TravelStyleQuestion> TRAVEL_STYLE_QUESTIONS = Map.of(
             1, new TravelStyleQuestion(1, "자연", "도시", "OFFICIAL"),
@@ -43,7 +45,8 @@ public final class OnboardingQuestionBank {
 
     public record TravelStyleQuestion(int number, String leftPole, String rightPole, String evidence) {}
 
-    public static final List<OnboardingQuestion> QUESTIONS = List.of(
+    /** v2의 여행 MBTI 문항. 표시용 분류라 임베딩에 쓰지 않는다. */
+    public static final List<OnboardingQuestion> MBTI_QUESTIONS = List.of(
             new OnboardingQuestion(1, JP, "여행을 떠날 때 계획은",
                     "내가 걷는 길이 곧 여행코스", 'P', "계획은 필수", 'J'),
             new OnboardingQuestion(2, JP, "여행 경비는",
@@ -70,21 +73,15 @@ public final class OnboardingQuestionBank {
                     "말로 내뱉어야 직성이 풀린다", 'E', "내 마음 속에 저장, 마음에 담고 느낀다", 'I')
     );
 
-    public static final Map<Integer, OnboardingQuestion> QUESTIONS_BY_NUMBER =
-            QUESTIONS.stream().collect(java.util.stream.Collectors.toMap(OnboardingQuestion::number, q -> q));
-
     /** MBTI 최종 코드 조립 순서(EI+SN+TF+JP)와 동일하다. */
     public static final List<OnboardingAxis> AXIS_ORDER = List.of(EI, SN, TF, JP);
 
+    /** 온보딩에서는 받지 않고 여행기 경험 태그 사전으로 쓴다(docs/api/trip.md 6장). */
     public static final List<String> EXPERIENCE_TAGS = List.of(
             "자연", "바다", "산", "산책", "골목", "역사", "시장", "로컬 음식", "카페", "휴식", "실내", "체험");
 
-    public static final int MAX_EXPERIENCE_TAGS = 5;
-
     public static final List<String> EXCLUDE_TAGS = List.of(
             "계단·경사 많은 곳", "물놀이", "야간 이동", "오래 걷기");
-
-    public static final int MAX_LIKED_TRIPS = 30;
 
     private OnboardingQuestionBank() {
     }
