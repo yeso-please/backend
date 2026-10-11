@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
@@ -53,6 +54,21 @@ class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
             assertThat(jdbc.queryForObject("select count(*) from app.attraction_embeddings where attraction_id = ?", Integer.class, attractionId))
                     .isEqualTo(1);
             assertThat(processor.processNextBatch()).isZero();
+        }
+
+        @Test
+        @DisplayName("분류코드(lcls_systm1~3)를 요청에 담는다. 없으면 null이다")
+        void processNextBatch_sendsClassificationCodes() {
+            Long classified = insertRecommendableAttraction("경복궁", "조선의 법궁", "");
+            Long unclassified = insertRecommendableAttraction("창덕궁", "조선의 궁궐", "");
+            jdbc.update("update app.attractions set lcls_systm1 = 'HS', lcls_systm2 = 'HS01', lcls_systm3 = 'HS010100' where id = ?", classified);
+
+            assertThat(processor.processNextBatch()).isEqualTo(2);
+            assertThat(fakeEmbeddingClient.lastBatchRequest().items())
+                    .extracting("id", "lclsSystm1", "lclsSystm2", "lclsSystm3")
+                    .containsExactly(
+                            tuple(String.valueOf(classified), "HS", "HS01", "HS010100"),
+                            tuple(String.valueOf(unclassified), null, null, null));
         }
 
         @Test

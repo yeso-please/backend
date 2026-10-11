@@ -26,7 +26,8 @@ public class JdbcAttractionEmbeddingBatchRepository implements AttractionEmbeddi
     @Override
     public List<Candidate> lockNextBatch(int limit, String modelVersion, int templateVersion, int dimension) {
         String sql = """
-                select a.id, a.name, a.content_type_id, r.province, r.city, a.tags, a.description, a.updated_at
+                select a.id, a.name, a.content_type_id, r.province, r.city, a.tags, a.description,
+                       a.lcls_systm1, a.lcls_systm2, a.lcls_systm3, a.updated_at
                 from %1$s.attractions a
                 join %1$s.regions r on r.sig_cd = a.region_id
                 where (a.embedding_status <> 'DONE' or not exists (
@@ -47,7 +48,8 @@ public class JdbcAttractionEmbeddingBatchRepository implements AttractionEmbeddi
         return jdbc.query(sql, params, (rs, row) -> new Candidate(
                 rs.getLong("id"), rs.getString("name"), (Integer) rs.getObject("content_type_id"),
                 rs.getString("province"), rs.getString("city"), rs.getString("tags"),
-                rs.getString("description"), rs.getTimestamp("updated_at").toLocalDateTime()));
+                rs.getString("description"), rs.getString("lcls_systm1"), rs.getString("lcls_systm2"),
+                rs.getString("lcls_systm3"), rs.getTimestamp("updated_at").toLocalDateTime()));
     }
 
     @Override
