@@ -59,6 +59,9 @@ public class CourseGenerator {
 
     static final String SIMILAR_REASON = "내 취향과 비슷한 장소예요";
 
+    /** 여행기 친화도(0~1)를 취향 점수에 더하는 최대 크기. 코사인 유사도 순위를 뒤집지 않는 낮은 가중치다. */
+    static final double DIARY_WEIGHT = 0.05;
+
     /** 제목 테마(조사 포함). 예: "경주, 역사를 따라 걷는 2일". */
     private static final Map<AttractionCategory, String> TITLE_THEMES = new EnumMap<>(Map.of(
             AttractionCategory.NATURE, "자연을",
@@ -108,7 +111,10 @@ public class CourseGenerator {
 
     // ---------- 모드 ----------
 
-    /** 요청자 벡터가 있고 벡터가 있는 관광지가 필요 수 이상이면 취향 점수(코사인 유사도), 아니면 빈 맵. */
+    /**
+     * 요청자 벡터가 있고 벡터가 있는 관광지가 필요 수 이상이면 취향 점수, 아니면 빈 맵.
+     * 취향 점수 = 코사인 유사도 + {@link #DIARY_WEIGHT} × 여행기 유형 친화도(없으면 0).
+     */
     private static Map<Long, Double> tasteScores(Request request, int needed) {
         float[] requester = request.requesterVector();
         if (requester == null || request.attractionVectors() == null) {
@@ -118,7 +124,8 @@ public class CourseGenerator {
         for (CourseCandidate candidate : request.candidates()) {
             float[] vector = request.attractionVectors().get(candidate.attractionId());
             if (vector != null && vector.length == requester.length) {
-                scores.put(candidate.attractionId(), cosine(requester, vector));
+                scores.put(candidate.attractionId(), cosine(requester, vector)
+                        + DIARY_WEIGHT * request.evidence().affinity(candidate.category()));
             }
         }
         return scores.size() >= needed ? scores : Map.of();

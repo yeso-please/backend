@@ -38,6 +38,7 @@ public class CourseAlternativesService {
     private final RegionEligibilityService eligibilityService;
     private final CourseMaterialService materialService;
     private final OnboardingQueryService onboardingQueryService;
+    private final TasteEvidenceFactory tasteEvidenceFactory;
 
     public AlternativeCoursesResponse alternatives(Long userId, Long tripId, String itemId,
                                                    String categoryValue, Integer limitValue, String query) {
@@ -76,9 +77,7 @@ public class CourseAlternativesService {
                 candidates.stream().map(CourseCandidate::attractionId).toList());
         CourseCandidate previous = adjacent(course, target, -1);
         CourseCandidate next = adjacent(course, target, 1);
-        TasteEvidence evidence = onboardingQueryService.findLatestTasteAnswers(userId)
-                .map(answers -> TasteEvidence.from(answers.travelStyles(), answers.travelMotives()))
-                .orElse(TasteEvidence.NONE);
+        TasteEvidence evidence = tasteEvidenceFactory.forUser(userId);
         AttractionCategory targetCategory = target == null ? null
                 : materialService.findAttractionViews(List.of(target.getAttractionId())).values().stream()
                         .map(view -> view.category()).findFirst().orElse(null);
@@ -89,7 +88,7 @@ public class CourseAlternativesService {
             }
             List<CourseCandidate> ranked = candidates.stream().filter(candidate -> candidate.category() == type)
                     .sorted(Comparator.comparingDouble((CourseCandidate candidate) -> score(candidate, previous, next,
-                            taste, vectors.get(candidate.attractionId()))).reversed()
+                            taste, vectors.get(candidate.attractionId()), evidence)).reversed()
                             .thenComparing(CourseCandidate::attractionId))
                     .limit(limit)
                     .toList();
@@ -167,7 +166,7 @@ public class CourseAlternativesService {
     }
 
     private static double score(CourseCandidate candidate, CourseCandidate previous, CourseCandidate next,
-                                float[] taste, float[] vector) {
+                                float[] taste, float[] vector, TasteEvidence evidence) {
         double distance = 0;
         if (previous != null) {
             distance += TravelTimeEstimator.distanceKm(previous.lat(), previous.lng(), candidate.lat(), candidate.lng());
@@ -175,7 +174,9 @@ public class CourseAlternativesService {
         if (next != null) {
             distance += TravelTimeEstimator.distanceKm(candidate.lat(), candidate.lng(), next.lat(), next.lng());
         }
-        return 10 * cosine(taste, vector) - distance;
+        // 여행기 친화도는 코스 생성과 같은 낮은 가중치로 더한다(취향 벡터가 있을 때만)
+        double diary = taste == null ? 0 : CourseGenerator.DIARY_WEIGHT * evidence.affinity(candidate.category());
+        return 10 * (cosine(taste, vector) + diary) - distance;
     }
 
     private static double cosine(float[] a, float[] b) {

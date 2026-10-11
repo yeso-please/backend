@@ -86,6 +86,7 @@ public class CourseService {
     private final OnboardingQueryService onboardingQueryService;
     private final PreferenceService preferenceService;
     private final CourseGenerator courseGenerator;
+    private final TasteEvidenceFactory tasteEvidenceFactory;
     private final RestaurantQueryService restaurantQueryService;
     private final EntityManager entityManager;
     private final Clock clock;
@@ -123,7 +124,7 @@ public class CourseService {
                         .map(course -> new OfficialCourse(course.title(), course.attractionIds()))
                         .toList();
 
-        TasteEvidence evidence = randomOnly ? TasteEvidence.NONE : tasteEvidence(userId);
+        TasteEvidence evidence = randomOnly ? TasteEvidence.NONE : tasteEvidenceFactory.forUser(userId);
 
         Result result = courseGenerator.generate(new CourseGeneration.Request(
                 region.getCity(), trip.getNights() + 1, density, trip.getTransport(), candidates,
@@ -231,13 +232,6 @@ public class CourseService {
     // ---------- helpers ----------
 
     /** 요청 → 요청자 프로필 설정(2-11, 기본 TASTE). */
-    /** 요청자 최신 설문에서 추천 이유 근거를 만든다. 설문 전이면 근거 없음. */
-    private TasteEvidence tasteEvidence(Long userId) {
-        return onboardingQueryService.findLatestTasteAnswers(userId)
-                .map(answers -> TasteEvidence.from(answers.travelStyles(), answers.travelMotives()))
-                .orElse(TasteEvidence.NONE);
-    }
-
     private CourseTasteMode resolveTasteMode(String requested, Long userId) {
         if (requested == null) {
             return preferenceService.courseTasteModeOf(userId);
