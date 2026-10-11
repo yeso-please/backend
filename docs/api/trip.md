@@ -854,11 +854,11 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
       "items": [
         {"itemId": "a-101", "type": "ATTRACTION", "attractionId": 5012, "name": "대릉원", "category": "HISTORY_CULTURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "durationMinutes": 90,
-         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "역사 선호와 맞아요"},
+         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
         {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null},
         {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연·산책 선호와 맞아요"},
+         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
         {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null}
       ]
     }
@@ -883,10 +883,39 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
 | `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
-| `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
+| `items[].reason` | 추천 이유. 요청자의 실제 설문 답·취향 점수·공식 코스에 근거한 문장만. 근거가 없으면 `null`. `MANUAL`이면 `null`. 규칙은 아래 [추천 이유](#추천-이유) |
 | `items[].restaurant` | 식사 슬롯의 식당 스냅샷(`RestaurantSnapshot`). 코스 생성 시 자동 배정([5-1](#5-1-코스-생성재생성))되거나 사용자가 고른다. 후보가 없거나 해제했으면 `null`이고 화면에는 "미정"으로 보인다 |
 | 관광지 표시 정보 | 관광지 항목의 `name`·`category`·`thumbnailUrl`·`address`·`lat`·`lng`는 코스를 볼 때마다 현재 관광지 데이터로 채운다(생성 당시 복사가 아니다, 2026-09-27). 추천 대상에서 빠졌으면 `ATTRACTION_NO_LONGER_RECOMMENDABLE` 경고를 붙인다 |
 | `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
+
+<a id="추천-이유"></a>
+**추천 이유 (`items[].reason`, 5-4 `reason`)** — 근거가 있을 때만 문장을 붙이고, 없으면 `null`이다. 일반적인 칭찬("취향과 잘 맞는 곳이에요")이나 유형 라벨만 반복하는 문장은 쓰지 않는다(2026-10-10, #84).
+
+설문 근거 — 요청자의 최신 온보딩 답에서 관광지 유형(`category`)과 이어지는 것만 쓴다. 여행 스타일 4는 중립이라 근거가 아니다.
+
+| 근거 | 조건 | 유형 | 문장 |
+|---|---|---|---|
+| 여행 스타일 1 (자연 ↔ 도시) | 1~3 | `NATURE`, `WALK_REST` | 자연을 좋아하는 취향과 맞아요 |
+| 여행 스타일 5 (휴양 ↔ 체험) | 1~3 | `WALK_REST` | 휴식을 좋아하는 취향과 맞아요 |
+| 여행 스타일 5 | 5~7 | `ACTIVITY` | 체험 활동을 좋아하는 취향과 맞아요 |
+| 동기 2 휴식과 재충전 | 선택 | `WALK_REST` | '휴식과 재충전' 여행 동기와 맞아요 |
+| 동기 6 운동과 건강 | 선택 | `ACTIVITY` | '운동과 건강' 여행 동기와 맞아요 |
+| 동기 7 새로운 경험 | 선택 | `ACTIVITY` | '새로운 경험' 여행 동기와 맞아요 |
+| 동기 8 역사와 문화 탐방 | 선택 | `HISTORY_CULTURE` | '역사와 문화 탐방' 여행 동기와 맞아요 |
+
+스타일 3·6과 나머지 동기는 관광지 유형과 직접 이어지지 않아 쓰지 않는다. `ETC`(기타) 유형에는 설문 근거가 없다.
+
+코스 항목(5-1 생성 결과)
+1. 공식 코스 모드(`TOUR_OFFICIAL`)에서 공식 코스에 나오는 장소: "관광공사 추천 코스 「{코스 제목}」에 나오는 곳이에요".
+2. 취향 반영 모드(`PERSONALIZED`): 그 장소 유형에 맞는 설문 근거 문장. 같은 문장은 한 코스에서 **최대 2번**만 쓰고, 넘으면 그 유형의 다음 근거를 쓴다.
+3. 설문 근거를 쓰지 못한 장소 중 취향 유사도가 코스 안에서 **상위 3곳**이면 "내 취향과 비슷한 장소예요".
+4. 그 밖, 규칙 코스(`RULE_BASED`)·완전 랜덤(`RANDOM`)은 `null`이다. 유형은 `category`로 이미 보인다.
+
+교체·추가 후보(5-4) — 아래 근거를 순서대로 보고 **최대 2개를 " · "로 이어** 붙인다. 하나도 없으면 `null`.
+1. 교체 대상과 같은 유형: "바꾸려는 곳과 같은 {유형 라벨} 장소예요" (`itemId`가 있을 때)
+2. 설문 근거 문장 (위 표, 첫 번째 것)
+3. 동선: "앞 장소에서 약 {N}분이에요" (그날 앞 관광지가 있을 때, `travelFromPreviousMinutes`와 같은 값)
+4. 취향 유사도가 그 유형 묶음에서 상위 3곳: "내 취향과 비슷한 장소예요"
 
 **항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
 
@@ -1130,14 +1159,14 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&q=월정
       "items": [
         {"attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE", "thumbnailUrl": "https://…",
          "lat": 35.834, "lng": 129.226, "estimatedDurationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "reason": "자연·산책 선호와 맞아요"}
+         "travelFromPreviousMinutes": 10, "reason": "자연을 좋아하는 취향과 맞아요 · 앞 장소에서 약 10분이에요"}
       ]
     }
   ]
 }
 ```
 
-후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다. `q`를 주면 이 조건에 이름 검색을 더한다. 검색은 이 서비스의 관광지(같은 지역) 안에서만 하며, 카카오 같은 외부 장소는 관광지로 쓰지 않는다. 화면은 교체를 누르면 검색창과 추천 목록을 함께 보여준다(2026-09-27).
+후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다. `reason`은 [추천 이유](#추천-이유)의 5-4 규칙을 따른다. `q`를 주면 이 조건에 이름 검색을 더한다. 검색은 이 서비스의 관광지(같은 지역) 안에서만 하며, 카카오 같은 외부 장소는 관광지로 쓰지 않는다. 화면은 교체를 누르면 검색창과 추천 목록을 함께 보여준다(2026-09-27).
 
 | 오류 | HTTP | code |
 |---|---:|---|

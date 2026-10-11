@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -25,6 +27,32 @@ public class OnboardingQueryService {
     private final OnboardingSubmissionRepository onboardingSubmissionRepository;
     private final UserTasteVectorRepository userTasteVectorRepository;
     private final EmbeddingProperties embeddingProperties;
+
+    /** 추천 이유의 근거가 되는 최신 설문 답(docs/api/trip.md 추천 이유). 여행 MBTI는 표시용이라 넣지 않는다. */
+    public record TasteAnswers(Map<Integer, Integer> travelStyles, List<Integer> travelMotives) {
+    }
+
+    /** 최신 설문의 AI Hub 스타일·동기. 설문 전이면 빈 값. */
+    public Optional<TasteAnswers> findLatestTasteAnswers(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getLatestOnboardingSubmissionId())
+                .flatMap(onboardingSubmissionRepository::findById)
+                .map(submission -> new TasteAnswers(
+                        toIntMap(submission.getTravelStyles()), toIntList(submission.getTravelMotives())));
+    }
+
+    // JSONB에서 읽은 값은 실행 시점에 키·원소가 문자열일 수 있어(제네릭 소거) 정수로 맞춘다.
+    private static Map<Integer, Integer> toIntMap(Map<?, ?> raw) {
+        Map<Integer, Integer> result = new java.util.HashMap<>();
+        if (raw != null) {
+            raw.forEach((k, v) -> result.put(Integer.valueOf(String.valueOf(k)), Integer.valueOf(String.valueOf(v))));
+        }
+        return Map.copyOf(result);
+    }
+
+    private static List<Integer> toIntList(List<?> raw) {
+        return raw == null ? List.of() : raw.stream().map(v -> Integer.valueOf(String.valueOf(v))).toList();
+    }
 
     /** 최신 설문의 일정 밀도({@code RELAXED}·{@code PACKED}). 설문 전이면 빈 값. */
     public Optional<String> findLatestScheduleDensity(Long userId) {
