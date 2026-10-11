@@ -32,11 +32,13 @@ public record CourseResponse(
     public record AttractionItemResponse(
             String itemId, String type, Long attractionId, String name, String category, String thumbnailUrl,
             String address, Double lat, Double lng, int durationMinutes, Integer travelFromPreviousMinutes,
+            Integer travelFromPreviousMeters, String travelSource,
             boolean estimated, String source, String reason) implements ItemResponse {
     }
 
     public record MealItemResponse(
-            String itemId, String type, String meal, int durationMinutes, RestaurantSnapshot restaurant)
+            String itemId, String type, String meal, int durationMinutes, Integer travelFromPreviousMinutes,
+            Integer travelFromPreviousMeters, String travelSource, RestaurantSnapshot restaurant)
             implements ItemResponse {
     }
 

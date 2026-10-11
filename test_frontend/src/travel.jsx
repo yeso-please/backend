@@ -880,9 +880,13 @@ export function Course({ id, user, sharedCourse }) {
                     <div className="stop-body">
                       {item.travelFromPreviousMinutes != null && (
                         <small>
-                          이전 관광지에서 약 {item.travelFromPreviousMinutes}분
-                          · 직선거리 추정
+                          {item.travelSource === "ROAD"
+                            ? `이전 장소에서 자동차 약 ${item.travelFromPreviousMinutes}분 · ${(item.travelFromPreviousMeters / 1000).toFixed(1)} km`
+                            : `이전 장소에서 약 ${item.travelFromPreviousMinutes}분 · 직선거리 추정`}
                         </small>
+                      )}
+                      {item.travelFromPreviousMinutes == null && index > 0 && (
+                        <small>식당을 고르면 이동 정보가 보여요</small>
                       )}
                       <div className="stop-main">
                         {item.type === "ATTRACTION" && (

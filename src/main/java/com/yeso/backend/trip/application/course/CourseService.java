@@ -30,6 +30,7 @@ import com.yeso.backend.trip.domain.InvalidScheduleDensityException;
 import com.yeso.backend.trip.domain.InvalidTasteModeException;
 import com.yeso.backend.trip.domain.RecommendationMode;
 import com.yeso.backend.trip.domain.RestaurantSnapshot;
+import com.yeso.backend.trip.domain.TravelSource;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripRegionNotSelectedException;
@@ -81,6 +82,7 @@ public class CourseService {
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
     private final CourseMealRestaurantRepository courseMealRestaurantRepository;
+    private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final CourseMaterialService courseMaterialService;
     private final OnboardingQueryService onboardingQueryService;
@@ -131,6 +133,7 @@ public class CourseService {
 
         courseItemRepository.deleteByTripPlanId(tripId);
         User requester = entityManager.getReference(User.class, userId);
+        // 아래 생성기 이동값은 식사를 건너뛴 추정이다. 저장이 끝나면 저장 규칙(식사 포함, 식당 미정이면 비움)으로 다시 매긴다.
         LocalDateTime now = LocalDateTime.now(clock);
         MealAssigner mealAssigner = new MealAssigner(region, restaurantQueryService.loadTourApi(region.getSigCd()));
         for (Day day : result.days()) {
@@ -153,6 +156,7 @@ public class CourseService {
                 order++;
             }
         }
+        courseStorage.recalculateTravel(trip, courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripId));
 
         trip.setScheduleDensity(density);
         trip.setTitle(result.title());
@@ -277,7 +281,9 @@ public class CourseService {
         List<WarningResponse> warnings = new ArrayList<>();
         List<DayResponse> days = new ArrayList<>();
         if (!items.isEmpty()) {
-            warnings.add(new WarningResponse("ROUTE_TIME_ESTIMATED", null, null));
+            if (items.stream().anyMatch(item -> item.getTravelSource() == TravelSource.ESTIMATE)) {
+                warnings.add(new WarningResponse("ROUTE_TIME_ESTIMATED", null, null));
+            }
             if (trip.getRecommendationMode() == RecommendationMode.TOUR_OFFICIAL
                     || trip.getRecommendationMode() == RecommendationMode.RULE_BASED) {
                 warnings.add(new WarningResponse("PERSONALIZATION_FALLBACK", null, null));
@@ -291,7 +297,9 @@ public class CourseService {
                 for (CourseItem item : byDay.getOrDefault(dayIndex, List.of())) {
                     if (item.isMeal()) {
                         dayItems.add(new MealItemResponse(item.itemId(), "MEAL", item.getMealType().name(),
-                                item.getStayMinutes(), snapshot(restaurants.get(item.getId()))));
+                                item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
+                                item.getTravelDistanceMeters(), travelSource(item),
+                                snapshot(restaurants.get(item.getId()))));
                         continue;
                     }
                     AttractionView attraction = attractions.get(item.getAttractionId());
@@ -306,7 +314,8 @@ public class CourseService {
                             attraction == null ? null : attraction.address(),
                             attraction == null ? null : attraction.lat(),
                             attraction == null ? null : attraction.lng(),
-                            item.getStayMinutes(), item.getTravelMinutesFromPrevious(), true,
+                            item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
+                            item.getTravelDistanceMeters(), travelSource(item), true,
                             item.getSource().name(), item.getReason()));
                 }
                 days.add(new DayResponse(dayIndex, trip.getStartDate().plusDays(dayIndex), dayItems));
@@ -332,6 +341,10 @@ public class CourseService {
 
     private static UserRef userRef(User user) {
         return user == null ? null : new UserRef(user.getId(), user.getNickname());
+    }
+
+    private static String travelSource(CourseItem item) {
+        return item.getTravelSource() == null ? null : item.getTravelSource().name();
     }
 
     private static RestaurantSnapshot snapshot(CourseMealRestaurant restaurant) {

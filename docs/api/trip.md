@@ -198,7 +198,7 @@ GET /api/trips/{tripId}/context
 PATCH /api/trips/{tripId}/context
 ```
 
-시작일·종료일은 바꿀 수 없다. 이동수단과 출발지는 코스가 있어도 바꿀 수 있다. 코스가 있으면 서버가 모든 날의 이동시간(참고용)만 다시 계산한다. 코스의 항목·순서는 바뀌지 않는다.
+시작일·종료일은 바꿀 수 없다. 이동수단과 출발지는 코스가 있어도 바꿀 수 있다. 코스가 있으면 서버가 모든 날의 이동값(참고용)만 다시 계산한다. 자동차로 바꾸면 응답 전에 도로 값을 반영하고(실패·시간 상한 초과 구간은 추정값), 이 반영은 version을 올리지 않는다. 이동수단이 그대로면 이미 도로 값인 구간은 다시 계산하지 않는다. 코스의 항목·순서는 바뀌지 않는다.
 
 **Request Body**
 
@@ -824,11 +824,12 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
              → 5-1 재생성(누른 사람 취향, 기존 편집을 덮어씀)
 ```
 
-- 모든 편집은 `version`을 보내고, 서버가 이동시간을 다시 계산한다. 클라이언트가 보낸 시간·거리는 믿지 않는다. 가용 시간·시각 검사는 없으므로 편집이 "항목이 너무 많음"·"시간 초과"로 실패하지 않는다.
+- 모든 편집은 `version`을 보내고, 서버가 이동시간·거리를 다시 계산한다. 클라이언트가 보낸 시간·거리는 믿지 않는다. 자동차면 응답 전에 도로 값을 반영하고, 길찾기가 실패하거나 응답 시간 상한(4초)을 넘기면 그 구간은 추정값으로 둔다. 이 반영은 여행 version을 올리지 않는다. 가용 시간·시각 검사는 없으므로 편집이 "항목이 너무 많음"·"시간 초과"로 실패하지 않는다.
 - `version`은 코스 전용 값이 아니라 **여행의 `trip_plans.version` 하나**다. 여행 context 수정(3-5), 지역 정하기(3-7), 코스 생성·재생성(5-1), 편집(5-3)이 모두 같은 값을 올리고, 요청·응답의 `version`은 모두 이 수를 가리킨다. 재생성해도 계속 증가하며 1로 돌아가지 않는다. 불일치는 `409 TRIP_VERSION_CONFLICT`이고, 예전 화면의 요청은 이것으로 걸러진다.
 - 이 장은 **밖에서 관찰되는 동작**만 정한다. 후보 점수식, 날짜 배정·순서 알고리즘, 폴백 세부, 제목 프롬프트는 [데이터·추천·코스 설계](../design/recommendation.md) §5~§8을 따른다. 5장을 구현하는 사람은 그 문서를 함께 읽는다.
 - 코스는 여행이 삭제될 때만 함께 삭제된다. 3-7 `replaceCourse: true`로 지역·밀도를 바꾸면 코스가 **비워진다**(항목·식당 선택 삭제, 코스 기록과 최초 생성 완료 표시는 유지). 비운 코스는 5-2~5-6에서 코스가 없는 것과 같다(`404 COURSE_NOT_FOUND`, 4-13은 `days: []`). 다음 5-1은 재생성이다.
-- 이동수단·출발지(3-5)는 코스가 있어도 바꿀 수 있고, 서버가 이동시간을 다시 계산한다.
+- 이동수단·출발지(3-5)는 코스가 있어도 바꿀 수 있고, 서버가 이동시간을 다시 계산한다(자동차면 도로 값, 위와 같은 규칙).
+- ⚠️ 2026-10-11(#101) 호환성 변경: 식사 항목도 이동값을 가진다. 식사 바로 뒤 항목의 기준점이 "식사 앞 마지막 관광지"에서 "그 식당"으로 바뀌었다(식당 미정이면 `null`). `travelFromPreviousMeters`·`travelSource`를 추가했다. `ROUTE_TIME_ESTIMATED`는 추정 구간이 있을 때만 붙는다.
 - 밀도(RELAXED 4·PACKED 6)는 **자동 생성이 하루에 배치할 관광지 수의 목표**다. 수동 편집(5-3)은 개수 제한 없이 추가할 수 있다.
 
 **`Course`**
@@ -854,16 +855,20 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
       "items": [
         {"itemId": "a-101", "type": "ATTRACTION", "attractionId": 5012, "name": "대릉원", "category": "HISTORY_CULTURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "durationMinutes": 90,
-         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
-        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null},
+         "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "travelSource": null,
+         "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
         {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
-        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null}
+         "travelFromPreviousMinutes": 7, "travelFromPreviousMeters": 2400, "travelSource": "ROAD",
+         "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
+        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60,
+         "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "travelSource": null, "restaurant": null},
+        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60,
+         "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "travelSource": null, "restaurant": null}
       ]
     }
   ],
-  "warnings": [{"code": "ROUTE_TIME_ESTIMATED", "dayIndex": null, "itemId": null}],
+  "warnings": [],
   "updatedBy": {"userId": 12, "nickname": "여행친구"},
   "updatedAt": "2026-10-01T21:00:00"
 }
@@ -881,7 +886,9 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].type` | `ATTRACTION` \| `MEAL`. 아래 타입별 필드 표 참고 |
 | `items[].category` | `NATURE`(자연) \| `HISTORY_CULTURE`(역사·문화) \| `ACTIVITY`(체험·레포츠) \| `WALK_REST`(산책·휴식) \| `ETC`(기타) |
 | `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
-| `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
+| `items[].travelFromPreviousMinutes` | 바로 앞 항목(관광지 또는 식당)에서 오는 이동시간(분, 참고용). 그날 첫 항목이거나, 앞 항목이나 이 항목의 좌표가 없으면(식당 미정 등) `null`이다. 그 지점을 건너뛰어 잇지 않는다. 이동수단이 `CAR`이면 카카오모빌리티 자동차 길찾기 값(`travelSource: ROAD`), 그 밖이거나 길찾기에 실패하면 직선거리 × 보정계수 / 속도 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분, `travelSource: ESTIMATE`) |
+| `items[].travelFromPreviousMeters` | 도로 거리(m). `travelSource`가 `ROAD`일 때만 값이 있다. 직선거리는 내려주지 않는다 |
+| `items[].travelSource` | `ROAD` \| `ESTIMATE` \| `null`(이동값 없음). 화면은 `ROAD`를 "자동차 약 N분 · N km", `ESTIMATE`를 "직선거리 추정 약 N분"으로 구분해 보여 준다. 식당 미정 때문에 비면 "식당을 고르면 이동 정보가 보여요" |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 요청자의 실제 설문 답·취향 점수·공식 코스에 근거한 문장만. 근거가 없으면 `null`. `MANUAL`이면 `null`. 규칙은 아래 [추천 이유](#추천-이유) |
 | `items[].restaurant` | 식사 슬롯의 식당 스냅샷(`RestaurantSnapshot`). 코스 생성 시 자동 배정([5-1](#5-1-코스-생성재생성))되거나 사용자가 고른다. 후보가 없거나 해제했으면 `null`이고 화면에는 "미정"으로 보인다 |
@@ -923,7 +930,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 |---|---|---|
 | `itemId`, `type`, `durationMinutes` | 필수 | 필수(`durationMinutes`는 60) |
 | `attractionId`, `name`, `category`, `thumbnailUrl`, `address`, `lat`, `lng` | 필수(`thumbnailUrl`·`address`는 nullable) | — |
-| `travelFromPreviousMinutes` | 그날 앞에 관광지가 없으면 `null` | 항상 `null`(식당 이동은 계산하지 않는다) |
+| `travelFromPreviousMinutes`, `travelFromPreviousMeters`, `travelSource` | 위 규칙 | 위 규칙(식당을 고르지 않았으면 `null`이고 그 뒤 항목도 `null`) |
 | `estimated`, `source`, `reason` | 필수(`reason`은 nullable) | — |
 | `meal` | — | `LUNCH` \| `DINNER` |
 | `restaurant` | — | `RestaurantSnapshot` 또는 `null` |
@@ -955,7 +962,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 
 | code | 뜻 |
 |---|---|
-| `ROUTE_TIME_ESTIMATED` | 이동시간이 직선거리 추정이다. 실제 도로 시간이 아니라고 표시한다. MVP에서는 항상 붙는다 |
+| `ROUTE_TIME_ESTIMATED` | `travelSource: ESTIMATE`인 항목이 하나라도 있다(도보·대중교통, 또는 자동차 길찾기 실패). 그 값이 실제 도로 시간이 아니라고 표시한다 |
 | `DENSITY_TARGET_NOT_MET` | 지역 후보 부족으로 밀도 목표보다 적게 배치됨. `dayIndex` 포함. 생성·재생성 응답(5-1)에만 있고 조회(5-2)에는 없다 |
 | `PERSONALIZATION_FALLBACK` | 취향 임베딩을 쓸 수 없어 `TOUR_OFFICIAL`·`RULE_BASED`로 만듦. 사용자가 완전 랜덤(`RANDOM`)을 골랐을 때는 붙지 않는다 |
 | `TITLE_GENERATION_FAILED` | LLM 제목을 켰는데 실패·timeout이라 규칙 제목을 사용함. LLM을 끈 기본 설정에서는 붙지 않는다 |
@@ -1105,7 +1112,7 @@ PATCH /api/courses/{tripId}/schedule
 - `MOVE`는 관광지·식사 항목 모두에, `REMOVE`·`REPLACE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 식사 `itemId`에 `REMOVE`·`REPLACE`를 보내는 등 다른 타입이나 범위 밖 `dayIndex`·`position`, 식사를 다른 날로 옮기는 `MOVE`는 `400 COURSE_INVALID_OPERATION`이다. 식사를 추가하는 operation은 없다.
 - `REPLACE`는 `itemId`를 유지하고 장소만 바꾼다. `ADD`는 새 `itemId`를 만든다.
 - 추가·교체 대상은 같은 지역의 추천 가능 관광지여야 하고 이미 일정에 없어야 한다.
-- 적용 뒤 서버가 이동시간(참고용)만 다시 계산한다. 식사 위치는 사용자가 정한 순서 그대로 두고 옮기지 않는다.
+- 적용 뒤 서버가 이동값(참고용)만 다시 계산한다. 자동차면 응답에 도로 값이 들어 있다(5장 `travelSource`). 식당을 고르거나(`SET_RESTAURANT`) 해제하면 그 식사 앞뒤 구간도 다시 계산된다. 식사 위치는 사용자가 정한 순서 그대로 두고 옮기지 않는다.
 - 개수·시간 검사는 없다. `ADD`로 밀도 목표보다 많이 넣어도 된다(밀도는 자동 생성의 목표일 뿐이다).
 - 관광지가 0곳인 날도 허용한다. 식당을 고르지 않은 식사 슬롯은 화면에서 "미정"으로 보인다. 식사를 건너뛰거나 삭제하는 operation은 없다.
 - 일정에 이미 있는 추천 불가 장소(`ATTRACTION_NO_LONGER_RECOMMENDABLE`)는 다른 편집을 막지 않는다. 추천 가능 여부는 `ADD`·`REPLACE`로 새로 넣는 장소에만 검사한다.

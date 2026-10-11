@@ -4,6 +4,7 @@ import com.yeso.backend.shared.web.CurrentUserId;
 import com.yeso.backend.trip.application.course.CourseService;
 import com.yeso.backend.trip.application.course.CourseEditService;
 import com.yeso.backend.trip.application.course.CourseAlternativesService;
+import com.yeso.backend.trip.application.course.CourseRouteRefresher;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -26,12 +27,15 @@ public class CourseController {
     private final CourseService courseService;
     private final CourseEditService courseEditService;
     private final CourseAlternativesService alternativesService;
+    private final CourseRouteRefresher courseRouteRefresher;
 
     @Operation(summary = "5-1 코스 생성·재생성")
     @PostMapping("/api/courses/{tripId}/generate")
     public ResponseEntity<CourseResponse> generate(
             @CurrentUserId Long userId, @PathVariable Long tripId, @Valid @RequestBody GenerateCourseRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(courseService.generate(userId, tripId, request));
+        // 생성 트랜잭션이 커밋된 뒤 자동차 이동값을 도로 값으로 바꾼다(카카오를 기다리는 동안 잠금을 잡지 않는다).
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(courseRouteRefresher.refresh(courseService.generate(userId, tripId, request)));
     }
 
     @Operation(summary = "5-2 코스 조회")
@@ -44,7 +48,7 @@ public class CourseController {
     @PatchMapping("/api/courses/{tripId}/schedule")
     public CourseResponse edit(@CurrentUserId Long userId, @PathVariable Long tripId,
                                @Valid @RequestBody EditCourseRequest request) {
-        return courseEditService.edit(userId, tripId, request);
+        return courseRouteRefresher.refresh(courseEditService.edit(userId, tripId, request));
     }
 
     @Operation(summary = "5-4 대체·추가 후보")

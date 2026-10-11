@@ -7,6 +7,7 @@ import com.yeso.backend.trip.application.context.RegionDrawService;
 import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPeriod;
 import jakarta.validation.Valid;
+import com.yeso.backend.trip.application.course.CourseRouteRefresher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ import java.util.List;
 public class TripController {
 
     private final TripService tripService;
+    private final CourseRouteRefresher courseRouteRefresher;
     private final RegionDrawService regionDrawService;
 
     @Operation(summary = "3-1 선택 불가 날짜")
@@ -87,7 +89,12 @@ public class TripController {
     @PatchMapping("/{tripId}/context")
     public TripContextResponse updateContext(
             @CurrentUserId Long userId, @PathVariable Long tripId, @Valid @RequestBody UpdateTripContextRequest request) {
-        return tripService.updateContext(userId, tripId, request);
+        TripContextResponse response = tripService.updateContext(userId, tripId, request);
+        if (response.hasCourse()) {
+            // 이어지는 코스 조회(5-2)에 도로 값이 나오도록 응답 전에 반영한다. 이미 도로 값인 구간은 다시 부르지 않는다.
+            courseRouteRefresher.refresh(tripId, response.version());
+        }
+        return response;
     }
 
     @Operation(summary = "3-7 지역 정하기")

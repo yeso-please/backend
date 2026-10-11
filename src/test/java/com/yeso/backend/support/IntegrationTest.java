@@ -3,6 +3,7 @@ package com.yeso.backend.support;
 import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
+import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +47,9 @@ public abstract class IntegrationTest {
     protected FakeKakaoLocalClient fakeKakaoLocalClient;
 
     @Autowired
+    protected FakeKakaoMobilityClient fakeKakaoMobilityClient;
+
+    @Autowired
     protected FakeKakaoOAuthClient fakeKakaoOAuthClient;
 
     @Autowired
@@ -59,6 +63,7 @@ public abstract class IntegrationTest {
         databaseCleaner.truncateAll();
         fakeEmbeddingClient.reset();
         fakeKakaoLocalClient.reset();
+        fakeKakaoMobilityClient.reset();
         fakeKakaoOAuthClient.reset();
         fakeDiaryPhotoStorage.reset();
         clock.reset();

@@ -19,7 +19,8 @@ import lombok.NoArgsConstructor;
 /**
  * 코스의 한 항목. 코스는 시각 없는 날짜별 순서 목록이고(docs/api/trip.md 5장), 관광지와 식사가
  * 한 목록에 섞인다. {@code dayIndex} 안에서 {@code orderIndex} 순서가 곧 방문 순서다.
- * 체류·이동 시간은 참고용 추정치다. 식사에 고른 식당은 {@link CourseMealRestaurant}에 따로 둔다.
+ * 체류 시간은 참고용 추정치이고, 이동값은 도로 값 또는 추정치다({@link TravelSource}). 식사에 고른 식당은
+ * {@link CourseMealRestaurant}에 따로 둔다.
  */
 @Entity
 @Table(name = "course_items")
@@ -68,9 +69,17 @@ public class CourseItem {
     @Column(name = "stay_minutes", nullable = false)
     private int stayMinutes;
 
-    /** 앞 관광지에서 오는 이동 시간(분, 직선거리 추정). 그날 첫 관광지와 식사 항목은 null이다. */
+    /** 바로 앞 항목(관광지 또는 식당)에서 오는 이동 시간(분). 계산할 수 없으면 null이다(docs/api/trip.md 5장). */
     @Column(name = "travel_minutes_from_previous")
     private Integer travelMinutesFromPrevious;
+
+    /** 도로 거리(m). {@link TravelSource#ROAD}일 때만 있다. */
+    @Column(name = "travel_distance_meters")
+    private Integer travelDistanceMeters;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "travel_source", length = 10)
+    private TravelSource travelSource;
 
     /** 관광지 항목만 있다. */
     @Enumerated(EnumType.STRING)
@@ -88,6 +97,7 @@ public class CourseItem {
         item.attraction = attraction;
         item.attractionId = attraction.getId();
         item.travelMinutesFromPrevious = travelMinutesFromPrevious;
+        item.travelSource = travelMinutesFromPrevious == null ? null : TravelSource.ESTIMATE;
         item.source = source;
         item.reason = reason;
         return item;
@@ -128,8 +138,11 @@ public class CourseItem {
         this.orderIndex = orderIndex;
     }
 
-    public void updateTravelMinutesFromPrevious(Integer minutes) {
+    /** 이동값을 바꾼다. 계산하지 못한 구간은 세 값 모두 null이다. */
+    public void updateTravel(Integer minutes, Integer distanceMeters, TravelSource source) {
         this.travelMinutesFromPrevious = minutes;
+        this.travelDistanceMeters = distanceMeters;
+        this.travelSource = source;
     }
 
     public void replaceAttraction(Attraction attraction, int stayMinutes) {

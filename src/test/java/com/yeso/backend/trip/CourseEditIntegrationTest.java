@@ -249,7 +249,7 @@ class CourseEditIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("식사는 같은 날 안에서 순서를 옮길 수 있고, 뒤 관광지의 이동시간은 식사를 건너뛴다")
+        @DisplayName("식사는 같은 날 안에서 순서를 옮길 수 있고, 식당이 없으면 뒤 관광지의 이동값이 비어 있다")
         void moveMealWithinDay() throws Exception {
             Long tripId = trip();
             MvcResult first = generate(tripId);

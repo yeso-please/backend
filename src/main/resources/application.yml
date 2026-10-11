@@ -98,6 +98,11 @@ course:
       rest-api-key: ${KAKAO_REST_API_KEY:}
       timeout-millis: 3000
       default-retry-after-seconds: 60
+  # 코스 이동값 도로 계산(docs/api/trip.md 5장). 키는 위 kakao.rest-api-key를 함께 쓴다.
+  route:
+    base-url: https://apis-navi.kakaomobility.com
+    timeout-millis: 2000
+    total-budget-millis: 4000
 
 # 여행기 사진은 private S3 bucket을 사용한다. 로컬에서는 비활성이고 업로드 요청은 503이다.
 # dev 배포는 DIARY_PHOTOS_S3_ENABLED=true, DIARY_PHOTOS_S3_BUCKET, AWS_REGION과 task role 권한을 제공한다.

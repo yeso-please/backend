@@ -32,7 +32,7 @@ export const labels = {
 };
 export const warnings = {
   ROUTE_TIME_ESTIMATED:
-    "이동시간은 직선거리 기반 추정이며 실제 길찾기가 아닙니다.",
+    "일부 이동시간은 직선거리 기반 추정이며 실제 길찾기가 아닙니다.",
   PERSONALIZATION_FALLBACK:
     "취향 벡터를 사용할 수 없어 대체 방식으로 코스를 만들었습니다.",
   DENSITY_TARGET_NOT_MET:
