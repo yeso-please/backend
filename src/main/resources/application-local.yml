@@ -13,3 +13,8 @@ jwt:
 app:
   auth:
     cookie-secure: false
+
+# http://localhost 콜백은 local profile에서만 허용한다.
+auth:
+  kakao:
+    allowed-redirect-uris: ${KAKAO_ALLOWED_REDIRECT_URIS:http://localhost:5173/auth/kakao/callback}
