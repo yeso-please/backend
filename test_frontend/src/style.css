@@ -1606,3 +1606,29 @@ details .two-col {
     scroll-behavior: auto !important;
   }
 }
+
+/* 카카오 로그인 버튼(카카오 디자인 가이드: #FEE500 배경, 85% 검정 글자) */
+.kakao-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: #fee500;
+  color: rgba(0, 0, 0, 0.85);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kakao-login:hover {
+  filter: brightness(0.97);
+}
+.auth-divider {
+  margin: 14px 0 10px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.6;
+}

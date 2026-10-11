@@ -55,6 +55,20 @@ app:
   auth:
     cookie-secure: true
 
+# ----- 카카오 로그인(docs/api/auth.md 1-6) -----
+# client-id는 KAKAO_LOGIN_CLIENT_ID(로그인용 앱의 REST API 키)가 없으면 식당 검색 키를 쓴다. client-secret은 커밋하지 않는다.
+# allowed-redirect-uris는 쉼표로 구분하고 카카오 콘솔의 Redirect URI와 정확히 같아야 한다. 운영은 HTTPS만 넣는다.
+# 비어 있어도 기동은 되고, 카카오 로그인 요청만 503 AUTH_KAKAO_NOT_CONFIGURED다.
+auth:
+  kakao:
+    auth-base-url: https://kauth.kakao.com
+    api-base-url: https://kapi.kakao.com
+    client-id: ${KAKAO_LOGIN_CLIENT_ID:${course.restaurant.kakao.rest-api-key:}}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    allowed-redirect-uris: ${KAKAO_ALLOWED_REDIRECT_URIS:}
+    connect-timeout-millis: 2000
+    timeout-millis: 3000
+
 # ----- 온보딩 임베딩(Python) -----
 # base-url이 비어 있으면 호출이 항상 실패해 job이 PENDING/FAILED로 남는다 — submission 자체는
 # 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
