@@ -24,7 +24,7 @@ public final class MbtiScorer {
     private static char scoreAxis(OnboardingAxis axis, Map<Integer, Integer> choiceByQuestionNumber) {
         int firstCount = 0;
         int secondCount = 0;
-        for (OnboardingQuestion question : OnboardingQuestionBank.QUESTIONS) {
+        for (OnboardingQuestion question : OnboardingQuestionBank.MBTI_QUESTIONS) {
             if (question.axis() != axis) {
                 continue;
             }

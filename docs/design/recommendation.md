@@ -57,10 +57,10 @@
 
 ## 5. 임베딩과 취향 집계
 
-- 새 회원 온보딩은 AI Hub `travelStyles`·`travelMotives`·`likedRegions` 구조화 입력을 Python에 보낸다. 서비스가 template v2의 문장으로 합성하며, 제외 조건과 일정 밀도는 임베딩에 섞지 않는다. 구형 `demo-mbti-v1` 재검사와 미처리 job은 저장된 template v1로 호환 처리한다.
+- 새 회원 온보딩은 AI Hub `travelStyles`·`travelMotives`·`likedRegions` 구조화 입력을 Python에 보낸다. 서비스가 template v2의 문장으로 합성하며, 제외 조건·일정 밀도·여행 MBTI는 임베딩에 섞지 않는다(MBTI는 표시용). 구형 `demo-mbti-v1`과 template v1은 폐기했고, 남은 template v1 job은 영구 실패로 끝낸다.
 - Python 서비스는 회원/관광지에 같은 모델·벡터 차원을 쓴다. 현재 template v2는 AI Hub 회원 프로필과 TourAPI 유형을 포함한 관광지 문장 쌍이다. v1 구형 프로필 벡터는 보존하지만 v2 관광지 벡터와 혼합해 코사인 계산하지 않는다. 회원이 최신 설문을 다시 제출하기 전에는 취향 점수를 비개인화 폴백으로 처리한다. RDS 업무 테이블을 직접 쓰지 않고 벡터를 Spring에 반환한다.
 - 임베딩 서비스는 별도 레포 [`yeso-please/ai`](https://github.com/yeso-please/ai)에 둔다. 벡터는 **float32 리틀엔디언 바이트**(PyTorch/NumPy `tobytes()` 그대로)를 base64로 주고받고, DB(`user_taste_vectors`, `attraction_embeddings`)에도 같은 바이트로 저장한다(2026-09-27).
-- 회원 벡터 요청(`POST /embeddings`)은 문장이 아니라 구조화된 `profile`을 보낸다. 템플릿 1(기존 설문)은 `travelMbti`, `scheduleDensity`, `experienceTags`, `excludeTags`, `likedTrips[{sigCd, regionName, tags, note}]`, 템플릿 2(AI Hub 설문)는 `travelStyles`, `travelMotives`, `likedRegions`, `excludeTags`를 쓴다. 임베딩 문장은 ai가 `templateVersion`에 맞춰 합성하고, `embedding.model-version`이 ai `MODEL_VERSION`과 다르면 409다(계약 원문은 ai README "백엔드와의 계약"). 응답의 `profileText`는 화면 표시·보관용으로 Spring이 만든다.
+- 회원 벡터 요청(`POST /embeddings`)은 문장이 아니라 구조화된 `profile`을 보낸다. 백엔드는 템플릿 2(AI Hub 설문)만 보내며 `travelStyles`, `travelMotives`, `likedRegions`, `excludeTags`, `scheduleDensity`를 담는다(`travelMbti`는 보내지 않는다). 템플릿 1(구형 설문) 요청은 더 이상 만들지 않는다. 임베딩 문장은 ai가 `templateVersion`에 맞춰 합성하고, `embedding.model-version`이 ai `MODEL_VERSION`과 다르면 409다(계약 원문은 ai README "백엔드와의 계약"). 응답의 `profileText`는 화면 표시·보관용으로 Spring이 만든다.
 - 현재 기본 모델은 공개 사전학습 `mminilm-l12-v1`이다. 이후 파인튜닝 모델은 오프라인 평가와 별도 model version을 만든 뒤 벡터를 재생성해 전환한다. 다른 model/template 벡터를 코사인 계산에서 섞지 않는다.
 - 관광지 벡터는 사전 배치(`POST /embeddings/batch`), 회원 벡터는 설문 완료 시 생성한다. 배치는 추천 가능 관광지 중 `PENDING`·누락·버전 불일치 벡터만 ID 순으로 묶어 처리한다. 한 묶음은 DB 트랜잭션에서 잠그고 성공 응답 전체가 검증된 뒤 저장한다. 장애·부분 응답은 묶음 전체를 저장하지 않으므로 같은 one-shot 작업을 다시 실행하면 미완료분부터 이어간다. 텍스트를 바꾸는 동기화는 `Attraction.updateEmbeddableContent`를 거쳐 `PENDING`으로 되돌린다.
 - 초기 실행은 운영 서버 자동 기동과 분리한다. AI URL이 설정된 개발 환경에서 애플리케이션 JAR을 `--spring.main.web-application-type=none --embedding.attraction-batch.enabled=true`로 한 번 실행하고, 끝나면 처리 수·미완료 수·버전별 상태를 확인한다. 배치 크기는 `embedding.attraction-batch.batch-size`(기본 64), 현재 계약은 template v2다. 관광지와 프로필의 모델·템플릿·차원이 일치하는 벡터만 추천 계산에 쓴다.
