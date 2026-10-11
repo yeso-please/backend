@@ -178,6 +178,20 @@ class RegionEligibilityIntegrationTest extends IntegrationTest {
         }
 
         @Test
+        @DisplayName("분류가 숙박 > 캠핑(AC05)이면 레포츠여도 빠지고, 분류가 없거나 다른 레포츠는 남는다")
+        void excludesCamping() {
+            region(GYEONGJU);
+            Long camping = attraction(GYEONGJU, 35.8, 129.2, "설명", 28, "VALID");
+            Long horseRiding = attraction(GYEONGJU, 35.8, 129.2, "설명", 28, "VALID");
+            Long unclassified = attraction(GYEONGJU, 35.8, 129.2, "설명", 28, "VALID");
+            jdbc.update("update app.attractions set lcls_systm1 = 'AC', lcls_systm2 = 'AC05', lcls_systm3 = 'AC050100' where id = ?", camping);
+            jdbc.update("update app.attractions set lcls_systm1 = 'LS', lcls_systm2 = 'LS01', lcls_systm3 = 'LS010100' where id = ?", horseRiding);
+
+            assertThat(service.findCourseCandidates(GYEONGJU)).extracting(CourseCandidate::attractionId)
+                    .containsExactly(horseRiding, unclassified);
+        }
+
+        @Test
         @DisplayName("열린 ERROR 품질 이슈만 막고, WARNING이나 해결된 이슈는 막지 않는다")
         void blockingIssueIsOpenError() {
             region(GYEONGJU);

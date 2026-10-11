@@ -16,13 +16,14 @@ public interface RegionQualityRepository extends Repository<Region, String> {
 
     /**
      * 추천 가능 관광지: 좌표, 공백 아닌 설명, 검증된(VALID) 이미지 1장 이상, 열린 ERROR 품질 이슈 없음.
-     * 쇼핑(38)·숙박(32)·음식점(39)은 코스 후보가 아니다.
+     * 쇼핑(38)·숙박(32)·음식점(39)과 분류가 캠핑(AC05)인 곳은 코스 후보가 아니다.
      */
     String RECOMMENDABLE = """
             select a.* from {h-schema}attractions a
             where a.lat is not null and a.lng is not null
               and a.description is not null and btrim(a.description) <> ''
               and coalesce(a.content_type_id, 12) not in (32, 38, 39)
+              and coalesce(a.lcls_systm2, '') <> 'AC05'
               and exists (select 1 from {h-schema}attraction_images i
                           where i.attraction_id = a.id and i.validation_status = 'VALID')
               and not exists (select 1 from {h-schema}data_quality_issues q
