@@ -1293,6 +1293,52 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 ---
 
+### 5-7. 코스 경로
+
+`GET /api/courses/{tripId}/routes?dayIndex=0` · 참여자
+
+하루 코스의 지도용 경로다. 프론트는 이 응답의 `path`를 지도에 선으로 그리고, 거리·시간을 구간 위에 보여 준다. 코스 편집과 분리된 조회 API라서 편집(5-3) 응답은 지금처럼 추정값으로 바로 나가고, 지도를 열거나 편집 뒤 지도를 다시 그릴 때 이 API를 부른다(2026-10-12, #101).
+
+- 구간은 5장과 같은 규칙이다. 지점은 관광지와 식당을 고른 식사이고, 식당 미정 식사는 건너뛰어 앞뒤 지점을 잇는다.
+- 이동수단이 `CAR`면 서버가 카카오모빌리티 자동차 길찾기로 도로 경로·거리·시간을 받는다(`source: ROAD`). 그 밖의 이동수단이거나 길찾기에 실패·지연(요청당 4초 상한)되면 그 구간은 직선이다(`source: STRAIGHT`). 직선 구간의 시간·거리는 5장 `travelFromPreviousMinutes`·`travelFromPreviousMeters`와 같다. 길찾기 실패로 요청이 실패하지는 않는다.
+- 서버는 구간 결과를 출발·도착 좌표로 잠깐(기본 24시간) 기억한다. 편집으로 바뀌지 않은 구간과 다른 참여자가 다시 연 코스는 길찾기를 다시 하지 않는다. 장소 하나를 바꾸면 그 앞뒤 구간만 새로 길찾기한다.
+- 카카오 REST 키는 서버에만 있다. 프론트는 지도 표시용 JavaScript 키만 쓴다.
+
+**Response `200 OK`**
+
+```json
+{
+  "tripId": 42,
+  "version": 3,
+  "dayIndex": 0,
+  "transport": "CAR",
+  "legs": [
+    {"fromItemId": "a-101", "toItemId": "a-102", "source": "ROAD", "distanceMeters": 2400, "durationMinutes": 7,
+     "path": [[35.838, 129.211], [35.8372, 129.2151], [35.834, 129.226]]},
+    {"fromItemId": "a-102", "toItemId": "m-32", "source": "STRAIGHT", "distanceMeters": 650, "durationMinutes": 5,
+     "path": [[35.834, 129.226], [35.83, 129.21]]}
+  ]
+}
+```
+
+| 필드 | 설명 |
+|---|---|
+| `version` | 경로를 계산한 시점의 여행 버전. 화면의 코스 `version`과 다르면 그사이 편집된 것이므로 다시 부른다 |
+| `transport` | 여행 이동수단. `CAR`가 아니면 모든 구간이 `STRAIGHT`다 |
+| `legs` | 방문 순서대로의 구간. 지점이 하나 이하면 빈 배열 |
+| `legs[].fromItemId`, `toItemId` | 구간의 출발·도착 코스 항목(5장 `itemId`) |
+| `legs[].source` | `ROAD`(도로) \| `STRAIGHT`(직선) |
+| `legs[].distanceMeters`, `durationMinutes` | `ROAD`는 도로 거리·시간, `STRAIGHT`는 직선거리와 5장 추정 시간 |
+| `legs[].path` | `[위도, 경도]` 점 목록(출발→도착 순서). `STRAIGHT`는 두 점. 연속 구간의 이음점은 앞 구간의 끝과 다음 구간의 시작에 모두 들어 있다 |
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| `dayIndex`가 없거나 여행 날짜 범위 밖 | 400 | `COMMON_INVALID_REQUEST` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
+
+---
+
 # 6. 여행기·사진 지도
 
 > **추가 기능(MVP 이후)** — MVP 범위가 아니다. 계약은 미리 적어 두지만 MVP 구현 대상이 아니다.

@@ -408,6 +408,8 @@ class CourseEditIntegrationTest extends IntegrationTest {
             Long tripId = trip();
             generate(tripId);
             attraction("추가 장소", 35.89, 129.29);
+            // 지역 후보는 잠깐 기억된다(CourseDataCache). 기억 시간이 지나 새 관광지가 반영된 상황으로 둔다.
+            courseDataCache.clear();
             mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
                             .header("Authorization", member.bearer()).param("q", "추가 장소"))
                     .andExpect(status().isOk())

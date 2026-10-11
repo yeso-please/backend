@@ -4,6 +4,7 @@ import com.yeso.backend.shared.web.CurrentUserId;
 import com.yeso.backend.trip.application.course.CourseService;
 import com.yeso.backend.trip.application.course.CourseEditService;
 import com.yeso.backend.trip.application.course.CourseAlternativesService;
+import com.yeso.backend.trip.application.course.CourseRouteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ public class CourseController {
     private final CourseService courseService;
     private final CourseEditService courseEditService;
     private final CourseAlternativesService alternativesService;
+    private final CourseRouteService courseRouteService;
 
     @Operation(summary = "5-1 코스 생성·재생성")
     @PostMapping("/api/courses/{tripId}/generate")
@@ -55,5 +57,12 @@ public class CourseController {
                                                     @RequestParam(required = false) Integer limit,
                                                     @RequestParam(required = false) String q) {
         return alternativesService.alternatives(userId, tripId, itemId, category, limit, q);
+    }
+
+    @Operation(summary = "5-7 하루 코스의 지도 경로")
+    @GetMapping("/api/courses/{tripId}/routes")
+    public CourseRoutesResponse routes(@CurrentUserId Long userId, @PathVariable Long tripId,
+                                       @RequestParam int dayIndex) {
+        return courseRouteService.routes(userId, tripId, dayIndex);
     }
 }

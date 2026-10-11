@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 
 /**
@@ -31,6 +32,7 @@ public class RegionEligibilityService {
 
     private final RegionQualityRepository regionQualityRepository;
     private final CourseMaterialService courseMaterialService;
+    private final CourseDataCache courseDataCache;
 
     /** 지도에 그릴 지역 하나와 추첨 가능 여부. */
     public record RegionEligibility(
@@ -120,17 +122,32 @@ public class RegionEligibilityService {
         return Math.max(-1, Math.min(1, dot / Math.sqrt(leftNorm * rightNorm)));
     }
 
-    /** 코스 생성 후보(5-1). 추천 가능 관광지만, 관광지 ID 순. 없는 지역이면 {@code REGION_NOT_FOUND}. */
+    /**
+     * 코스 생성 후보(5-1·5-4). 추천 가능 관광지만, 관광지 ID 순. 없는 지역이면 {@code REGION_NOT_FOUND}.
+     * 요청마다 지역 전체를 다시 읽지 않도록 잠깐 기억한다({@link CourseDataCache}).
+     */
     public List<CourseCandidate> findCourseCandidates(String sigCd) {
-        if (regionQualityRepository.findQuality(sigCd).isEmpty()) {
-            throw new RegionNotFoundException(sigCd);
-        }
-        return regionQualityRepository.findRecommendableAttractions(sigCd).stream()
-                .map(row -> new CourseCandidate(
-                        row.getId(), row.getName(), AttractionCategory.fromContentType(row.getContentTypeId()),
-                        AttractionCategory.stayMinutesOf(row.getContentTypeId()), row.getAddr(),
-                        row.getLat(), row.getLng(), row.getThumbnailUrl()))
-                .toList();
+        return courseDataCache.candidates(sigCd, () -> {
+            if (regionQualityRepository.findQuality(sigCd).isEmpty()) {
+                throw new RegionNotFoundException(sigCd);
+            }
+            return regionQualityRepository.findRecommendableAttractions(sigCd).stream()
+                    .map(RegionEligibilityService::toCandidate)
+                    .toList();
+        });
+    }
+
+    /** 관광지 한 곳이 이 지역의 추천 가능 관광지인지(5-3 추가·교체). 캐시를 쓰지 않고 지금 DB로 확인한다. */
+    public Optional<CourseCandidate> findCourseCandidate(String sigCd, Long attractionId) {
+        return regionQualityRepository.findRecommendableAttraction(sigCd, attractionId)
+                .map(RegionEligibilityService::toCandidate);
+    }
+
+    private static CourseCandidate toCandidate(RegionQualityRepository.RecommendableAttractionRow row) {
+        return new CourseCandidate(
+                row.getId(), row.getName(), AttractionCategory.fromContentType(row.getContentTypeId()),
+                AttractionCategory.stayMinutesOf(row.getContentTypeId()), row.getAddr(),
+                row.getLat(), row.getLng(), row.getThumbnailUrl());
     }
 
     /** {@code days × 밀도 상한 + min(days, 3)}. */

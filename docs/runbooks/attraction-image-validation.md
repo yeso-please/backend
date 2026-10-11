@@ -71,3 +71,4 @@ $psql = "docker run --rm -e PGHOST -e PGDATABASE -e PGUSER -e PGPASSWORD -e PGOP
 | 날짜 | 대상 | 결과 |
 |---|---|---|
 | 2026-10-01 | 개발 RDS PENDING 10,933건 | VALID 10,933(JPEG 10,700·PNG 163·BMP 70), INVALID 0, ERROR 0. 추천 가능 관광지 0곳에서 3,982곳으로 늘었다 |
+| 2026-10-12 | 개발 RDS **식당** 이미지 PENDING 6,766건(`restaurants.image_url`, 같은 스크립트) | VALID 6,765, INVALID 1(id 635, 판독 불가 — PENDING 유지), ERROR 0. `restaurants.image_validation_status`만 `VALID`로 바꿨다(이 테이블에는 `validated_at`이 없다). 식당 추천(5-5)과 이후 고르는 식당에 사진이 나온다. 이미 코스에 저장된 식당 스냅샷은 다시 골라야 사진이 생긴다 |
