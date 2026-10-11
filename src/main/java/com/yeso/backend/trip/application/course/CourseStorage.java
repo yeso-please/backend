@@ -3,15 +3,18 @@ package com.yeso.backend.trip.application.course;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
 import com.yeso.backend.trip.domain.CourseItem;
-import com.yeso.backend.trip.domain.TravelTimeEstimator;
+import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
+import com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 코스 저장 구조를 다른 유스케이스에 여는 계약. 코스 테이블(course_items, course_meal_restaurants)과
@@ -32,6 +35,7 @@ public class CourseStorage {
 
     private final CourseItemRepository courseItemRepository;
     private final CourseMaterialService courseMaterialService;
+    private final CourseMealRestaurantRepository courseMealRestaurantRepository;
 
     @Transactional(readOnly = true)
     public boolean hasCourse(Long tripPlanId) {
@@ -47,30 +51,28 @@ public class CourseStorage {
         tripPlan.clearCourseInfo();
     }
 
-    /** 식사를 건너뛰고 각 날의 앞 관광지에서 오는 이동시간만 다시 계산한다. */
+    /**
+     * 각 날의 이동시간을 다시 계산한다. 관광지와 식당을 고른 식사를 지점으로 잇고, 식당 미정 식사는 건너뛴다
+     * ({@link TravelLegs}). 편집·식당 선택/해제·이동수단 변경 트랜잭션 안에서 부른다(외부 호출 없음).
+     */
     public void recalculateTravel(TripPlan tripPlan) {
         recalculateTravel(tripPlan, courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripPlan.getId()));
     }
 
+    /** @param items 날짜·순서대로 정렬된 이 여행의 모든 항목 */
     public void recalculateTravel(TripPlan tripPlan, List<CourseItem> items) {
         Map<Long, AttractionView> views = courseMaterialService.findAttractionViews(items.stream()
                 .filter(item -> !item.isMeal()).map(CourseItem::getAttractionId).toList());
+        Map<Long, CourseMealRestaurant> restaurants = courseMealRestaurantRepository.findByCourseItemIdIn(items.stream()
+                        .filter(CourseItem::isMeal).map(CourseItem::getId).toList()).stream()
+                .collect(Collectors.toMap(CourseMealRestaurant::getCourseItemId, Function.identity()));
         for (int day = 0; day <= tripPlan.getNights(); day++) {
-            AttractionView previous = null;
-            for (CourseItem item : items) {
-                if (item.getDayIndex() != day) {
-                    continue;
-                }
-                if (item.isMeal()) {
-                    item.updateTravelMinutesFromPrevious(null);
-                    continue;
-                }
-                AttractionView current = views.get(item.getAttractionId());
-                Integer minutes = previous == null || current == null || previous.lat() == null
-                        || previous.lng() == null || current.lat() == null || current.lng() == null
-                        ? null : TravelTimeEstimator.minutes(previous.lat(), previous.lng(), current.lat(), current.lng(), tripPlan.getTransport());
-                item.updateTravelMinutesFromPrevious(minutes);
-                previous = current;
+            int dayIndex = day;
+            List<CourseItem> dayItems = items.stream().filter(item -> item.getDayIndex() == dayIndex).toList();
+            Map<CourseItem, TravelLegs.Leg> legs = TravelLegs.of(dayItems, views, restaurants);
+            for (CourseItem item : dayItems) {
+                TravelLegs.Leg leg = legs.get(item);
+                item.updateTravelMinutesFromPrevious(leg == null ? null : leg.minutes(tripPlan.getTransport()));
             }
         }
     }

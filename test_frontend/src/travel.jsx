@@ -880,7 +880,9 @@ export function Course({ id, user, sharedCourse }) {
                     <div className="stop-body">
                       {item.travelFromPreviousMinutes != null && (
                         <small>
-                          이전 관광지에서 약 {item.travelFromPreviousMinutes}분
+                          이전 장소에서 약 {item.travelFromPreviousMinutes}분
+                          {item.travelFromPreviousMeters != null &&
+                            ` · 직선 ${(item.travelFromPreviousMeters / 1000).toFixed(1)}km`}
                           · 직선거리 추정
                         </small>
                       )}

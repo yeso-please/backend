@@ -81,6 +81,7 @@ public class CourseService {
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
     private final CourseMealRestaurantRepository courseMealRestaurantRepository;
+    private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final CourseMaterialService courseMaterialService;
     private final OnboardingQueryService onboardingQueryService;
@@ -153,6 +154,8 @@ public class CourseService {
                 order++;
             }
         }
+        // 생성기 이동시간은 식사를 건너뛴 값이다. 식당 자동 배정까지 끝났으니 식당을 지점으로 넣는 저장 규칙으로 다시 매긴다.
+        courseStorage.recalculateTravel(trip, courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripId));
 
         trip.setScheduleDensity(density);
         trip.setTitle(result.title());
@@ -288,10 +291,13 @@ public class CourseService {
                     .collect(Collectors.groupingBy(CourseItem::getDayIndex));
             for (int dayIndex = 0; dayIndex <= trip.getNights(); dayIndex++) {
                 List<ItemResponse> dayItems = new ArrayList<>();
-                for (CourseItem item : byDay.getOrDefault(dayIndex, List.of())) {
+                List<CourseItem> itemsOfDay = byDay.getOrDefault(dayIndex, List.of());
+                Map<CourseItem, TravelLegs.Leg> legs = TravelLegs.of(itemsOfDay, attractions, restaurants);
+                for (CourseItem item : itemsOfDay) {
                     if (item.isMeal()) {
                         dayItems.add(new MealItemResponse(item.itemId(), "MEAL", item.getMealType().name(),
-                                item.getStayMinutes(), snapshot(restaurants.get(item.getId()))));
+                                item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
+                                straightMeters(item, legs), snapshot(restaurants.get(item.getId()))));
                         continue;
                     }
                     AttractionView attraction = attractions.get(item.getAttractionId());
@@ -306,7 +312,8 @@ public class CourseService {
                             attraction == null ? null : attraction.address(),
                             attraction == null ? null : attraction.lat(),
                             attraction == null ? null : attraction.lng(),
-                            item.getStayMinutes(), item.getTravelMinutesFromPrevious(), true,
+                            item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
+                            straightMeters(item, legs), true,
                             item.getSource().name(), item.getReason()));
                 }
                 days.add(new DayResponse(dayIndex, trip.getStartDate().plusDays(dayIndex), dayItems));
@@ -332,6 +339,15 @@ public class CourseService {
 
     private static UserRef userRef(User user) {
         return user == null ? null : new UserRef(user.getId(), user.getNickname());
+    }
+
+    /**
+     * 바로 앞 지점에서의 직선거리(m). 이동시간과 같은 구간 규칙({@link TravelLegs})이고, 이동시간이 없으면 null이다.
+     * 저장하지 않고 응답할 때 현재 좌표로 계산한다.
+     */
+    private static Integer straightMeters(CourseItem item, Map<CourseItem, TravelLegs.Leg> legs) {
+        TravelLegs.Leg leg = legs.get(item);
+        return item.getTravelMinutesFromPrevious() == null || leg == null ? null : leg.straightMeters();
     }
 
     private static RestaurantSnapshot snapshot(CourseMealRestaurant restaurant) {
