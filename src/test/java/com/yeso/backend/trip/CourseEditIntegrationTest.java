@@ -651,10 +651,20 @@ class CourseEditIntegrationTest extends IntegrationTest {
             assertThat(selected.getResponse().getStatus()).isEqualTo(200);
             assertThat((String) JsonPath.read(selected.getResponse().getContentAsString(),
                     "$.days[0].items[2].restaurant.name")).isEqualTo("식당 하나");
+            // 식당을 고르면 식사도 지점이 된다: 앞 관광지 → 식당, 식당 → 뒤 관광지
+            assertThat((Integer) read(selected, "$.days[0].items[2].travelFromPreviousMinutes")).isNotNull();
+            // 이 식당은 바로 앞 관광지와 같은 좌표다
+            assertThat((Integer) read(selected, "$.days[0].items[2].travelFromPreviousMeters")).isZero();
+            assertThat((Integer) read(selected, "$.days[0].items[3].travelFromPreviousMeters")).isNotNull();
             MvcResult cleared = edit(tripId, """
                     {"version":2,"operations":[{"op":"CLEAR_RESTAURANT","itemId":"%s"}]}
                     """.formatted(meal));
             assertThat(cleared.getResponse().getStatus()).isEqualTo(200);
+            // 해제하면 식사는 건너뛰고 뒤 관광지는 식사 앞 관광지에서 잰다
+            assertThat((Object) read(cleared, "$.days[0].items[2].travelFromPreviousMinutes")).isNull();
+            assertThat((Object) read(cleared, "$.days[0].items[2].travelFromPreviousMeters")).isNull();
+            assertThat((Integer) read(cleared, "$.days[0].items[3].travelFromPreviousMinutes")).isNotNull();
+            assertThat((Integer) read(cleared, "$.days[0].items[3].travelFromPreviousMeters")).isNotNull();
             assertThat(jdbc.queryForObject("select count(*) from app.course_meal_restaurants", Integer.class)).isZero();
         }
     }

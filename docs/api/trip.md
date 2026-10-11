@@ -854,12 +854,13 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
       "items": [
         {"itemId": "a-101", "type": "ATTRACTION", "attractionId": 5012, "name": "대릉원", "category": "HISTORY_CULTURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "durationMinutes": 90,
-         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
-        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null},
+         "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
+        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "restaurant": null},
         {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
-        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null}
+         "travelFromPreviousMinutes": 10, "travelFromPreviousMeters": 1800, "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
+        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": 5, "travelFromPreviousMeters": 650,
+         "restaurant": {"provider": "TOUR_API", "name": "황남맷돌순두부", "lat": 35.83, "lng": 129.21, "…": "…"}}
       ]
     }
   ],
@@ -881,7 +882,8 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].type` | `ATTRACTION` \| `MEAL`. 아래 타입별 필드 표 참고 |
 | `items[].category` | `NATURE`(자연) \| `HISTORY_CULTURE`(역사·문화) \| `ACTIVITY`(체험·레포츠) \| `WALK_REST`(산책·휴식) \| `ETC`(기타) |
 | `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
-| `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
+| `items[].travelFromPreviousMinutes` | 바로 앞 지점에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). **지점은 관광지와 식당을 고른 식사**다. 식당을 고른 식사는 앞 지점에서 그 식당까지, 식사 뒤 항목은 그 식당에서 잰다. 식당 미정 식사는 건너뛴다(그 식사는 `null`, 뒤 항목은 식사 앞 지점에서 잰다). 그날 첫 지점은 `null`. 식당을 고르거나 해제하면 서버가 다시 계산한다(2026-10-12, #101) |
+| `items[].travelFromPreviousMeters` | `travelFromPreviousMinutes`와 같은 두 지점 사이의 **직선거리**(m, 참고용). 도로 거리가 아니다. 이동시간이 `null`이면 `null`. 저장하지 않고 응답할 때 현재 좌표로 계산한다(2026-10-12, #101) |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 요청자의 실제 설문 답·취향 점수·공식 코스에 근거한 문장만. 근거가 없으면 `null`. `MANUAL`이면 `null`. 규칙은 아래 [추천 이유](#추천-이유) |
 | `items[].restaurant` | 식사 슬롯의 식당 스냅샷(`RestaurantSnapshot`). 코스 생성 시 자동 배정([5-1](#5-1-코스-생성재생성))되거나 사용자가 고른다. 후보가 없거나 해제했으면 `null`이고 화면에는 "미정"으로 보인다 |
@@ -923,7 +925,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 |---|---|---|
 | `itemId`, `type`, `durationMinutes` | 필수 | 필수(`durationMinutes`는 60) |
 | `attractionId`, `name`, `category`, `thumbnailUrl`, `address`, `lat`, `lng` | 필수(`thumbnailUrl`·`address`는 nullable) | — |
-| `travelFromPreviousMinutes` | 그날 앞에 관광지가 없으면 `null` | 항상 `null`(식당 이동은 계산하지 않는다) |
+| `travelFromPreviousMinutes`, `travelFromPreviousMeters` | 그날 첫 지점이면 `null` | 식당을 골랐으면 앞 지점에서 식당까지, 미정이면 `null` |
 | `estimated`, `source`, `reason` | 필수(`reason`은 nullable) | — |
 | `meal` | — | `LUNCH` \| `DINNER` |
 | `restaurant` | — | `RestaurantSnapshot` 또는 `null` |

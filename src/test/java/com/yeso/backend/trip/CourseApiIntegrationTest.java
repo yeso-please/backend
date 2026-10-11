@@ -123,6 +123,13 @@ class CourseApiIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.days[0].items[0].category").value("HISTORY_CULTURE"))
                     .andExpect(jsonPath("$.days[0].items[0].thumbnailUrl").isNotEmpty())
                     .andExpect(jsonPath("$.days[0].items[0].travelFromPreviousMinutes").isEmpty())
+                    .andExpect(jsonPath("$.days[0].items[0].travelFromPreviousMeters").isEmpty())
+                    .andExpect(jsonPath("$.days[0].items[1].travelFromPreviousMeters").isNumber())
+                    // 식당 미정 식사는 건너뛰고, 뒤 관광지는 식사 앞 관광지에서 잰다
+                    .andExpect(jsonPath("$.days[0].items[2].travelFromPreviousMinutes").isEmpty())
+                    .andExpect(jsonPath("$.days[0].items[2].travelFromPreviousMeters").isEmpty())
+                    .andExpect(jsonPath("$.days[0].items[3].travelFromPreviousMinutes").isNumber())
+                    .andExpect(jsonPath("$.days[0].items[3].travelFromPreviousMeters").isNumber())
                     .andExpect(jsonPath("$.days[0].items[2].type").value("MEAL"))
                     .andExpect(jsonPath("$.days[0].items[2].meal").value("LUNCH"))
                     .andExpect(jsonPath("$.days[0].items[2].restaurant").isEmpty())

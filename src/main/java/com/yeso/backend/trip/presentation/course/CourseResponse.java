@@ -32,12 +32,12 @@ public record CourseResponse(
     public record AttractionItemResponse(
             String itemId, String type, Long attractionId, String name, String category, String thumbnailUrl,
             String address, Double lat, Double lng, int durationMinutes, Integer travelFromPreviousMinutes,
-            boolean estimated, String source, String reason) implements ItemResponse {
+            Integer travelFromPreviousMeters, boolean estimated, String source, String reason) implements ItemResponse {
     }
 
     public record MealItemResponse(
-            String itemId, String type, String meal, int durationMinutes, RestaurantSnapshot restaurant)
-            implements ItemResponse {
+            String itemId, String type, String meal, int durationMinutes, Integer travelFromPreviousMinutes,
+            Integer travelFromPreviousMeters, RestaurantSnapshot restaurant) implements ItemResponse {
     }
 
     /** {@code dayIndex}·{@code itemId}가 null이면 코스 전체에 대한 경고다. */
