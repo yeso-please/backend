@@ -62,6 +62,8 @@ services:
       BACKEND_URL: http://backend:8080
       AI_URL: http://ai:8000
       VITE_KAKAO_LOGIN_CLIENT_ID: ${KAKAO_LOGIN_CLIENT_ID:-${KAKAO_REST_API_KEY:-}}
+      # 코스 경로 지도(5-7)용 카카오 지도 JavaScript 키. 카카오 개발자 콘솔에 http://127.0.0.1:5173 도메인이 등록돼 있어야 한다.
+      VITE_KAKAO_JS_KEY: ${KAKAO_JS_KEY:-}
       VITE_HOST: 0.0.0.0
     depends_on:
       backend:

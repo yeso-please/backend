@@ -25,6 +25,7 @@ import java.util.Map;
 public class CourseMaterialService {
 
     private final AttractionQueryRepository attractionQueryRepository;
+    private final CourseDataCache courseDataCache;
 
     /** 코스 화면에 그릴 관광지 정보. 코스를 볼 때마다 현재 데이터로 읽는다(2026-09-27). */
     public record AttractionView(
@@ -45,12 +46,17 @@ public class CourseMaterialService {
         return views;
     }
 
-    /** 관광지 취향 벡터(임베딩). 아직 없거나 바이트가 차원과 맞지 않는 관광지는 빠진다. */
+    /**
+     * 관광지 취향 벡터(임베딩). 아직 없거나 바이트가 차원과 맞지 않는 관광지는 빠진다. 관광지당 약 1.5KB라 지역 후보
+     * 전체를 요청마다 읽지 않도록 잠깐 기억한다({@link CourseDataCache}).
+     */
     public Map<Long, float[]> findAttractionVectors(Collection<Long> attractionIds) {
-        Map<Long, float[]> vectors = new HashMap<>();
-        attractionQueryRepository.findEmbeddings(attractionIds).forEach(row ->
-                VectorCodec.tryDecode(row.embedding(), row.dimension()).ifPresent(vector -> vectors.put(row.attractionId(), vector)));
-        return vectors;
+        return courseDataCache.vectors(attractionIds, missing -> {
+            Map<Long, float[]> vectors = new HashMap<>();
+            attractionQueryRepository.findEmbeddings(missing).forEach(row -> VectorCodec.tryDecode(
+                    row.embedding(), row.dimension()).ifPresent(vector -> vectors.put(row.attractionId(), vector)));
+            return vectors;
+        });
     }
 
     /** 지역의 TourAPI 공식 코스. 관광지로 연결된 장소만 담는다. */
