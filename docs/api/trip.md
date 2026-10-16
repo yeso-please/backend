@@ -979,13 +979,15 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
         {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
          "travelFromPreviousMinutes": 10, "travelFromPreviousMeters": 1800,
-         "travelFromPrevious": {"meters": 1800, "walkMinutes": 34, "carMinutes": 6, "transitMinutes": 7, "carSource": "ROAD", "estimated": true},
+         "travelFromPrevious": {"meters": 1800, "walkMinutes": 31, "carMinutes": 6, "transitMinutes": 14, "carSource": "ROAD",
+                                "walkSource": "ROUTE", "transitSource": "ROUTE", "transitTransfers": 0, "transitFare": 1500, "estimated": false},
          "estimated": true, "source": "MANUAL", "reason": null, "reasonSource": null, "personalReason": null,
          "oneLine": null, "summaryBasis": null,
          "change": {"origin": "REPLACED", "by": {"userId": 12, "nickname": "여행친구"},
                     "replacedFrom": {"attractionId": 5013, "name": "첨성대"}, "note": "야경 보러 가요", "changedAt": "2026-10-01T21:00:00"}},
         {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": 5, "travelFromPreviousMeters": 650,
-         "travelFromPrevious": {"meters": 650, "walkMinutes": 12, "carMinutes": 5, "transitMinutes": 5, "carSource": "STRAIGHT", "estimated": true},
+         "travelFromPrevious": {"meters": 650, "walkMinutes": 12, "carMinutes": 5, "transitMinutes": 5, "carSource": "STRAIGHT",
+                                "walkSource": "STRAIGHT", "transitSource": "STRAIGHT", "transitTransfers": null, "transitFare": null, "estimated": true},
          "restaurant": {"provider": "TOUR_API", "name": "황남맷돌순두부", "lat": 35.83, "lng": 129.21, "…": "…"}}
       ]
     }
@@ -1021,7 +1023,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
 | `items[].travelFromPreviousMinutes` | 바로 앞 지점에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). **지점은 관광지와 식당을 고른 식사**다. 식당을 고른 식사는 앞 지점에서 그 식당까지, 식사 뒤 항목은 그 식당에서 잰다. 식당 미정 식사는 건너뛴다(그 식사는 `null`, 뒤 항목은 식사 앞 지점에서 잰다). 그날 첫 지점은 `null`. 식당을 고르거나 해제하면 서버가 다시 계산한다(2026-10-12, #101) |
 | `items[].travelFromPreviousMeters` | `travelFromPreviousMinutes`와 같은 두 지점 사이의 **직선거리**(m, 참고용). 도로 거리가 아니다. 이동시간이 `null`이면 `null`. 저장하지 않고 응답할 때 현재 좌표로 계산한다(2026-10-12, #101) |
-| `items[].travelFromPrevious` | 앞 지점에서 이 지점까지 **세 수단의 이동**(2026-10-16 D5). 카드에 시각 대신 이 값을 보여 준다. `{meters, walkMinutes, carMinutes, transitMinutes, carSource, estimated}`. 도보·대중교통은 위와 같은 직선 추정이다. 자동차는 5-7 길찾기로 기억해 둔 도로 시간이 있으면 그 값(`carSource: ROAD`), 없으면 직선 추정(`STRAIGHT`)이다. 코스 조회·편집에서 길찾기를 새로 부르지 않는다. 앞 지점이 없으면(그날 첫 지점, 식당 미정 식사) `null`. `travelFromPreviousMinutes`는 여행 `transport` 기준 값으로 당분간 함께 준다 |
+| `items[].travelFromPrevious` | 앞 지점에서 이 지점까지 **세 수단의 이동**(2026-10-16 D5). 카드에 시각 대신 이 값을 보여 준다. `{meters, walkMinutes, carMinutes, transitMinutes, carSource, walkSource, transitSource, transitTransfers, transitFare, estimated}`. 5-7 지도 경로가 기억해 둔 실제 경로가 있으면 그 시간이다(자동차 `carSource: ROAD`, 도보·대중교통 `walkSource`·`transitSource: ROUTE`). 없으면 위와 같은 직선 추정(`STRAIGHT`)이다. `transitTransfers`·`transitFare`는 대중교통 실제 경로가 있을 때만, `estimated`는 하나라도 직선 추정이면 `true`. 코스 조회·편집에서 길찾기를 새로 부르지 않는다. 앞 지점이 없으면(그날 첫 지점, 식당 미정 식사) `null`. `travelFromPreviousMinutes`는 여행 `transport` 기준 값으로 당분간 함께 준다 |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
 | `items[].reason` | 추천 이유. 5-1이 ai `/explanations`로 받은 장소 문장(`reasonSource: LLM`)이 있으면 그것, 없으면 요청자의 실제 설문 답·취향 점수·공식 코스에 근거한 규칙 문장(`RULE`). 근거가 없으면 `null`. 교체·추가한 장소(`MANUAL`)는 `null`. 규칙은 아래 [추천 이유](#추천-이유) |
 | `items[].reasonSource` | `RULE` \| `LLM` \| `null`(이유 없음) |
@@ -1111,7 +1113,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 
 | code | 뜻 |
 |---|---|
-| `ROUTE_TIME_ESTIMATED` | 이동시간이 직선거리 추정이다. 실제 도로 시간이 아니라고 표시한다. MVP에서는 항상 붙는다 |
+| `ROUTE_TIME_ESTIMATED` | 이동시간에 직선거리 추정이 섞여 있다. 항상 붙는다. 구간별로 실제 경로인지는 `travelFromPrevious`의 `carSource`·`walkSource`·`transitSource`로 본다 |
 | `DENSITY_TARGET_NOT_MET` | 지역 후보 부족으로 밀도 목표보다 적게 배치됨. `dayIndex` 포함. 생성·재생성 응답(5-1)에만 있고 조회(5-2)에는 없다 |
 | `PERSONALIZATION_FALLBACK` | 취향 임베딩을 쓸 수 없어 `TOUR_OFFICIAL`·`RULE_BASED`로 만듦. 사용자가 완전 랜덤(`RANDOM`)을 골랐을 때는 붙지 않는다 |
 | `TITLE_GENERATION_FAILED` | (예약) 지금은 붙이지 않는다. ai 문장을 받지 못하면 `titleSource: RULE`·`intro: null`로 알 수 있다 |
@@ -1456,14 +1458,19 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 
 ### 5-7. 코스 경로
 
-`GET /api/courses/{tripId}/routes?dayIndex=0` · 참여자
+`GET /api/courses/{tripId}/routes?dayIndex=0&transport=WALK` · 참여자
 
 하루 코스의 지도용 경로다. 프론트는 이 응답의 `path`를 지도에 선으로 그리고, 거리·시간을 구간 위에 보여 준다. 코스 편집과 분리된 조회 API라서 편집(5-3) 응답은 지금처럼 추정값으로 바로 나가고, 지도를 열거나 편집 뒤 지도를 다시 그릴 때 이 API를 부른다(2026-10-12, #101).
 
 - 구간은 5장과 같은 규칙이다. 지점은 관광지와 식당을 고른 식사이고, 식당 미정 식사는 건너뛰어 앞뒤 지점을 잇는다.
-- 이동수단이 `CAR`면 서버가 카카오모빌리티 자동차 길찾기로 도로 경로·거리·시간을 받는다(`source: ROAD`). 그 밖의 이동수단이거나 길찾기에 실패·지연(요청당 4초 상한)되면 그 구간은 직선이다(`source: STRAIGHT`). 직선 구간의 시간·거리는 5장 `travelFromPreviousMinutes`·`travelFromPreviousMeters`와 같다. 길찾기 실패로 요청이 실패하지는 않는다.
-- 서버는 구간 결과를 출발·도착 좌표로 잠깐(기본 24시간) 기억한다. 편집으로 바뀌지 않은 구간과 다른 참여자가 다시 연 코스는 길찾기를 다시 하지 않는다. 장소 하나를 바꾸면 그 앞뒤 구간만 새로 길찾기한다.
-- 카카오 REST 키는 서버에만 있다. 프론트는 지도 표시용 JavaScript 키만 쓴다.
+- 이동수단은 `transport` 쿼리(`WALK` \| `CAR` \| `PUBLIC_TRANSIT`, 선택)로 고른다. 생략하면 여행 이동수단이다. 카드에는 세 수단 시간이 다 있으므로 지도에서 수단을 바꿔 볼 수 있다(2026-10-16).
+- `CAR`: 카카오모빌리티 자동차 길찾기로 하루를 묶어 도로 경로·거리·시간을 받는다(`source: ROAD`).
+- `WALK`: 카카오맵 도보 경로 조회(`/v2/routing/walk`)로 구간마다 받는다(`source: WALK`).
+- `PUBLIC_TRANSIT`: 카카오맵 대중교통 경로 조회(`/v2/routing/publictraffic`)의 첫 추천 경로를 구간마다 받는다(`source: TRANSIT`). `transfers`(환승 수)·`fare`(요금, 원)를 함께 준다. 대중교통 경로에는 승차 전·하차 후 도보 상세가 빠질 수 있다(카카오 응답 범위).
+- 경로를 못 받으면(실패·한도 초과·경로 없음·요청당 4초 상한 초과, 10m 안의 구간) 그 구간은 직선이다(`source: STRAIGHT`). 직선 구간의 시간·거리는 5장의 추정과 같다. 경로 실패로 요청이 실패하지는 않는다.
+- 서버는 구간 결과를 수단·출발·도착 좌표로 잠깐(기본 24시간) 기억한다. 편집으로 바뀌지 않은 구간과 다른 참여자가 다시 연 코스는 다시 부르지 않는다. 기억해 둔 시간은 코스 카드의 `travelFromPrevious`에도 쓰인다(5장).
+- 카카오맵 도보·대중교통 무료 한도는 각각 **일 1,000건**(개발자 계정의 첫 활성 앱)이다. 넘으면 직선으로 대신한다. 카카오디벨로퍼스 앱에서 "카카오맵" 사용 설정을 켜야 한다.
+- 카카오 REST 키는 서버에만 있다(식당 검색과 같은 키). 프론트는 지도 표시용 JavaScript 키만 쓴다.
 
 **Response `200 OK`**
 
@@ -1472,12 +1479,12 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
   "tripId": 42,
   "version": 3,
   "dayIndex": 0,
-  "transport": "CAR",
+  "transport": "PUBLIC_TRANSIT",
   "legs": [
-    {"fromItemId": "a-101", "toItemId": "a-102", "source": "ROAD", "distanceMeters": 2400, "durationMinutes": 7,
-     "path": [[35.838, 129.211], [35.8372, 129.2151], [35.834, 129.226]]},
+    {"fromItemId": "a-101", "toItemId": "a-102", "source": "TRANSIT", "distanceMeters": 2400, "durationMinutes": 18,
+     "path": [[35.838, 129.211], [35.8372, 129.2151], [35.834, 129.226]], "transfers": 0, "fare": 1500},
     {"fromItemId": "a-102", "toItemId": "m-32", "source": "STRAIGHT", "distanceMeters": 650, "durationMinutes": 5,
-     "path": [[35.834, 129.226], [35.83, 129.21]]}
+     "path": [[35.834, 129.226], [35.83, 129.21]], "transfers": null, "fare": null}
   ]
 }
 ```
@@ -1485,16 +1492,17 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 | 필드 | 설명 |
 |---|---|
 | `version` | 경로를 계산한 시점의 여행 버전. 화면의 코스 `version`과 다르면 그사이 편집된 것이므로 다시 부른다 |
-| `transport` | 여행 이동수단. `CAR`가 아니면 모든 구간이 `STRAIGHT`다 |
+| `transport` | 이 경로의 이동수단(요청 `transport`, 없으면 여행 이동수단) |
 | `legs` | 방문 순서대로의 구간. 지점이 하나 이하면 빈 배열 |
 | `legs[].fromItemId`, `toItemId` | 구간의 출발·도착 코스 항목(5장 `itemId`) |
-| `legs[].source` | `ROAD`(도로) \| `STRAIGHT`(직선) |
-| `legs[].distanceMeters`, `durationMinutes` | `ROAD`는 도로 거리·시간, `STRAIGHT`는 직선거리와 5장 추정 시간 |
+| `legs[].source` | `ROAD`(자동차 도로) \| `WALK`(도보 경로) \| `TRANSIT`(대중교통 경로) \| `STRAIGHT`(직선) |
+| `legs[].distanceMeters`, `durationMinutes` | 경로의 거리·시간, `STRAIGHT`는 직선거리와 5장 추정 시간 |
+| `legs[].transfers`, `fare` | `TRANSIT`만. 환승 수, 요금(원, 원천이 주지 않으면 `null`) |
 | `legs[].path` | `[위도, 경도]` 점 목록(출발→도착 순서). `STRAIGHT`는 두 점. 연속 구간의 이음점은 앞 구간의 끝과 다음 구간의 시작에 모두 들어 있다 |
 
 | 오류 | HTTP | code |
 |---|---:|---|
-| `dayIndex`가 없거나 여행 날짜 범위 밖 | 400 | `COMMON_INVALID_REQUEST` |
+| `dayIndex`가 없거나 여행 날짜 범위 밖, `transport`가 목록 밖 | 400 | `COMMON_INVALID_REQUEST` |
 | 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
 | 코스 없음 | 404 | `COURSE_NOT_FOUND` |
 

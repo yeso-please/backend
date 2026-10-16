@@ -46,10 +46,13 @@ public record CourseResponse(
     }
 
     /**
-     * 앞 지점에서 이 지점까지 수단별 이동(D5). 도보·대중교통은 직선거리 추정이다. 자동차는 5-7 길찾기로 기억해 둔 도로 시간이
-     * 있으면 그 값({@code carSource: ROAD}), 없으면 직선 추정({@code STRAIGHT})이다.
+     * 앞 지점에서 이 지점까지 수단별 이동(D5). 5-7 지도 경로가 기억해 둔 실제 경로가 있으면 그 시간이다: 자동차
+     * {@code carSource: ROAD}(카카오모빌리티), 도보·대중교통 {@code walkSource}·{@code transitSource: ROUTE}(카카오맵).
+     * 없으면 직선 추정({@code STRAIGHT}). {@code meters}는 직선거리. {@code estimated}는 하나라도 직선 추정이면 true.
+     * {@code transitTransfers}·{@code transitFare}는 대중교통 실제 경로가 있을 때만 있다.
      */
     public record Travel(int meters, int walkMinutes, int carMinutes, int transitMinutes, String carSource,
+                         String walkSource, String transitSource, Integer transitTransfers, Integer transitFare,
                          boolean estimated) {
     }
 

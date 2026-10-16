@@ -66,7 +66,8 @@ public class CourseController {
     @Operation(summary = "5-7 하루 코스의 지도 경로")
     @GetMapping("/api/courses/{tripId}/routes")
     public CourseRoutesResponse routes(@CurrentUserId Long userId, @PathVariable Long tripId,
-                                       @RequestParam int dayIndex) {
-        return courseRouteService.routes(userId, tripId, dayIndex);
+                                       @RequestParam int dayIndex,
+                                       @RequestParam(required = false) String transport) {
+        return courseRouteService.routes(userId, tripId, dayIndex, transport);
     }
 }

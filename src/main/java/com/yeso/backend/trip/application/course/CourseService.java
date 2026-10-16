@@ -41,6 +41,7 @@ import com.yeso.backend.trip.domain.TripVersionConflictException;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository;
 import com.yeso.backend.trip.infrastructure.CourseRemovalRepository;
+import com.yeso.backend.trip.infrastructure.KakaoMapRouteClient;
 import com.yeso.backend.trip.infrastructure.KakaoMobilityClient;
 import com.yeso.backend.trip.infrastructure.RouteLegCache;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
@@ -400,25 +401,34 @@ public class CourseService {
     }
 
     /**
-     * 앞 지점에서의 수단별 이동(D5). 도보·대중교통은 직선 추정, 자동차는 5-7 길찾기로 기억해 둔 도로 시간이 있으면 그 값이다.
-     * 코스 조회에서 길찾기를 새로 부르지는 않는다(편집 응답이 느려지지 않게).
+     * 앞 지점에서의 수단별 이동(D5). 5-7 지도 경로가 기억해 둔 실제 경로가 있으면 그 시간(자동차 ROAD, 도보·대중교통 ROUTE),
+     * 없으면 직선 추정(STRAIGHT)이다. 코스 조회에서 경로를 새로 부르지는 않는다(편집 응답이 느려지지 않게).
      */
     private Travel travel(CourseItem item, Map<CourseItem, TravelLegs.Leg> legs) {
         TravelLegs.Leg leg = legs.get(item);
         if (leg == null) {
             return null;
         }
-        int carMinutes = leg.minutes(Transport.CAR);
-        String carSource = "STRAIGHT";
-        Optional<KakaoMobilityClient.Leg> road = routeLegCache.get(RouteLegCache.key(
-                new KakaoMobilityClient.Point(leg.from().lat(), leg.from().lng()),
-                new KakaoMobilityClient.Point(leg.to().lat(), leg.to().lng())));
-        if (road.isPresent()) {
-            carMinutes = Math.max(1, (int) Math.round(road.get().durationSeconds() / 60.0));
-            carSource = "ROAD";
-        }
-        return new Travel(leg.straightMeters(), leg.minutes(Transport.WALK), carMinutes,
-                leg.minutes(Transport.PUBLIC_TRANSIT), carSource, true);
+        KakaoMobilityClient.Point from = new KakaoMobilityClient.Point(leg.from().lat(), leg.from().lng());
+        KakaoMobilityClient.Point to = new KakaoMobilityClient.Point(leg.to().lat(), leg.to().lng());
+        Optional<KakaoMobilityClient.Leg> road = routeLegCache.get(RouteLegCache.key(from, to));
+        Optional<KakaoMobilityClient.Leg> walk = routeLegCache.get(RouteLegCache.key("WALK", from, to));
+        Optional<KakaoMapRouteClient.TransitLeg> transit = routeLegCache.getTransit(RouteLegCache.key("PUBLIC_TRANSIT", from, to));
+        String carSource = road.isPresent() ? "ROAD" : "STRAIGHT";
+        String walkSource = walk.isPresent() ? "ROUTE" : "STRAIGHT";
+        String transitSource = transit.isPresent() ? "ROUTE" : "STRAIGHT";
+        return new Travel(leg.straightMeters(),
+                walk.map(found -> minutes(found.durationSeconds())).orElse(leg.minutes(Transport.WALK)),
+                road.map(found -> minutes(found.durationSeconds())).orElse(leg.minutes(Transport.CAR)),
+                transit.map(found -> minutes(found.leg().durationSeconds())).orElse(leg.minutes(Transport.PUBLIC_TRANSIT)),
+                carSource, walkSource, transitSource,
+                transit.map(KakaoMapRouteClient.TransitLeg::transfers).orElse(null),
+                transit.map(KakaoMapRouteClient.TransitLeg::fare).orElse(null),
+                "STRAIGHT".equals(carSource) || "STRAIGHT".equals(walkSource) || "STRAIGHT".equals(transitSource));
+    }
+
+    private static int minutes(int seconds) {
+        return Math.max(1, (int) Math.round(seconds / 60.0));
     }
 
     private static CourseResponse.ItemChange change(CourseItem item, Viewer viewer) {

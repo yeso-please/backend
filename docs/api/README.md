@@ -223,7 +223,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
 | ✅ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
-| ✅ | [5-7](trip.md#5-7-코스-경로) | GET | `/courses/{tripId}/routes` | 참여자 | 하루 코스 지도 경로(카카오모빌리티 도로, 실패 시 직선) | 추가 기능 |
+| ✅ | [5-7](trip.md#5-7-코스-경로) | GET | `/courses/{tripId}/routes` | 참여자 | 하루 코스 지도 경로(자동차 카카오모빌리티, 도보·대중교통 카카오맵, 실패 시 직선) | 추가 기능 |
 | ✅ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
 | ✅ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
 | ✅ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |

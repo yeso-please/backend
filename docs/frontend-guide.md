@@ -77,17 +77,19 @@
 | E2 친구 변경 표시 | 5-2 `changes` | 탭 "변경 표시": `changes.days[]`(추가·교체·제외 수), `changes.removed[]`(제외된 장소, "다시 넣기" → 5-3 `RESTORE`), `changes.latest`로 "민지가 경포호 산책을 노을 감상으로 바꿨어요" |
 | 장소 편집(숨김 레이어 `Place edit options`) | 5-4 후보, 5-3 `REPLACE`·`REMOVE`(`note` 선택 100자) | "장소를 함께 다듬어요 / 친구 변경 보기" |
 | E3 참여자 관리 | `GET /trips/{id}/participants`(3-8) | `isManager`인 사람에게만 "내보내기" 노출 → 확인(숨김 레이어 `Participant confirmation`) → `DELETE /trips/{id}/participants/{userId}`(3-10). 나 자신은 3-9 탈퇴 |
-| E4 코스 둘러보기 | 5-2, 지도 `GET /courses/{id}/routes?dayIndex=`(5-7) | 지도 선은 5-7 `legs[].path` |
+| E4 코스 둘러보기 | 5-2, 지도 `GET /courses/{id}/routes?dayIndex=&transport=`(5-7) | 지도 선은 5-7 `legs[].path`. 수단 탭(도보·자동차·대중교통)으로 `transport`를 바꿔 부른다 |
 | E5~E8 카드 드래그·재정렬 | 5-3 `MOVE` | 하루 안·다른 날로 이동. 식사는 같은 날 안에서만 |
 
 **이동 시간 표시(D5)** — 카드의 "09:00" 자리. 시각 필드는 없다.
 
 ```json
-"travelFromPrevious": {"meters": 1800, "walkMinutes": 34, "carMinutes": 6, "transitMinutes": 7, "carSource": "ROAD", "estimated": true}
+"travelFromPrevious": {"meters": 1800, "walkMinutes": 31, "carMinutes": 6, "transitMinutes": 14, "carSource": "ROAD",
+                       "walkSource": "ROUTE", "transitSource": "ROUTE", "transitTransfers": 0, "transitFare": 1500, "estimated": false}
 ```
 
 - 세 수단 시간을 모두 보여 주고, 여행 `transport`(3-4)를 기본 강조로 쓴다.
-- `estimated: true`면 "약"을 붙인다. 도보·대중교통은 지금 직선 추정이다(실제 경로 API는 [조사 후 선택](design/route-api-research.md)). 자동차는 지도(5-7)를 한 번 연 뒤에는 도로 시간이 된다(`carSource: ROAD`).
+- 수단별 `*Source`가 `STRAIGHT`면 직선 추정이라 "약"을 붙인다. 지도(5-7)를 그 수단으로 한 번 열면 실제 경로 시간이 된다: 자동차 `ROAD`, 도보·대중교통 `ROUTE`(카카오맵). 대중교통은 환승 수·요금도 보여 줄 수 있다.
+- 지도에서 수단을 바꿔 보려면 `GET /courses/{id}/routes?dayIndex=0&transport=PUBLIC_TRANSIT`. 구간 `source`가 `TRANSIT`이면 `transfers`·`fare`가 있다.
 - 그날 첫 장소는 `null`이라 표시하지 않는다.
 
 **동시 편집** — 모든 편집은 받은 `version`을 그대로 보낸다. `409 TRIP_VERSION_CONFLICT`면 5-2로 다시 받고 안내한다. 5-1 응답의 `version`으로 바로 편집할 수 있다(AI 문장을 붙여도 버전이 그대로다).

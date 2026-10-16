@@ -5,6 +5,7 @@ import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.shared.ai.FakeAiTextClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
+import com.yeso.backend.trip.infrastructure.FakeKakaoMapRouteClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
 import com.yeso.backend.trip.infrastructure.RouteLegCache;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
@@ -53,6 +54,9 @@ public abstract class IntegrationTest {
     protected FakeKakaoMobilityClient fakeKakaoMobilityClient;
 
     @Autowired
+    protected FakeKakaoMapRouteClient fakeKakaoMapRouteClient;
+
+    @Autowired
     private RouteLegCache routeLegCache;
 
     @Autowired
@@ -76,6 +80,7 @@ public abstract class IntegrationTest {
         fakeEmbeddingClient.reset();
         fakeKakaoLocalClient.reset();
         fakeKakaoMobilityClient.reset();
+        fakeKakaoMapRouteClient.reset();
         routeLegCache.clear();
         courseDataCache.clear();
         fakeKakaoOAuthClient.reset();
