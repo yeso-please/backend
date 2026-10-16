@@ -23,6 +23,7 @@
 ./gradlew summaryBackfill --args="--mode=dry-run --scope=regions"   # 지역도 같은 순서
 ```
 
+- 호출 사이에 기본 4.5초를 쉰다(`--pause-millis`, Gemini 무료 등급 분당 한도). 분당 한도에 걸리면 65초 쉬고 최대 3번 다시 시도하고, 그래도 걸리면 일일 한도로 보고 `QUOTA_EXHAUSTED`로 멈춘다. Gemini 일시 오류(5xx·네트워크)는 그 대상만 건너뛴다.
 - 같은 쓰기 잠금(`IngestionWriterLock`)을 쓰므로 다른 적재와 동시에 돌지 않는다. 실행 기록은 `ingestion_runs`(`job_type = SUMMARY_DRAFTS`).
 - 멱등: 근거(이름·분류·설명, 지역은 대표 관광지)와 프롬프트 버전 해시가 같으면 다시 만들지 않는다. 남은 대상은 다음 실행에서 이어서 만든다. 한도 초과(`QUOTA_EXHAUSTED`)면 다음 날 같은 명령을 다시 실행한다.
 - 검증(길이·과장·근거 없는 숫자·다른 장소 이름)에 걸린 문장은 저장하지 않고 다음 실행에서 다시 시도한다.

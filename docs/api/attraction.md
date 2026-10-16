@@ -119,7 +119,7 @@ GET /api/regions/{sigCd}/card
   "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 1유형", "attractionId": null},
   "characteristics": ["역사 유적", "야경"],
   "historyHighlights": ["신라의 수도"],
-  "landmarks": [{"attractionId": 5012, "name": "대릉원", "thumbnailUrl": "https://…"}],
+  "landmarks": [{"attractionId": 5012, "name": "대릉원", "thumbnailUrl": "https://…", "oneLine": "왕릉 사이 고요한 길을 걷는 곳"}],
   "sources": [{"name": "한국관광공사 TourAPI", "url": "https://…"}],
   "updatedAt": "2026-09-30T00:00:00"
 }
@@ -130,7 +130,8 @@ GET /api/regions/{sigCd}/card
 | 필드 | 설명 |
 |---|---|
 | `introduction` | 소개 콘텐츠가 있을 때 문단 배열. 콘텐츠가 없으면 빈 배열 |
-| `landmarks` | 승인된 소개문이 근거로 쓴 대표 관광지 중 추천 가능한 것 최대 3개, 소개문에 나온 순서. 나중에 추천 불가가 된 곳은 빠진다 |
+| `landmarks` | 승인된 소개문이 근거로 쓴 대표 관광지 중 추천 가능한 것 최대 3개, 소개문에 나온 순서. 나중에 추천 불가가 된 곳은 빠진다. **승인된 소개문이 없거나 남은 곳이 없으면 아래 대표 관광지 규칙으로 최대 3곳**(2026-10-16 D13-2). B4 "만나볼 순간"이 이 목록이다 |
+| `landmarks[].oneLine` | 그 관광지의 승인된 한 줄 소개(7-4 `oneLine`). 없으면 `null` |
 | `characteristics`, `historyHighlights` | 승인된 지역 소개 콘텐츠의 태그. 없으면 빈 배열 |
 | `tagline` | 지도에서 지역을 눌렀을 때 보이는 한 줄 소개(30자 이내). **사람이 승인한 것만**. 없으면 `null` ([한 줄 소개와 태그](#한-줄-소개와-태그-89)) |
 | `tags` | [태그 사전](#태그-사전)의 값 0~4개, 승인된 것만. 없으면 빈 배열. 화면은 `#`을 붙여 그린다 |
@@ -234,6 +235,79 @@ GET /api/attractions/{attractionId}
 | 오류 | HTTP | code |
 |---|---:|---|
 | 없는 관광지, 또는 쇼핑·숙박·음식점·캠핑장(코스 후보가 아닌 장소) | 404 | `ATTRACTION_NOT_FOUND` |
+
+---
+
+### 7-5. 지역 먼저 뽑기
+
+> `호출: 회원` · `✅ 구현`
+
+```
+POST /api/regions/draw
+```
+
+여행을 만들기 전에 지역부터 뽑는다(2026-10-16 D1, 디자인 "핀 꽂기"). **저장하지 않는다.** 결과 지역으로 7-2·7-6을 보여 주고, 날짜를 고르면 3-2(`sigCd`)로 확인한 뒤 3-3(`regionSigCd`)으로 여행과 함께 저장한다. 지도에서 직접 고른 지역은 이 API 없이 3-3에 바로 보낸다.
+
+**Request Body**
+
+```json
+{"mode": "CONDITIONAL", "conditions": ["DISTANCE", "MY_TASTE"], "originLat": 37.5665, "originLng": 126.978, "scheduleDensity": null}
+```
+
+| 필드 | 필수 | 설명 |
+|---|---|---|
+| `mode` | 예 | `RANDOM` \| `CONDITIONAL`. `MANUAL`이면 `400 DRAW_INVALID_MODE` |
+| `conditions` | `CONDITIONAL`이면 예 | 3-7과 같다(`DISTANCE`, `MY_TASTE`) |
+| `originLat`, `originLng` | 아니오 | 거리 조건용 출발지. 함께 주거나 함께 생략. 저장하지 않는다 |
+| `scheduleDensity` | 아니오 | 생략하면 요청자의 최신 설문 값, 없으면 `RELAXED` |
+
+**규칙** — 날짜를 아직 모르므로 **1일 기준**으로 추첨 가능한 지역에서 3-7과 같은 방식으로 뽑는다. 가중치·무시 조건·경고도 3-7과 같다.
+
+**Response `200 OK`**
+
+```json
+{"sigCd": "51150", "province": "강원특별자치도", "city": "강릉시", "lat": 37.75, "lng": 128.9,
+ "regionSelection": "CONDITIONAL", "scheduleDensity": "RELAXED", "maxNights": 3,
+ "appliedConditions": ["MY_TASTE"], "ignoredConditions": [{"condition": "DISTANCE", "reason": "ORIGIN_MISSING"}],
+ "candidateCount": 187, "warnings": []}
+```
+
+- `maxNights`: 이 지역·밀도로 코스를 만들 수 있는 최대 박수(0~6). 날짜 선택에서 이보다 긴 기간을 고르면 프론트가 "이 기간엔 코스가 부족해요, 다시 뽑을까요?"를 보여 준다.
+- `regionSelection`은 3-3 `regionSelection`에 그대로 보낸다.
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| `mode`·조건 오류, 출발지 짝 없음 | 400 | `DRAW_INVALID_MODE`, `DRAW_NO_CONDITION_SELECTED`, `TRIP_INVALID_ORIGIN` |
+| 밀도 값 오류 | 400 | `COMMON_INVALID_REQUEST` |
+| 추첨 가능한 지역 없음 | 422 | `DRAW_NO_ELIGIBLE_REGION` |
+
+---
+
+### 7-6. 성향 맞춤 지역 문장
+
+> `호출: 회원` · `✅ 구현`
+
+```
+GET /api/regions/{sigCd}/match
+```
+
+B4 "강릉 추천"의 개인화 문장이다(2026-10-16 D13-3). 요청자의 여행 성향(설문 v2 MBTI 4글자 → 성향 이름, [성향 콘텐츠](../design/travel-personas.md))과 지역 근거(승인된 태그·한 줄 소개, 대표 관광지 3곳과 한 줄 소개)로 ai가 2~3문장을 쓴다.
+
+**Response `200 OK`**
+
+```json
+{"sigCd": "51150", "mbtiCode": "INFP", "personaName": "낭만적인 기록가",
+ "text": "골목과 바다 사이에서 나만의 장면을 남기기 좋은 곳이에요. …", "textSource": "LLM", "aiGenerated": true}
+```
+
+- 설문 v1(MBTI 없음)·설문 전이면 `mbtiCode`·`personaName`·`text`가 `null`이다. 화면은 이 영역을 숨긴다.
+- `textSource`: `LLM` \| `RULE`. ai가 없거나 실패하면 근거만으로 만든 규칙 문장(`RULE`)이다. 닉네임은 프론트가 붙인다(서버는 닉네임·설문 답을 보내지 않는다).
+- 지역 × 16유형 조합이라 LLM 문장은 서버가 기억하고(`region_match_texts`), 근거(태그·한 줄 소개·대표 관광지)가 바뀌면 새로 만든다.
+- **표시용**이다. 추천·추첨 계산에 쓰지 않는다. "MBTI는 추천 이유에 쓰지 않는다" 정책의 예외로, 성향 소개 문장에만 쓴다([결정](../product.md#결정-기록)).
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 없는 지역 | 404 | `REGION_NOT_FOUND` |
 
 ---
 

@@ -4,7 +4,11 @@ import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
+import com.yeso.backend.attraction.application.region.RegionQueryService;
 import com.yeso.backend.trip.application.context.TripService;
+import com.yeso.backend.trip.application.course.CourseService;
+import com.yeso.backend.trip.application.course.CourseStorage;
+import com.yeso.backend.trip.presentation.course.CourseResponse;
 import com.yeso.backend.shared.token.InvalidExpiresInDaysException;
 import com.yeso.backend.trip.domain.InviteExpiredException;
 import com.yeso.backend.trip.domain.InviteNotFoundException;
@@ -45,6 +49,9 @@ public class InviteService {
     private final TripFriendInvitationRepository friendInvitationRepository;
     private final UserRepository userRepository;
     private final TripService tripService;
+    private final CourseService courseService;
+    private final CourseStorage courseStorage;
+    private final RegionQueryService regionQueryService;
     private final OpaqueTokenGenerator tokenGenerator;
     private final Clock clock;
 
@@ -86,14 +93,31 @@ public class InviteService {
         TripInvitation invitation = requireActiveInvitation(token);
         TripPlan tripPlan = invitation.getTripPlan();
         Region region = tripPlan.getRegion();
+        List<InvitePublicSummaryResponse.Participant> participants = tripService.participantNicknames(tripPlan.getId()).stream()
+                .map(InvitePublicSummaryResponse.Participant::new)
+                .toList();
         return new InvitePublicSummaryResponse(
                 true,
                 tripPlan.displayTitle(),
                 tripPlan.getStartDate(),
                 tripPlan.getEndDate(),
+                region == null ? null : region.getSigCd(),
                 region == null ? null : region.getProvince() + " " + region.getCity(),
+                region == null ? null : regionQueryService.heroImageUrl(region.getSigCd()).orElse(null),
                 invitation.getInvitedByUser().getNickname(),
-                tripService.countParticipants(tripPlan.getId()));
+                participants.size(),
+                participants,
+                courseStorage.hasCourse(tripPlan.getId()));
+    }
+
+    /**
+     * 4-16 초대 링크로 코스 둘러보기(D9). 로그인 전에도 읽기 전용으로 본다. 모양은 4-13과 같고({@code myRole: VIEWER}),
+     * 초대 미리보기처럼 참여자 이름을 보여 준다. 코스가 없으면 {@code days: []}다.
+     */
+    @Transactional(readOnly = true)
+    public CourseResponse course(String token) {
+        TripInvitation invitation = requireActiveInvitation(token);
+        return courseService.inviteView(invitation.getTripPlan());
     }
 
     /** 이미 참여 중이면 {@code joined=false}로 같은 결과를 돌려준다(멱등). 컨트롤러가 201/200을 고른다. */

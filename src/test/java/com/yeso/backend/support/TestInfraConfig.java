@@ -2,7 +2,9 @@ package com.yeso.backend.support;
 
 import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.shared.ai.FakeAiTextClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
+import com.yeso.backend.trip.infrastructure.FakeKakaoMapRouteClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
 import org.springframework.beans.factory.annotation.Value;
@@ -64,6 +66,18 @@ public class TestInfraConfig {
     @Primary
     FakeDiaryPhotoStorage fakeDiaryPhotoStorage() {
         return new FakeDiaryPhotoStorage();
+    }
+
+    @Bean
+    @Primary
+    FakeKakaoMapRouteClient fakeKakaoMapRouteClient() {
+        return new FakeKakaoMapRouteClient();
+    }
+
+    @Bean
+    @Primary
+    FakeAiTextClient fakeAiTextClient() {
+        return new FakeAiTextClient();
     }
 
     @Bean

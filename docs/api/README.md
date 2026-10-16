@@ -63,10 +63,10 @@ GitHub 마일스톤 `MVP`, `추가 기능`과 같은 구분이다. 아래 체크
 | 흐름 | 경로 |
 |---|---|
 | A. 가입·온보딩 | `POST /auth/signup` → `GET /onboarding/questions` → `POST /onboarding/submissions` |
-| B. 여행 만들기 | `GET /trips/unavailable-dates` → `POST /trips/context/check` → `POST /trips` |
-| C. 함께 가기 | `POST /trips/{id}/invites` → (친구) `GET /invites/{token}` 미리보기 → 로그인·설문 → `POST /invites/{token}/accept` · 또는 `POST /trips/{id}/friend-invites` → `GET /me/trip-invites` → `POST /me/trip-invites/{id}/accept` |
-| D. 지역 정하기 | `GET /regions` → `POST /trips/{id}/region`(랜덤·조건·직접 선택) → `GET /regions/{sigCd}/card` |
-| E. 코스 만들기 | `POST /courses/{id}/generate` → 지도 `GET /regions/{sigCd}/attractions` · `GET /attractions/{id}` → `GET /courses/{id}/alternatives` → `PATCH /courses/{id}/schedule` |
+| B. 여행 만들기(지역 먼저, 2026-10-16) | `POST /regions/draw`(랜덤·조건, 저장 없음) 또는 지도에서 지역 고르기 → `GET /regions/{sigCd}/card`·`/match` → `GET /trips/unavailable-dates` → `POST /trips/context/check`(`sigCd`) → `POST /trips`(`regionSigCd`) |
+| C. 함께 가기 | `POST /trips/{id}/invites` → (친구) `GET /invites/{token}` 미리보기 · `GET /invites/{token}/course` 둘러보기 → 로그인·설문 → `POST /invites/{token}/accept` · 또는 `POST /trips/{id}/friend-invites` → `GET /me/trip-invites` → `POST /me/trip-invites/{id}/accept` · 관리자 `DELETE /trips/{id}/participants/{userId}` |
+| D. 지역 다시 정하기 | `GET /regions` → `POST /trips/{id}/region`(랜덤·조건·직접 선택) → `GET /regions/{sigCd}/card`. 날짜 먼저 만든 여행(지역 없음)도 이 흐름이다 |
+| E. 코스 만들기 | `POST /courses/{id}/generate`(AI 제목·소개·이유) → 지도 `GET /regions/{sigCd}/attractions` · `GET /attractions/{id}` → `GET /courses/{id}/alternatives` → `PATCH /courses/{id}/schedule`(사유·되살리기) · 접속 표시 `POST·GET /trips/{id}/presence` |
 | F. 식당 | `GET /courses/{id}/restaurants/recommendations` · `…/search` → `PATCH /courses/{id}/schedule`(SET_RESTAURANT) |
 | G. 보여주기·탈퇴 | `POST /courses/{id}/share-links` → (제3자) `GET /shared/courses/{token}` → `GET /shared/courses` · `DELETE /trips/{id}/participants/me` |
 | H. 여행기(추가 기능, 여행 종료 후) | `POST /courses/{id}/diary` → `POST /diaries/{id}/photos` → `PATCH /diaries/{id}` → `POST /diaries/{id}/publish` → `GET /me/travel-map` |
@@ -140,7 +140,8 @@ Controller, validation, Security 계층이 모두 같은 모양을 쓴다. 구�
 |---|---|
 | `공개` | 인증 없음 |
 | `회원` | 로그인한 회원 누구나 |
-| `참여자` | 그 여행을 만들었거나 초대를 수락한 회원. **모두 동등한 권한**이다 |
+| `참여자` | 그 여행을 만들었거나 초대를 수락한 회원. 내보내기(3-10) 말고는 **모두 동등한 권한**이다 |
+| `관리자` | 참여자 중 여행을 만든 사람. 만든 사람이 나갔으면 가장 먼저 들어온 참여자(2026-10-16). 내보내기만 관리자 전용이다 |
 | `공유 링크 소지자` | 그 여행의 공유 링크로 세션을 받은 사람. `/api/shared/**`의 조회만 한다 |
 | `작성자` | 그 여행기를 쓴 회원 |
 
@@ -159,7 +160,8 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 - 회원 탈퇴 시 참여 여행·친구·여행기 처리
 - 여행 제목 수정
 - 코스 재생성 되돌리기(undo)
-- 지역 소개·음식 테마 승인 도구(관리자 API 또는 운영 스크립트). 없으면 지역 카드가 `REGION_CONTENT_NOT_READY`다
+- 지역 소개·음식 테마 승인 도구(관리자 API 또는 운영 스크립트). 지역 카드는 소개가 없어도 열리고, 대표 사진·대표 관광지는 대표 관광지 규칙으로 채운다(2026-10-16). 한 줄 소개·태그는 CSV 검수 도구가 있다([runbook](../runbooks/summary-review.md))
+- 도보·대중교통 실제 경로 API 선택([조사](../design/route-api-research.md)), 시군구 대표 사진 출처([조사](../design/region-photo-research.md))
 
 ---
 
@@ -196,6 +198,9 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [3-7](trip.md#3-7-지역-정하기) | POST | `/trips/{tripId}/region` | 참여자 | 랜덤·조건 추첨, 직접 선택 | MVP |
 | ✅ | [3-8](trip.md#3-8-참여자-목록) | GET | `/trips/{tripId}/participants` | 참여자 | 참여자 목록 | MVP |
 | ✅ | [3-9](trip.md#3-9-여행-탈퇴) | DELETE | `/trips/{tripId}/participants/me` | 참여자 | 탈퇴(마지막이면 여행 삭제) | MVP |
+| ✅ | [3-10](trip.md#3-10-참여자-내보내기) | DELETE | `/trips/{tripId}/participants/{userId}` | 관리자 | 참여자 내보내기 | MVP |
+| ✅ | [3-11](trip.md#3-11-접속-신호) | POST | `/trips/{tripId}/presence` | 참여자 | "보고 있어요" 신호 | MVP |
+| ✅ | [3-12](trip.md#3-12-보고-있는-참여자) | GET | `/trips/{tripId}/presence` | 참여자 | 최근 60초 접속 참여자 | MVP |
 | ✅ | [4-1](trip.md#4-1-초대-링크-발급) | POST | `/trips/{tripId}/invites` | 참여자 | 초대 링크 발급 | MVP |
 | ✅ | [4-2](trip.md#4-2-초대-링크-목록) | GET | `/trips/{tripId}/invites` | 참여자 | 초대 링크 목록 | MVP |
 | ✅ | [4-3](trip.md#4-3-초대-링크-폐기) | DELETE | `/trips/{tripId}/invites/{inviteId}` | 참여자 | 초대 링크 폐기 | MVP |
@@ -211,13 +216,14 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [4-13](trip.md#4-13-공유-코스-조회) | GET | `/shared/courses` | 공유 링크 소지자 | 공유 코스 (Course 본문) | MVP |
 | ✅ | [4-14](trip.md#4-14-보낸-친구-초대-목록) | GET | `/trips/{tripId}/friend-invites` | 참여자 | 보낸 친구 초대 목록 | MVP |
 | ✅ | [4-15](trip.md#4-15-친구-초대-취소) | DELETE | `/trips/{tripId}/friend-invites/{inviteId}` | 참여자 | 친구 초대 취소 | MVP |
+| ✅ | [4-16](trip.md#4-16-초대-링크로-코스-둘러보기) | GET | `/invites/{token}/course` | 공개 | 초대 링크로 코스 읽기 전용 둘러보기 | MVP |
 | ✅ | [5-1](trip.md#5-1-코스-생성재생성) | POST | `/courses/{tripId}/generate` | 참여자 | 코스 생성·재생성(요청자 취향) | MVP |
 | ✅ | [5-2](trip.md#5-2-코스-조회) | GET | `/courses/{tripId}` | 참여자 | 코스 조회 | MVP |
 | ✅ | [5-3](trip.md#5-3-일정-편집) | PATCH | `/courses/{tripId}/schedule` | 참여자 | 추가·교체·삭제·이동·식당 | MVP |
 | ✅ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
 | ✅ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
-| ✅ | [5-7](trip.md#5-7-코스-경로) | GET | `/courses/{tripId}/routes` | 참여자 | 하루 코스 지도 경로(카카오모빌리티 도로, 실패 시 직선) | 추가 기능 |
+| ✅ | [5-7](trip.md#5-7-코스-경로) | GET | `/courses/{tripId}/routes` | 참여자 | 하루 코스 지도 경로(자동차 카카오모빌리티, 도보·대중교통 카카오맵, 실패 시 직선) | 추가 기능 |
 | ✅ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
 | ✅ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
 | ✅ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |
@@ -235,5 +241,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [7-2](attraction.md#7-2-지역-카드) | GET | `/regions/{sigCd}/card` | 회원 | 지역 소개 카드 | MVP |
 | ✅ | [7-3](attraction.md#7-3-지도-관광지-핀) | GET | `/regions/{sigCd}/attractions` | 회원 | 지도 핀 | MVP |
 | ✅ | [7-4](attraction.md#7-4-관광지-상세) | GET | `/attractions/{attractionId}` | 회원 | 관광지 상세 | MVP |
+| ✅ | [7-5](attraction.md#7-5-지역-먼저-뽑기) | POST | `/regions/draw` | 회원 | 여행 없이 지역 뽑기(저장 없음) | MVP |
+| ✅ | [7-6](attraction.md#7-6-성향-맞춤-지역-문장) | GET | `/regions/{sigCd}/match` | 회원 | 내 여행 성향에 맞춘 지역 문장(AI) | MVP |
 
 `🔧` 항목의 구체적 차이는 각 절의 "구현과의 차이"에 적는다.

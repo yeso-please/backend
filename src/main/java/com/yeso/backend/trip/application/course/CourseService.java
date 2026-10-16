@@ -1,6 +1,7 @@
 package com.yeso.backend.trip.application.course;
 
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
+import com.yeso.backend.attraction.application.region.CourseMaterialService.ApprovedSummary;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService;
 import com.yeso.backend.attraction.application.region.RestaurantQueryService;
@@ -22,20 +23,27 @@ import com.yeso.backend.trip.application.course.CourseGeneration.Result;
 import com.yeso.backend.trip.application.course.CourseGeneration.Warning;
 import com.yeso.backend.trip.domain.CourseCreatorOnlyException;
 import com.yeso.backend.trip.domain.CourseItem;
+import com.yeso.backend.trip.domain.CourseItemOrigin;
 import com.yeso.backend.trip.domain.CourseItemSource;
 import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.CourseNotFoundException;
+import com.yeso.backend.trip.domain.CourseRemoval;
 import com.yeso.backend.trip.domain.CourseTitleSource;
 import com.yeso.backend.trip.domain.InvalidScheduleDensityException;
 import com.yeso.backend.trip.domain.InvalidTasteModeException;
 import com.yeso.backend.trip.domain.RecommendationMode;
 import com.yeso.backend.trip.domain.RestaurantSnapshot;
+import com.yeso.backend.trip.domain.Transport;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripRegionNotSelectedException;
 import com.yeso.backend.trip.domain.TripVersionConflictException;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository;
+import com.yeso.backend.trip.infrastructure.CourseRemovalRepository;
+import com.yeso.backend.trip.infrastructure.KakaoMapRouteClient;
+import com.yeso.backend.trip.infrastructure.KakaoMobilityClient;
+import com.yeso.backend.trip.infrastructure.RouteLegCache;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import com.yeso.backend.trip.presentation.course.CourseResponse;
@@ -43,6 +51,7 @@ import com.yeso.backend.trip.presentation.course.CourseResponse.AttractionItemRe
 import com.yeso.backend.trip.presentation.course.CourseResponse.DayResponse;
 import com.yeso.backend.trip.presentation.course.CourseResponse.ItemResponse;
 import com.yeso.backend.trip.presentation.course.CourseResponse.MealItemResponse;
+import com.yeso.backend.trip.presentation.course.CourseResponse.Travel;
 import com.yeso.backend.trip.presentation.course.CourseResponse.UserRef;
 import com.yeso.backend.trip.presentation.course.CourseResponse.WarningResponse;
 import com.yeso.backend.trip.presentation.course.GenerateCourseRequest;
@@ -55,9 +64,11 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.random.RandomGenerator;
@@ -81,6 +92,8 @@ public class CourseService {
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
     private final CourseMealRestaurantRepository courseMealRestaurantRepository;
+    private final CourseRemovalRepository courseRemovalRepository;
+    private final RouteLegCache routeLegCache;
     private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
     private final CourseMaterialService courseMaterialService;
@@ -131,6 +144,7 @@ public class CourseService {
                 requesterVector, attractionVectors, officialCourses, randomOnly, evidence), new SplittableRandom());
 
         courseItemRepository.deleteByTripPlanId(tripId);
+        courseRemovalRepository.deleteByTripPlanId(tripId); // 새 기준점: 이전 변경 기록을 지운다(D11-3)
         User requester = entityManager.getReference(User.class, userId);
         LocalDateTime now = LocalDateTime.now(clock);
         MealAssigner mealAssigner = new MealAssigner(region, restaurantQueryService.loadTourApi(region.getSigCd()));
@@ -164,6 +178,9 @@ public class CourseService {
         trip.setTasteBasisUser(requester);
         trip.setCourseUpdatedBy(requester);
         trip.setCourseUpdatedAt(now);
+        trip.setCourseBaselineAt(now);
+        trip.setCourseIntro(null);
+        trip.setCourseIntroSource(null);
         if (trip.getCourseFirstGeneratedAt() == null) {
             trip.setCourseFirstGeneratedAt(now);
         }
@@ -172,7 +189,7 @@ public class CourseService {
         List<Warning> densityWarnings = result.warnings().stream()
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
                 .toList();
-        return view(trip, CourseResponse.PARTICIPANT, densityWarnings);
+        return view(trip, Viewer.participant(userId), densityWarnings);
     }
 
     /**
@@ -220,7 +237,7 @@ public class CourseService {
         if (!courseItemRepository.existsByTripPlanId(tripId)) {
             throw new CourseNotFoundException(tripId);
         }
-        return view(trip, CourseResponse.PARTICIPANT, List.of());
+        return view(trip, Viewer.participant(userId), List.of());
     }
 
     // ---------- 4-13 ----------
@@ -228,7 +245,21 @@ public class CourseService {
     /** 공유 링크 열람자용. 코스가 없으면 {@code days: []}다. */
     @Transactional(readOnly = true)
     public CourseResponse sharedView(TripPlan trip) {
-        return view(trip, CourseResponse.VIEWER, List.of());
+        return view(trip, Viewer.shareLink(), List.of());
+    }
+
+    // ---------- 4-16 ----------
+
+    /** 초대 링크로 들어온 사람의 읽기 전용 둘러보기. 4-13과 같은 모양이지만 참여자 이름을 보여 준다(D8·D9). */
+    @Transactional(readOnly = true)
+    public CourseResponse inviteView(TripPlan trip) {
+        return view(trip, Viewer.invitee(), List.of());
+    }
+
+    /** 다른 유스케이스(편집·AI 소개 반영)가 응답을 만들 때 쓴다. */
+    @Transactional(readOnly = true)
+    public CourseResponse participantView(TripPlan trip, Long userId) {
+        return view(trip, Viewer.participant(userId), List.of());
     }
 
     // ---------- helpers ----------
@@ -265,20 +296,40 @@ public class CourseService {
         return onboardingQueryService.findLatestScheduleDensity(userId).orElse(RELAXED);
     }
 
+    /** 누가 보는지. 공유 링크 열람자는 이름을 숨기고, 초대 링크 둘러보기는 이름을 보여 준다(D8). */
+    record Viewer(String role, Long userId, boolean showNames) {
+        static Viewer participant(Long userId) {
+            return new Viewer(CourseResponse.PARTICIPANT, userId, true);
+        }
+
+        static Viewer shareLink() {
+            return new Viewer(CourseResponse.VIEWER, null, false);
+        }
+
+        static Viewer invitee() {
+            return new Viewer(CourseResponse.VIEWER, null, true);
+        }
+    }
+
     /**
      * 저장된 코스를 응답으로 바꾼다. 관광지 정보는 지금 데이터로 읽고(2026-09-27), 추천 대상에서 빠진 곳에는 경고를 붙인다.
      * {@code DENSITY_TARGET_NOT_MET}은 생성 결과에만 있는 경고라 생성 응답에만 싣는다.
      */
-    CourseResponse view(TripPlan trip, String role, List<Warning> generationWarnings) {
+    CourseResponse view(TripPlan trip, Viewer viewer, List<Warning> generationWarnings) {
         List<CourseItem> items = courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(trip.getId());
-        Map<Long, AttractionView> attractions = courseMaterialService.findAttractionViews(items.stream()
-                .filter(item -> !item.isMeal()).map(CourseItem::getAttractionId).toList());
+        List<Long> attractionIds = items.stream().filter(item -> !item.isMeal()).map(CourseItem::getAttractionId).toList();
+        Map<Long, AttractionView> attractions = courseMaterialService.findAttractionViews(attractionIds);
+        Map<Long, ApprovedSummary> summaries = courseMaterialService.findApprovedSummaries(attractionIds);
         Map<Long, CourseMealRestaurant> restaurants = courseMealRestaurantRepository.findByCourseItemIdIn(items.stream()
                         .filter(CourseItem::isMeal).map(CourseItem::getId).toList()).stream()
                 .collect(Collectors.toMap(CourseMealRestaurant::getCourseItemId, Function.identity()));
+        boolean participant = CourseResponse.PARTICIPANT.equals(viewer.role());
+        boolean tasteOwner = participant && trip.getTasteBasisUser() != null
+                && trip.getTasteBasisUser().getId().equals(viewer.userId());
 
         List<WarningResponse> warnings = new ArrayList<>();
         List<DayResponse> days = new ArrayList<>();
+        boolean llmReason = false;
         if (!items.isEmpty()) {
             warnings.add(new WarningResponse("ROUTE_TIME_ESTIMATED", null, null));
             if (trip.getRecommendationMode() == RecommendationMode.TOUR_OFFICIAL
@@ -294,16 +345,20 @@ public class CourseService {
                 List<CourseItem> itemsOfDay = byDay.getOrDefault(dayIndex, List.of());
                 Map<CourseItem, TravelLegs.Leg> legs = TravelLegs.of(itemsOfDay, attractions, restaurants);
                 for (CourseItem item : itemsOfDay) {
+                    Travel travel = travel(item, legs);
                     if (item.isMeal()) {
                         dayItems.add(new MealItemResponse(item.itemId(), "MEAL", item.getMealType().name(),
                                 item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
-                                straightMeters(item, legs), snapshot(restaurants.get(item.getId()))));
+                                travel == null || item.getTravelMinutesFromPrevious() == null ? null : travel.meters(),
+                                travel, snapshot(restaurants.get(item.getId()))));
                         continue;
                     }
                     AttractionView attraction = attractions.get(item.getAttractionId());
                     if (attraction == null || !attraction.recommendable()) {
                         warnings.add(new WarningResponse("ATTRACTION_NO_LONGER_RECOMMENDABLE", dayIndex, item.itemId()));
                     }
+                    ApprovedSummary summary = summaries.get(item.getAttractionId());
+                    llmReason |= "LLM".equals(item.getReasonSource());
                     dayItems.add(new AttractionItemResponse(
                             item.itemId(), "ATTRACTION", item.getAttractionId(),
                             attraction == null ? null : attraction.name(),
@@ -313,41 +368,127 @@ public class CourseService {
                             attraction == null ? null : attraction.lat(),
                             attraction == null ? null : attraction.lng(),
                             item.getStayMinutes(), item.getTravelMinutesFromPrevious(),
-                            straightMeters(item, legs), true,
-                            item.getSource().name(), item.getReason()));
+                            travel == null || item.getTravelMinutesFromPrevious() == null ? null : travel.meters(),
+                            travel, true, item.getSource().name(), item.getReason(), item.getReasonSource(),
+                            tasteOwner ? item.getPersonalReason() : null,
+                            summary == null ? null : summary.oneLine(),
+                            summary == null ? null : summary.basis(),
+                            change(item, viewer)));
                 }
                 days.add(new DayResponse(dayIndex, trip.getStartDate().plusDays(dayIndex), dayItems));
             }
         }
 
-        boolean viewer = CourseResponse.VIEWER.equals(role);
         boolean hasCourse = !items.isEmpty();
+        boolean hideNames = !viewer.showNames();
         Region region = trip.getRegion();
+        String titleSource = hasCourse && trip.getTitleSource() != null ? trip.getTitleSource().name() : null;
+        String introSource = hasCourse ? trip.getCourseIntroSource() : null;
+        boolean aiGenerated = hasCourse && ("LLM".equals(titleSource) || "LLM".equals(introSource) || llmReason);
         return new CourseResponse(
-                trip.getId(), trip.getVersion(), role,
+                trip.getId(), trip.getVersion(), viewer.role(),
                 region == null ? null : region.getSigCd(),
                 region == null ? null : region.getProvince() + " " + region.getCity(),
                 trip.getStartDate(), trip.getEndDate(), trip.getScheduleDensity(),
-                hasCourse ? trip.getTitle() : null,
-                hasCourse && trip.getTitleSource() != null ? trip.getTitleSource().name() : null,
+                hasCourse ? trip.getTitle() : null, titleSource,
+                hasCourse ? trip.getCourseIntro() : null, introSource, aiGenerated,
                 hasCourse && trip.getRecommendationMode() != null ? trip.getRecommendationMode().name() : null,
-                viewer || !hasCourse ? null : userRef(trip.getTasteBasisUser()),
+                hideNames || !hasCourse ? null : userRef(trip.getTasteBasisUser()),
                 days, warnings,
-                viewer || !hasCourse ? null : userRef(trip.getCourseUpdatedBy()),
+                hasCourse ? changes(trip, items, viewer) : null,
+                hideNames || !hasCourse ? null : userRef(trip.getCourseUpdatedBy()),
                 hasCourse ? trip.getCourseUpdatedAt() : null);
+    }
+
+    /**
+     * 앞 지점에서의 수단별 이동(D5). 5-7 지도 경로가 기억해 둔 실제 경로가 있으면 그 시간(자동차 ROAD, 도보·대중교통 ROUTE),
+     * 없으면 직선 추정(STRAIGHT)이다. 코스 조회에서 경로를 새로 부르지는 않는다(편집 응답이 느려지지 않게).
+     */
+    private Travel travel(CourseItem item, Map<CourseItem, TravelLegs.Leg> legs) {
+        TravelLegs.Leg leg = legs.get(item);
+        if (leg == null) {
+            return null;
+        }
+        KakaoMobilityClient.Point from = new KakaoMobilityClient.Point(leg.from().lat(), leg.from().lng());
+        KakaoMobilityClient.Point to = new KakaoMobilityClient.Point(leg.to().lat(), leg.to().lng());
+        Optional<KakaoMobilityClient.Leg> road = routeLegCache.get(RouteLegCache.key(from, to));
+        Optional<KakaoMobilityClient.Leg> walk = routeLegCache.get(RouteLegCache.key("WALK", from, to));
+        Optional<KakaoMapRouteClient.TransitLeg> transit = routeLegCache.getTransit(RouteLegCache.key("PUBLIC_TRANSIT", from, to));
+        String carSource = road.isPresent() ? "ROAD" : "STRAIGHT";
+        String walkSource = walk.isPresent() ? "ROUTE" : "STRAIGHT";
+        String transitSource = transit.isPresent() ? "ROUTE" : "STRAIGHT";
+        return new Travel(leg.straightMeters(),
+                walk.map(found -> minutes(found.durationSeconds())).orElse(leg.minutes(Transport.WALK)),
+                road.map(found -> minutes(found.durationSeconds())).orElse(leg.minutes(Transport.CAR)),
+                transit.map(found -> minutes(found.leg().durationSeconds())).orElse(leg.minutes(Transport.PUBLIC_TRANSIT)),
+                carSource, walkSource, transitSource,
+                transit.map(KakaoMapRouteClient.TransitLeg::transfers).orElse(null),
+                transit.map(KakaoMapRouteClient.TransitLeg::fare).orElse(null),
+                "STRAIGHT".equals(carSource) || "STRAIGHT".equals(walkSource) || "STRAIGHT".equals(transitSource));
+    }
+
+    private static int minutes(int seconds) {
+        return Math.max(1, (int) Math.round(seconds / 60.0));
+    }
+
+    private static CourseResponse.ItemChange change(CourseItem item, Viewer viewer) {
+        CourseItemOrigin origin = item.getOrigin() == null ? CourseItemOrigin.BASE : item.getOrigin();
+        UserRef by = !viewer.showNames() || item.getChangedByNickname() == null ? null
+                : new UserRef(item.getChangedBy() == null ? null : item.getChangedBy().getId(), item.getChangedByNickname());
+        CourseResponse.ReplacedFrom replacedFrom = item.getReplacedFromName() == null ? null
+                : new CourseResponse.ReplacedFrom(item.getReplacedFromAttractionId(), item.getReplacedFromName());
+        return new CourseResponse.ItemChange(origin.name(), by, replacedFrom, item.getChangeNote(), item.getChangedAt());
+    }
+
+    /** 일자별 추가·교체·제외 수, 되살릴 수 있는 제외 목록, 가장 최근 변경 한 건. */
+    private CourseResponse.Changes changes(TripPlan trip, List<CourseItem> items, Viewer viewer) {
+        List<CourseRemoval> removals = courseRemovalRepository.findByTripPlanIdAndRestoredAtIsNullOrderByRemovedAtDescIdDesc(trip.getId());
+        List<CourseResponse.DayChange> dayChanges = new ArrayList<>();
+        for (int dayIndex = 0; dayIndex <= trip.getNights(); dayIndex++) {
+            int day = dayIndex;
+            int added = (int) items.stream().filter(item -> item.getDayIndex() == day && item.getOrigin() == CourseItemOrigin.ADDED).count();
+            int replaced = (int) items.stream().filter(item -> item.getDayIndex() == day && item.getOrigin() == CourseItemOrigin.REPLACED).count();
+            int removed = (int) removals.stream().filter(removal -> removal.getDayIndex() == day).count();
+            dayChanges.add(new CourseResponse.DayChange(day, added, replaced, removed));
+        }
+        List<CourseResponse.Removal> removed = removals.stream()
+                .map(removal -> new CourseResponse.Removal(removal.getId(), removal.getAttractionId(), removal.getAttractionName(),
+                        removal.getDayIndex(), removal.getOrigin().name(),
+                        viewer.showNames() && removal.getRemovedByNickname() != null
+                                ? new UserRef(removal.getRemovedBy() == null ? null : removal.getRemovedBy().getId(), removal.getRemovedByNickname())
+                                : null,
+                        removal.getNote(), removal.getRemovedAt()))
+                .toList();
+
+        CourseResponse.LatestChange latest = null;
+        CourseItem latestItem = items.stream()
+                .filter(item -> !item.isMeal() && item.getChangedAt() != null)
+                .max(Comparator.comparing(CourseItem::getChangedAt).thenComparing(CourseItem::getId)).orElse(null);
+        if (latestItem != null) {
+            String type = switch (latestItem.getOrigin()) {
+                case ADDED -> "ADDED";
+                case REPLACED -> "REPLACED";
+                case BASE -> "RESTORED";
+            };
+            CourseResponse.ItemChange change = change(latestItem, viewer);
+            latest = new CourseResponse.LatestChange(type, latestItem.getDayIndex(), attractionName(latestItem),
+                    latestItem.getReplacedFromName(), change.by(), latestItem.getChangeNote(), latestItem.getChangedAt());
+        }
+        if (!removed.isEmpty() && (latest == null || removed.get(0).removedAt().isAfter(latest.at()))) {
+            CourseResponse.Removal last = removed.get(0);
+            latest = new CourseResponse.LatestChange("REMOVED", last.dayIndex(), last.name(), null, last.removedBy(),
+                    last.note(), last.removedAt());
+        }
+        return new CourseResponse.Changes(trip.getCourseBaselineAt(), dayChanges, removed, latest);
+    }
+
+    private String attractionName(CourseItem item) {
+        AttractionView view = courseMaterialService.findAttractionViews(List.of(item.getAttractionId())).get(item.getAttractionId());
+        return view == null ? null : view.name();
     }
 
     private static UserRef userRef(User user) {
         return user == null ? null : new UserRef(user.getId(), user.getNickname());
-    }
-
-    /**
-     * 바로 앞 지점에서의 직선거리(m). 이동시간과 같은 구간 규칙({@link TravelLegs})이고, 이동시간이 없으면 null이다.
-     * 저장하지 않고 응답할 때 현재 좌표로 계산한다.
-     */
-    private static Integer straightMeters(CourseItem item, Map<CourseItem, TravelLegs.Leg> legs) {
-        TravelLegs.Leg leg = legs.get(item);
-        return item.getTravelMinutesFromPrevious() == null || leg == null ? null : leg.straightMeters();
     }
 
     private static RestaurantSnapshot snapshot(CourseMealRestaurant restaurant) {

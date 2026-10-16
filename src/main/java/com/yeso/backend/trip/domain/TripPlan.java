@@ -106,6 +106,18 @@ public class TripPlan extends BaseTimeEntity {
     @Column(name = "course_first_generated_at")
     private LocalDateTime courseFirstGeneratedAt;
 
+    /** 변경 기록의 기준점. 코스를 생성·재생성한 시각이며, 이후 추가·교체·제외가 변경으로 표시된다. */
+    @Column(name = "course_baseline_at")
+    private LocalDateTime courseBaselineAt;
+
+    /** 코스 소개글(5-1 직후 ai {@code /explanations}). 없으면 null. */
+    @Column(name = "course_intro")
+    private String courseIntro;
+
+    /** {@code courseIntro}의 출처: RULE(규칙 문장) 또는 LLM. */
+    @Column(name = "course_intro_source", length = 10)
+    private String courseIntroSource;
+
     /** 종료일이 지난 뒤에 만든 사후 기록 여행인지(지난 여행 기록하기). 만들 때 정해지고 바뀌지 않는다. */
     @Column(nullable = false)
     private boolean retroactive;
@@ -182,6 +194,8 @@ public class TripPlan extends BaseTimeEntity {
         this.tasteBasisUser = null;
         this.courseUpdatedBy = null;
         this.courseUpdatedAt = null;
+        this.courseIntro = null;
+        this.courseIntroSource = null;
     }
 
     public boolean overlaps(LocalDate otherStart, LocalDate otherEnd) {

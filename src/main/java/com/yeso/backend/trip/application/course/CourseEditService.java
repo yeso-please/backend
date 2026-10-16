@@ -10,16 +10,19 @@ import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.CourseAttractionException;
 import com.yeso.backend.trip.domain.CourseInvalidOperationException;
 import com.yeso.backend.trip.domain.CourseItem;
+import com.yeso.backend.trip.domain.CourseItemOrigin;
 import com.yeso.backend.trip.domain.CourseItemNotFoundException;
-import com.yeso.backend.trip.domain.CourseItemSource;
 import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.CourseNotFoundException;
+import com.yeso.backend.trip.domain.CourseRemoval;
+import com.yeso.backend.trip.domain.CourseRemovalNotFoundException;
 import com.yeso.backend.trip.domain.RestaurantSnapshot;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.domain.TripVersionConflictException;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository;
+import com.yeso.backend.trip.infrastructure.CourseRemovalRepository;
 import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import com.yeso.backend.trip.infrastructure.TripParticipantRepository;
 import com.yeso.backend.trip.presentation.course.CourseResponse;
@@ -37,16 +40,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 5-3 일정 편집. 여행 행 잠금과 한 트랜잭션으로 모든 operation을 순서대로 적용한다. */
+/**
+ * 5-3 일정 편집. 여행 행 잠금과 한 트랜잭션으로 모든 operation을 순서대로 적용한다.
+ * 관광지 추가·교체·삭제·되살리기는 기준점 대비 변경 기록(D11)을 남긴다.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class CourseEditService {
+
+    /** 제외·교체 사유 최대 길이(D11-2). */
+    static final int MAX_NOTE_LENGTH = 100;
+
     private final TripService tripService;
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
     private final CourseMealRestaurantRepository restaurantRepository;
+    private final CourseRemovalRepository removalRepository;
     private final RegionEligibilityService eligibilityService;
     private final RestaurantSelectionTokenService tokenService;
     private final CourseStorage courseStorage;
@@ -78,6 +89,7 @@ public class CourseEditService {
             throw new TripVersionConflictException();
         }
 
+        Editor editor = new Editor(entityManager.find(User.class, userId), LocalDateTime.now(clock));
         Map<Integer, List<CourseItem>> days = new HashMap<>();
         for (int day = 0; day <= trip.getNights(); day++) {
             days.put(day, new ArrayList<>());
@@ -85,9 +97,10 @@ public class CourseEditService {
         existing.forEach(item -> days.get(item.getDayIndex()).add(item));
         for (Operation operation : request.operations()) {
             switch (operation.op()) {
-                case "ADD" -> add(trip, days, operation);
-                case "REPLACE" -> replace(trip, days, operation);
-                case "REMOVE" -> remove(days, operation);
+                case "ADD" -> add(trip, days, operation, editor);
+                case "REPLACE" -> replace(trip, days, operation, editor);
+                case "REMOVE" -> remove(trip, days, operation, editor);
+                case "RESTORE" -> restore(trip, days, operation, editor);
                 case "MOVE" -> move(days, operation);
                 case "SET_RESTAURANT" -> setRestaurant(userId, tripId, days, operation);
                 case "CLEAR_RESTAURANT" -> clearRestaurant(days, operation);
@@ -111,33 +124,69 @@ public class CourseEditService {
         }
         trip.setCourseUpdatedAt(now);
         entityManager.flush();
-        return courseService.view(trip, CourseResponse.PARTICIPANT, List.of());
+        return courseService.participantView(trip, userId);
     }
 
-    private void add(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op) {
+    /** 이번 요청을 보낸 사람. 변경 기록에 닉네임을 스냅샷으로 남긴다. */
+    private record Editor(User user, LocalDateTime at) {
+    }
+
+    private void add(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op, Editor editor) {
         CourseCandidate candidate = eligible(trip, days, op.attractionId());
-        List<CourseItem> target = day(days, op.dayIndex());
-        int position = op.position() == null ? target.size() : op.position();
+        insert(trip, days, op.dayIndex(), op.position(), candidate, CourseItemOrigin.ADDED, editor);
+    }
+
+    private void insert(TripPlan trip, Map<Integer, List<CourseItem>> days, Integer dayIndex, Integer requestedPosition,
+                        CourseCandidate candidate, CourseItemOrigin origin, Editor editor) {
+        List<CourseItem> target = day(days, dayIndex);
+        int position = requestedPosition == null ? target.size() : requestedPosition;
         requirePosition(position, target.size());
-        CourseItem item = CourseItem.attraction(trip, op.dayIndex(), position,
+        CourseItem item = CourseItem.added(trip, dayIndex, position,
                 entityManager.getReference(Attraction.class, candidate.attractionId()), candidate.stayMinutes(),
-                null, CourseItemSource.MANUAL, null);
+                origin, editor.user(), editor.user().getNickname(), editor.at());
         courseItemRepository.save(item);
         target.add(position, item);
     }
 
-    private void replace(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op) {
+    private void replace(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op, Editor editor) {
         CourseItem item = item(days, op.itemId());
         requireAttraction(item);
         CourseCandidate candidate = eligible(trip, days, op.attractionId());
-        item.replaceAttraction(entityManager.getReference(Attraction.class, candidate.attractionId()), candidate.stayMinutes());
+        item.replaceAttraction(entityManager.getReference(Attraction.class, candidate.attractionId()), candidate.stayMinutes(),
+                editor.user(), editor.user().getNickname(), attractionName(item.getAttractionId()), op.note(), editor.at());
     }
 
-    private void remove(Map<Integer, List<CourseItem>> days, Operation op) {
+    /** 지운 관광지는 제외 기록으로 남긴다(기준점 항목·추가한 항목 모두, D11·Q6). */
+    private void remove(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op, Editor editor) {
         CourseItem item = item(days, op.itemId());
         requireAttraction(item);
         days.get(item.getDayIndex()).remove(item);
+        removalRepository.save(new CourseRemoval(trip.getId(), item.getAttractionId(), attractionName(item.getAttractionId()),
+                item.getDayIndex(), item.getOrigin() == null ? CourseItemOrigin.BASE : item.getOrigin(),
+                editor.user(), editor.user().getNickname(), op.note(), editor.at()));
         courseItemRepository.delete(item);
+    }
+
+    /**
+     * 제외한 관광지를 다시 넣는다(D11-4). 기준점 항목이었으면 다시 BASE, 그 밖에는 ADDED다. 넣는 조건은 ADD와 같다
+     * (같은 지역의 추천 가능 관광지, 코스에 없음). {@code dayIndex}를 생략하면 지웠던 날, {@code position}을 생략하면 맨 뒤다.
+     */
+    private void restore(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op, Editor editor) {
+        CourseRemoval removal = removalRepository.findById(op.removalId())
+                .filter(found -> found.getTripPlanId().equals(trip.getId()) && !found.isRestored())
+                .orElseThrow(() -> new CourseRemovalNotFoundException(op.removalId()));
+        if (removal.getAttractionId() == null) {
+            throw new CourseRemovalNotFoundException(op.removalId());
+        }
+        CourseCandidate candidate = eligible(trip, days, removal.getAttractionId());
+        CourseItemOrigin origin = removal.getOrigin() == CourseItemOrigin.BASE ? CourseItemOrigin.BASE : CourseItemOrigin.ADDED;
+        insert(trip, days, op.dayIndex() == null ? removal.getDayIndex() : op.dayIndex(), op.position(), candidate, origin, editor);
+        removal.markRestored(editor.at());
+    }
+
+    private String attractionName(Long attractionId) {
+        Attraction attraction = entityManager.find(Attraction.class, attractionId);
+        return attraction == null ? "알 수 없는 장소" : attraction.getName();
     }
 
     private void move(Map<Integer, List<CourseItem>> days, Operation op) {
@@ -231,6 +280,13 @@ public class CourseEditService {
             if (op == null || op.op() == null) {
                 throw invalid();
             }
+            boolean noteAllowed = op.op().equals("REMOVE") || op.op().equals("REPLACE");
+            if (op.note() != null && (!noteAllowed || op.note().isBlank() || op.note().length() > MAX_NOTE_LENGTH)) {
+                throw invalid();
+            }
+            if (op.removalId() != null && !op.op().equals("RESTORE")) {
+                throw invalid();
+            }
             boolean valid = switch (op.op()) {
                 case "ADD" -> op.itemId() == null && op.dayIndex() != null && op.attractionId() != null
                         && op.selectionToken() == null;
@@ -242,6 +298,8 @@ public class CourseEditService {
                         && op.attractionId() == null && op.selectionToken() == null;
                 case "SET_RESTAURANT" -> op.itemId() != null && op.selectionToken() != null
                         && op.dayIndex() == null && op.position() == null && op.attractionId() == null;
+                case "RESTORE" -> op.removalId() != null && op.itemId() == null && op.attractionId() == null
+                        && op.selectionToken() == null && (op.position() == null || op.dayIndex() != null);
                 default -> false;
             };
             if (!valid || op.itemId() != null && !op.itemId().matches("[am]-[1-9][0-9]*")) {

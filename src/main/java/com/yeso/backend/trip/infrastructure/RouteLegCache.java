@@ -20,7 +20,8 @@ import java.util.Optional;
 @Component
 public class RouteLegCache {
 
-    private record Entry(Leg leg, Instant expiresAt) {
+    /** {@code transit}는 대중교통 구간에만 있다(환승·요금). */
+    private record Entry(Leg leg, KakaoMapRouteClient.TransitLeg transit, Instant expiresAt) {
     }
 
     private final Map<String, Entry> entries;
@@ -39,9 +40,14 @@ public class RouteLegCache {
         this.clock = clock;
     }
 
-    /** 좌표를 소수 6자리(약 0.1m)로 맞춘 구간 키. */
+    /** 자동차 구간 키. 좌표를 소수 6자리(약 0.1m)로 맞춘다. */
     public static String key(Point from, Point to) {
         return String.format(Locale.ROOT, "%.6f,%.6f>%.6f,%.6f", from.lat(), from.lng(), to.lat(), to.lng());
+    }
+
+    /** 도보·대중교통 구간 키. 같은 두 지점이라도 수단마다 따로 기억한다. */
+    public static String key(String mode, Point from, Point to) {
+        return mode + ":" + key(from, to);
     }
 
     public synchronized Optional<Leg> get(String key) {
@@ -56,8 +62,17 @@ public class RouteLegCache {
         return Optional.of(entry.leg());
     }
 
+    /** 대중교통 구간(환승·요금 포함). 대중교통이 아닌 키면 빈 값이다. */
+    public synchronized Optional<KakaoMapRouteClient.TransitLeg> getTransit(String key) {
+        return get(key).flatMap(leg -> Optional.ofNullable(entries.get(key)).map(Entry::transit));
+    }
+
     public synchronized void put(String key, Leg leg) {
-        entries.put(key, new Entry(leg, clock.instant().plus(ttl)));
+        entries.put(key, new Entry(leg, null, clock.instant().plus(ttl)));
+    }
+
+    public synchronized void putTransit(String key, KakaoMapRouteClient.TransitLeg transit) {
+        entries.put(key, new Entry(transit.leg(), transit, clock.instant().plus(ttl)));
     }
 
     /** 테스트가 매번 빈 상태로 시작하도록 비운다. */

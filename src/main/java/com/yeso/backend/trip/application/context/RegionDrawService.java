@@ -15,6 +15,7 @@ import com.yeso.backend.trip.domain.DrawNoEligibleRegionException;
 import com.yeso.backend.trip.domain.DrawRegionNotEligibleException;
 import com.yeso.backend.trip.domain.DrawSigCdRequiredException;
 import com.yeso.backend.trip.domain.DrawWarning;
+import com.yeso.backend.trip.domain.InvalidOriginException;
 import com.yeso.backend.trip.domain.InvalidScheduleDensityException;
 import com.yeso.backend.trip.domain.RegionSelectionMode;
 import com.yeso.backend.trip.domain.TripContextLockedException;
@@ -24,6 +25,8 @@ import com.yeso.backend.trip.infrastructure.TripPlanRepository;
 import com.yeso.backend.trip.presentation.context.DrawIgnoredConditionResponse;
 import com.yeso.backend.trip.presentation.context.DrawRegionRequest;
 import com.yeso.backend.trip.presentation.context.DrawRegionResponse;
+import com.yeso.backend.trip.presentation.context.PreDrawRegionRequest;
+import com.yeso.backend.trip.presentation.context.PreDrawRegionResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -48,6 +51,9 @@ public class RegionDrawService {
 
     private static final double EARTH_RADIUS_KM = 6371.0;
     private static final double DISTANCE_NORMALIZER_KM = 300.0;
+    /** 7-5 지역 먼저 뽑기는 일수를 모르므로 당일(1일) 기준으로 추첨 가능 여부를 본다. */
+    static final int PRE_DRAW_DAYS = 1;
+    private static final int MAX_NIGHTS = 6;
 
     private final TripService tripService;
     private final TripPlanRepository tripPlanRepository;
@@ -83,7 +89,8 @@ public class RegionDrawService {
 
         DrawOutcome outcome = switch (mode) {
             case RANDOM -> drawRandom(days, density);
-            case CONDITIONAL -> drawConditional(tripPlan, userId, days, density, requestedConditions);
+            case CONDITIONAL -> drawConditional(tripPlan.getOriginLat(), tripPlan.getOriginLng(), userId, days, density,
+                    requestedConditions);
             case MANUAL -> drawManual(request.sigCd(), days, density);
         };
 
@@ -116,6 +123,48 @@ public class RegionDrawService {
                 tripPlan.getVersion());
     }
 
+    /**
+     * 7-5 여행 없이 지역 먼저 뽑기(D1). 저장하지 않는다. 일수를 아직 모르므로 1일 기준 추첨 가능 지역에서 뽑고, 그 지역으로
+     * 만들 수 있는 최대 박수({@code maxNights})를 함께 준다. 날짜를 고른 뒤 3-3이 그 일수·밀도로 다시 검사한다.
+     */
+    @Transactional(readOnly = true)
+    public PreDrawRegionResponse preDraw(Long userId, PreDrawRegionRequest request) {
+        RegionSelectionMode mode = parseMode(request.mode());
+        if (mode == RegionSelectionMode.MANUAL) {
+            throw new DrawInvalidModeException();
+        }
+        List<DrawCondition> requestedConditions = mode == RegionSelectionMode.CONDITIONAL
+                ? parseConditions(request.conditions())
+                : List.of();
+        String density = request.scheduleDensity() != null ? validateDensity(request.scheduleDensity())
+                : onboardingQueryService.findLatestScheduleDensity(userId).orElse("RELAXED");
+        if ((request.originLat() == null) != (request.originLng() == null)) {
+            throw InvalidOriginException.missingPair();
+        }
+        DrawOutcome outcome = mode == RegionSelectionMode.RANDOM
+                ? drawRandom(PRE_DRAW_DAYS, density)
+                : drawConditional(request.originLat(), request.originLng(), userId, PRE_DRAW_DAYS, density, requestedConditions);
+        Region region = regionRepository.findById(outcome.sigCd())
+                .orElseThrow(() -> new IllegalStateException("추첨된 지역이 regions 테이블에 없습니다: " + outcome.sigCd()));
+        return new PreDrawRegionResponse(
+                region.getSigCd(), region.getProvince(), region.getCity(), region.getLat(), region.getLng(), mode.name(),
+                density, maxNights(region.getSigCd(), density),
+                outcome.appliedConditions().stream().map(Enum::name).toList(),
+                outcome.ignoredConditions().stream().map(DrawIgnoredConditionResponse::from).toList(),
+                outcome.candidateCount(),
+                outcome.warnings().stream().map(Enum::name).toList());
+    }
+
+    /** 이 지역·밀도로 코스를 만들 수 있는 최대 박수(0~6). 1일도 안 되면 -1. */
+    public int maxNights(String sigCd, String density) {
+        for (int nights = MAX_NIGHTS; nights >= 0; nights--) {
+            if (regionEligibilityService.isDrawEligible(sigCd, nights + 1, density)) {
+                return nights;
+            }
+        }
+        return -1;
+    }
+
     private record DrawOutcome(
             String sigCd, List<DrawCondition> appliedConditions,
             List<DrawIgnoredCondition> ignoredConditions, long candidateCount, List<DrawWarning> warnings) {
@@ -141,7 +190,7 @@ public class RegionDrawService {
     }
 
     private DrawOutcome drawConditional(
-            TripPlan tripPlan, Long userId, int days, String density, List<DrawCondition> requestedConditions) {
+            Double originLat, Double originLng, Long userId, int days, String density, List<DrawCondition> requestedConditions) {
         List<EligibleRegion> candidates = regionEligibilityService.findEligible(days, density);
         if (candidates.isEmpty()) {
             throw new DrawNoEligibleRegionException();
@@ -153,11 +202,11 @@ public class RegionDrawService {
         Map<String, Double> tasteScores = Map.of();
 
         if (requestedConditions.contains(DrawCondition.DISTANCE)) {
-            if (tripPlan.getOriginLat() == null) {
+            if (originLat == null || originLng == null) {
                 ignored.add(new DrawIgnoredCondition(DrawCondition.DISTANCE, DrawIgnoredReason.ORIGIN_MISSING));
             } else {
                 applied.add(DrawCondition.DISTANCE);
-                distanceScores = distanceScores(tripPlan, candidates);
+                distanceScores = distanceScores(originLat, originLng, candidates);
             }
         }
 
@@ -198,14 +247,13 @@ public class RegionDrawService {
         return candidates.get(candidates.size() - 1);
     }
 
-    private Map<String, Double> distanceScores(TripPlan tripPlan, List<EligibleRegion> candidates) {
+    private Map<String, Double> distanceScores(double originLat, double originLng, List<EligibleRegion> candidates) {
         Map<String, Double> scores = new java.util.HashMap<>();
         for (EligibleRegion candidate : candidates) {
             if (candidate.lat() == null || candidate.lng() == null) {
                 continue;
             }
-            double distanceKm = haversineKm(
-                    tripPlan.getOriginLat(), tripPlan.getOriginLng(), candidate.lat(), candidate.lng());
+            double distanceKm = haversineKm(originLat, originLng, candidate.lat(), candidate.lng());
             double clamped = Math.min(Math.max(distanceKm / DISTANCE_NORMALIZER_KM, 0), 1);
             scores.put(candidate.sigCd(), 1 - clamped);
         }

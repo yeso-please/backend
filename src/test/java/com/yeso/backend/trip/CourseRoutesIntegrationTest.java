@@ -3,6 +3,7 @@ package com.yeso.backend.trip;
 import com.jayway.jsonpath.JsonPath;
 import com.yeso.backend.support.ApiFixtures.Member;
 import com.yeso.backend.support.IntegrationTest;
+import com.yeso.backend.trip.infrastructure.FakeKakaoMapRouteClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -160,14 +161,63 @@ class CourseRoutesIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    @DisplayName("도보 여행은 길찾기를 부르지 않고 직선 구간을 내려준다")
-    void walkIsStraight() throws Exception {
+    @DisplayName("도보 여행은 카카오맵 도보 경로로 구간마다 경로·거리·시간을 내려주고 자동차 길찾기는 부르지 않는다")
+    void walkUsesKakaoMapRoute() throws Exception {
         Long tripId = trip("WALK");
         generate(tripId);
         MvcResult result = routes(tripId, 0);
-        assertThat((List<String>) read(result, "$.legs[*].source")).containsOnly("STRAIGHT");
-        assertThat((List<?>) read(result, "$.legs[0].path")).hasSize(2);
+        List<String> sources = read(result, "$.legs[*].source");
+        assertThat(sources).isNotEmpty().containsOnly("WALK");
+        assertThat((Integer) read(result, "$.legs[0].durationMinutes")).isEqualTo(FakeKakaoMapRouteClient.WALK_SECONDS / 60);
+        assertThat((Integer) read(result, "$.legs[0].distanceMeters")).isEqualTo(FakeKakaoMapRouteClient.WALK_METERS);
+        assertThat((List<?>) read(result, "$.legs[0].path")).hasSize(3);
+        assertThat((Object) read(result, "$.legs[0].transfers")).isNull();
         assertThat(fakeKakaoMobilityClient.requests()).isEmpty();
+        assertThat(fakeKakaoMapRouteClient.calls()).hasSize(sources.size()).containsOnly("WALK");
+
+        // 다시 열면 기억해 둔 구간을 쓴다
+        routes(tripId, 0);
+        assertThat(fakeKakaoMapRouteClient.calls()).hasSize(sources.size());
+    }
+
+    @Test
+    @DisplayName("대중교통은 환승·요금을 함께 주고, transport로 다른 수단의 경로를 볼 수 있다")
+    void transitAndOverride() throws Exception {
+        Long tripId = trip("CAR");
+        generate(tripId);
+        MvcResult transit = mockMvc.perform(get("/api/courses/{tripId}/routes", tripId).header("Authorization", member.bearer())
+                        .param("dayIndex", "0").param("transport", "PUBLIC_TRANSIT"))
+                .andExpect(status().isOk()).andReturn();
+        assertThat((String) read(transit, "$.transport")).isEqualTo("PUBLIC_TRANSIT");
+        assertThat((List<String>) read(transit, "$.legs[*].source")).containsOnly("TRANSIT");
+        assertThat((Integer) read(transit, "$.legs[0].transfers")).isEqualTo(1);
+        assertThat((Integer) read(transit, "$.legs[0].fare")).isEqualTo(FakeKakaoMapRouteClient.TRANSIT_FARE);
+        assertThat(fakeKakaoMobilityClient.requests()).isEmpty();
+
+        // 지도에서 받은 실제 경로 시간이 코스 카드의 대중교통 시간이 된다
+        MvcResult course = mockMvc.perform(get("/api/courses/{tripId}", tripId).header("Authorization", member.bearer())).andReturn();
+        List<String> transitSources = read(course, "$.days[0].items[?(@.travelFromPrevious != null)].travelFromPrevious.transitSource");
+        assertThat(transitSources).contains("ROUTE");
+        List<Integer> transitMinutes = read(course, "$.days[0].items[?(@.travelFromPrevious.transitSource == 'ROUTE')].travelFromPrevious.transitMinutes");
+        assertThat(transitMinutes).containsOnly(FakeKakaoMapRouteClient.TRANSIT_SECONDS / 60);
+        List<Integer> fares = read(course, "$.days[0].items[?(@.travelFromPrevious.transitSource == 'ROUTE')].travelFromPrevious.transitFare");
+        assertThat(fares).containsOnly(FakeKakaoMapRouteClient.TRANSIT_FARE);
+
+        mockMvc.perform(get("/api/courses/{tripId}/routes", tripId).header("Authorization", member.bearer())
+                        .param("dayIndex", "0").param("transport", "BIKE"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("COMMON_INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("도보·대중교통 경로를 못 받으면 직선 구간이고 요청은 성공한다")
+    void mapRouteFailureFallsBackToStraight() throws Exception {
+        fakeKakaoMapRouteClient.setFail(true);
+        Long tripId = trip("WALK");
+        MvcResult course = generate(tripId);
+        MvcResult result = routes(tripId, 0);
+        assertThat((List<String>) read(result, "$.legs[*].source")).containsOnly("STRAIGHT");
+        assertThat((Integer) read(result, "$.legs[0].durationMinutes"))
+                .isEqualTo((Integer) read(course, "$.days[0].items[1].travelFromPreviousMinutes"));
     }
 
     @Test

@@ -9,7 +9,8 @@ public record OnboardingSubmissionRequest(
         @NotBlank(message = "questionVersion을 입력해주세요.") String questionVersion,
         // RELAXED/PACKED 외 값은 COMMON_INVALID_REQUEST가 아니라 도메인 코드
         // ONBOARDING_INVALID_SCHEDULE_DENSITY로 응답해야 하므로 enum이 아닌 원시 문자열로 받는다.
-        @NotBlank(message = "scheduleDensity를 입력해주세요.") String scheduleDensity,
+        // 선택값이다(D3-2). 생략하면 MBTI J → PACKED, P → RELAXED, MBTI가 없으면 RELAXED.
+        String scheduleDensity,
         List<String> excludeTags,
         Map<Integer, Integer> travelStyles,
         List<Integer> travelMotives,
