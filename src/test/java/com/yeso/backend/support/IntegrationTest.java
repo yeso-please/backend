@@ -1,7 +1,11 @@
 package com.yeso.backend.support;
 
+import com.yeso.backend.attraction.application.region.CourseDataCache;
+import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
+import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
+import com.yeso.backend.trip.infrastructure.RouteLegCache;
 import com.yeso.backend.trip.infrastructure.FakeDiaryPhotoStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +49,18 @@ public abstract class IntegrationTest {
     protected FakeKakaoLocalClient fakeKakaoLocalClient;
 
     @Autowired
+    protected FakeKakaoMobilityClient fakeKakaoMobilityClient;
+
+    @Autowired
+    private RouteLegCache routeLegCache;
+
+    @Autowired
+    protected CourseDataCache courseDataCache;
+
+    @Autowired
+    protected FakeKakaoOAuthClient fakeKakaoOAuthClient;
+
+    @Autowired
     protected FakeDiaryPhotoStorage fakeDiaryPhotoStorage;
 
     @Autowired
@@ -55,6 +71,10 @@ public abstract class IntegrationTest {
         databaseCleaner.truncateAll();
         fakeEmbeddingClient.reset();
         fakeKakaoLocalClient.reset();
+        fakeKakaoMobilityClient.reset();
+        routeLegCache.clear();
+        courseDataCache.clear();
+        fakeKakaoOAuthClient.reset();
         fakeDiaryPhotoStorage.reset();
         clock.reset();
     }

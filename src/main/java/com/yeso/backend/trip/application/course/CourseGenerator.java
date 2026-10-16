@@ -51,11 +51,13 @@ public class CourseGenerator {
     /** 점수 0인 후보도 뽑힐 수 있게 더하는 기본 가중치. */
     private static final double BASE_WEIGHT = 0.05;
 
-    private static final Map<AttractionCategory, String> LABELS = new EnumMap<>(Map.of(
-            AttractionCategory.NATURE, "자연",
-            AttractionCategory.HISTORY_CULTURE, "역사·문화",
-            AttractionCategory.ACTIVITY, "체험",
-            AttractionCategory.WALK_REST, "산책·휴식"));
+    /** 같은 추천 이유 문장을 한 코스에서 쓰는 최대 횟수(docs/api/trip.md 추천 이유). */
+    static final int MAX_SAME_REASON = 2;
+
+    /** 설문 근거가 없을 때 유사도 이유를 붙이는 코스 안 상위 장소 수. */
+    static final int SIMILAR_TOP = 3;
+
+    static final String SIMILAR_REASON = "내 취향과 비슷한 장소예요";
 
     /** 제목 테마(조사 포함). 예: "경주, 역사를 따라 걷는 2일". */
     private static final Map<AttractionCategory, String> TITLE_THEMES = new EnumMap<>(Map.of(
@@ -93,9 +95,10 @@ public class CourseGenerator {
         if (mode == RecommendationMode.TOUR_OFFICIAL || mode == RecommendationMode.RULE_BASED) {
             warnings.add(new Warning("PERSONALIZATION_FALLBACK", null));
         }
+        Reasons reasons = new Reasons(mode, official, officialIds, request.evidence(), topBySimilarity(selected, tasteScores));
         for (int dayIndex = 0; dayIndex < dayGroups.size(); dayIndex++) {
             List<CourseCandidate> ordered = orderByNearest(dayGroups.get(dayIndex));
-            days.add(new Day(dayIndex, buildItems(ordered, request, mode, officialIds, official)));
+            days.add(new Day(dayIndex, buildItems(ordered, request, reasons)));
             if (ordered.size() < target) {
                 warnings.add(new Warning("DENSITY_TARGET_NOT_MET", dayIndex));
             }
@@ -284,9 +287,7 @@ public class CourseGenerator {
     // ---------- 항목·식사·이유·제목 ----------
 
     /** 점심은 그날 관광지 절반 뒤, 저녁은 끝. 이동시간은 앞 관광지에서 잰다(식사는 건너뛴다). */
-    private static List<Item> buildItems(
-            List<CourseCandidate> ordered, Request request, RecommendationMode mode, Set<Long> officialIds,
-            OfficialCourse official) {
+    private static List<Item> buildItems(List<CourseCandidate> ordered, Request request, Reasons reasons) {
         int lunchAfter = (ordered.size() + 1) / 2;
         List<Item> items = new ArrayList<>();
         CourseCandidate previous = null;
@@ -294,7 +295,7 @@ public class CourseGenerator {
             CourseCandidate current = ordered.get(i);
             Integer travel = previous == null ? null : TravelTimeEstimator.minutes(
                     previous.lat(), previous.lng(), current.lat(), current.lng(), request.transport());
-            items.add(new AttractionItem(current, travel, reason(current, mode, officialIds, official)));
+            items.add(new AttractionItem(current, travel, reasons.next(current)));
             previous = current;
             if (i + 1 == lunchAfter) {
                 items.add(new MealItem(MealType.LUNCH));
@@ -304,16 +305,56 @@ public class CourseGenerator {
         return items;
     }
 
-    private static String reason(
-            CourseCandidate candidate, RecommendationMode mode, Set<Long> officialIds, OfficialCourse official) {
-        String label = LABELS.get(candidate.category());
-        if (mode == RecommendationMode.TOUR_OFFICIAL && officialIds.contains(candidate.attractionId())) {
-            return "관광공사 추천 코스 「" + official.title() + "」에 나오는 곳이에요";
+    /** 취향 반영 모드에서 고른 장소 중 취향 유사도 상위 {@link #SIMILAR_TOP}곳. 점수가 없으면 빈 집합. */
+    private static Set<Long> topBySimilarity(List<CourseCandidate> selected, Map<Long, Double> tasteScores) {
+        if (tasteScores.isEmpty()) {
+            return Set.of();
         }
-        if (mode == RecommendationMode.PERSONALIZED) {
-            return label == null ? "취향과 잘 맞는 곳이에요" : label + " 명소, 취향과 잘 맞아요";
+        return selected.stream()
+                .filter(c -> tasteScores.containsKey(c.attractionId()))
+                .sorted(Comparator.comparingDouble((CourseCandidate c) -> tasteScores.get(c.attractionId())).reversed()
+                        .thenComparing(CourseCandidate::attractionId))
+                .limit(SIMILAR_TOP)
+                .map(CourseCandidate::attractionId)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * 추천 이유를 코스 순서대로 정한다(docs/api/trip.md 추천 이유). 근거가 없으면 null.
+     * 같은 문장은 코스 안에서 {@link #MAX_SAME_REASON}번까지만 쓰므로 순서대로 호출한다.
+     */
+    private static final class Reasons {
+        private final RecommendationMode mode;
+        private final OfficialCourse official;
+        private final Set<Long> officialIds;
+        private final TasteEvidence evidence;
+        private final Set<Long> similarTop;
+        private final Map<String, Integer> used = new HashMap<>();
+
+        Reasons(RecommendationMode mode, OfficialCourse official, Set<Long> officialIds, TasteEvidence evidence,
+                Set<Long> similarTop) {
+            this.mode = mode;
+            this.official = official;
+            this.officialIds = officialIds;
+            this.evidence = evidence;
+            this.similarTop = similarTop;
         }
-        return label == null ? null : label + " 명소예요";
+
+        String next(CourseCandidate candidate) {
+            if (mode == RecommendationMode.TOUR_OFFICIAL && officialIds.contains(candidate.attractionId())) {
+                return "관광공사 추천 코스 「" + official.title() + "」에 나오는 곳이에요";
+            }
+            if (mode != RecommendationMode.PERSONALIZED) {
+                return null;
+            }
+            for (String reason : evidence.reasonsFor(candidate.category())) {
+                if (used.getOrDefault(reason, 0) < MAX_SAME_REASON) {
+                    used.merge(reason, 1, Integer::sum);
+                    return reason;
+                }
+            }
+            return similarTop.contains(candidate.attractionId()) ? SIMILAR_REASON : null;
+        }
     }
 
     /** "{지역}, {대표 테마}를 따라 걷는 {일수}일". 대표 유형이 없으면 "{지역}에서 보내는 {일수}일". */

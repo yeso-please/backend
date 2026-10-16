@@ -40,7 +40,7 @@
 | 구분 | 범위 | 백엔드 구현 목표 |
 |---|---|---|
 | **MVP** | §1 인증, §2 온보딩·친구, §3 여행·지역, §4 초대·공유(친구 직접 초대 포함), §5 코스·식당, §7 지역·관광지 | 2026-09-27 |
-| **추가 기능** | §6 여행기·사진 지도(지도에 여행 기록) | 미정. 항목이 더 늘어날 수 있다 |
+| **추가 기능** | §1-6 카카오 로그인, §6 여행기·사진 지도(지도에 여행 기록) | 미정. 항목이 더 늘어날 수 있다 |
 
 GitHub 마일스톤 `MVP`, `추가 기능`과 같은 구분이다. 아래 체크리스트의 `범위` 열도 이를 따른다.
 
@@ -174,6 +174,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [1-3](auth.md#1-3-토큰-갱신) | POST | `/auth/refresh` | refresh | access 재발급·회전 | MVP |
 | ✅ | [1-4](auth.md#1-4-로그아웃) | POST | `/auth/logout` | 공개 | refresh 폐기 | MVP |
 | ✅ | [1-5](auth.md#1-5-내-정보) | GET | `/users/me` | 회원 | 내 정보·온보딩 여부 | MVP |
+| ✅ | [1-6](auth.md#1-6-카카오-로그인) | POST | `/auth/kakao` | 공개 | 카카오 가입·로그인 + refresh cookie | 추가 |
 | ✅ | [2-1](profile.md#2-1-온보딩-질문) | GET | `/onboarding/questions` | 공개 | 질문·태그 사전 | MVP |
 | ✅ | [2-2](profile.md#2-2-온보딩-제출) | POST | `/onboarding/submissions` | 회원 | 제출·재검사 | MVP |
 | ✅ | [2-3](profile.md#2-3-내-온보딩-결과) | GET | `/onboarding/me` | 회원 | 최신 제출 | MVP |
@@ -216,6 +217,7 @@ MVP 이후 또는 별도 논의로 미뤘다(2026-09-24). 정해지면 해당 �
 | ✅ | [5-4](trip.md#5-4-대체-후보) | GET | `/courses/{tripId}/alternatives` | 참여자 | 유형별 대체 관광지·이름 검색 | MVP |
 | ✅ | [5-5](trip.md#5-5-식당-추천) | GET | `/courses/{tripId}/restaurants/recommendations` | 참여자 | TourAPI·공공 지정 식당 | MVP |
 | ✅ | [5-6](trip.md#5-6-식당-검색) | GET | `/courses/{tripId}/restaurants/search` | 참여자 | 카카오 Local 검색 | MVP |
+| ✅ | [5-7](trip.md#5-7-코스-경로) | GET | `/courses/{tripId}/routes` | 참여자 | 하루 코스 지도 경로(카카오모빌리티 도로, 실패 시 직선) | 추가 기능 |
 | ✅ | [6-1](trip.md#6-1-여행기-만들기) | POST | `/courses/{tripId}/diary` | 참여자 | 내 여행기 초안(여행 종료 후) | 추가 |
 | ✅ | [6-2](trip.md#6-2-사진-올리기) | POST | `/diaries/{diaryId}/photos` | 작성자 | 사진 업로드 | 추가 |
 | ✅ | [6-3](trip.md#6-3-사진-삭제) | DELETE | `/diaries/{diaryId}/photos/{photoId}` | 작성자 | 사진 삭제 | 추가 |

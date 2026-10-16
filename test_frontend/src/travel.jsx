@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   MapPin,
@@ -589,6 +589,99 @@ export function Trips() {
     </>
   );
 }
+// 5-7 코스 경로 확인용 지도. 카카오 지도 SDK는 JavaScript 키(VITE_KAKAO_JS_KEY)로만 불러오고,
+// 도로 경로는 백엔드가 카카오모빌리티를 대신 불러 준다(REST 키는 서버에만 있다).
+const KAKAO_JS_KEY = import.meta.env?.VITE_KAKAO_JS_KEY || "";
+let kakaoMapsSdk = null;
+function loadKakaoMaps() {
+  if (window.kakao?.maps?.LatLng) return Promise.resolve(window.kakao);
+  if (!kakaoMapsSdk)
+    kakaoMapsSdk = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
+      script.onload = () => window.kakao.maps.load(() => resolve(window.kakao));
+      script.onerror = () => {
+        kakaoMapsSdk = null;
+        reject(new Error("카카오 지도 SDK를 불러오지 못했습니다."));
+      };
+      document.head.appendChild(script);
+    });
+  return kakaoMapsSdk;
+}
+
+function CourseRouteMap({ tripId, dayIndex, version, items }) {
+  const container = useRef(null);
+  const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    let cancelled = false;
+    if (!KAKAO_JS_KEY) {
+      setState({ error: "VITE_KAKAO_JS_KEY가 없어 지도를 띄울 수 없습니다." });
+      return;
+    }
+    setState({ loading: true });
+    const started = performance.now();
+    Promise.all([
+      loadKakaoMaps(),
+      api(`/courses/${tripId}/routes?dayIndex=${dayIndex}`),
+    ])
+      .then(([kakao, routes]) => {
+        if (cancelled) return;
+        const ms = Math.round(performance.now() - started);
+        const map = new kakao.maps.Map(container.current, {
+          center: new kakao.maps.LatLng(35.84, 129.21),
+          level: 7,
+        });
+        const bounds = new kakao.maps.LatLngBounds();
+        items.forEach((item, index) => {
+          const lat = item.lat ?? item.restaurant?.lat;
+          const lng = item.lng ?? item.restaurant?.lng;
+          if (lat == null || lng == null) return;
+          const position = new kakao.maps.LatLng(lat, lng);
+          bounds.extend(position);
+          new kakao.maps.CustomOverlay({
+            map,
+            position,
+            content: `<div class="route-pin ${item.type === "MEAL" ? "meal" : ""}">${index + 1}</div>`,
+          });
+        });
+        routes.legs.forEach((leg) => {
+          const path = leg.path.map(([lat, lng]) => new kakao.maps.LatLng(lat, lng));
+          path.forEach((p) => bounds.extend(p));
+          new kakao.maps.Polyline({
+            map,
+            path,
+            strokeWeight: 5,
+            strokeColor: leg.source === "ROAD" ? "#2f6fed" : "#9aa3af",
+            strokeOpacity: 0.85,
+            strokeStyle: leg.source === "ROAD" ? "solid" : "shortdash",
+          });
+          new kakao.maps.CustomOverlay({
+            map,
+            position: path[Math.floor(path.length / 2)],
+            content: `<div class="route-label">${(leg.distanceMeters / 1000).toFixed(1)}km · ${leg.durationMinutes}분${leg.source === "ROAD" ? "" : " (직선)"}</div>`,
+          });
+        });
+        if (!bounds.isEmpty()) map.setBounds(bounds);
+        const road = routes.legs.filter((l) => l.source === "ROAD").length;
+        setState({
+          summary: `경로 ${ms}ms · 도로 ${road}구간 · 직선 ${routes.legs.length - road}구간 · ${routes.transport}`,
+        });
+      })
+      .catch((e) => !cancelled && setState({ error: e.message }));
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId, dayIndex, version]);
+  return (
+    <div className="route-map">
+      <div ref={container} className="route-map-canvas" />
+      <small>
+        {state.error || (state.loading ? "경로를 불러오는 중…" : state.summary)}
+      </small>
+    </div>
+  );
+}
+
 export function Course({ id, user, sharedCourse }) {
   const [context, setContext] = useState(null),
     [course, setCourse] = useState(sharedCourse || null),
@@ -870,6 +963,14 @@ export function Course({ id, user, sharedCourse }) {
                   </button>
                 ))}
               </div>
+              {!sharedCourse && (
+                <CourseRouteMap
+                  tripId={id}
+                  dayIndex={day}
+                  version={course.version}
+                  items={items}
+                />
+              )}
               <div className="timeline">
                 {items.map((item, index) => (
                   <article
@@ -880,13 +981,21 @@ export function Course({ id, user, sharedCourse }) {
                     <div className="stop-body">
                       {item.travelFromPreviousMinutes != null && (
                         <small>
-                          이전 관광지에서 약 {item.travelFromPreviousMinutes}분
+                          이전 장소에서 약 {item.travelFromPreviousMinutes}분
+                          {item.travelFromPreviousMeters != null &&
+                            ` · 직선 ${(item.travelFromPreviousMeters / 1000).toFixed(1)}km`}
                           · 직선거리 추정
                         </small>
                       )}
                       <div className="stop-main">
                         {item.type === "ATTRACTION" && (
                           <Photo src={item.thumbnailUrl} alt={item.name} />
+                        )}
+                        {item.type === "MEAL" && item.restaurant && (
+                          <Photo
+                            src={item.restaurant.imageUrl}
+                            alt={item.restaurant.name}
+                          />
                         )}
                         <div className="grow">
                           <Badge>

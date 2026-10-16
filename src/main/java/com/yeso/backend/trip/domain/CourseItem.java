@@ -68,7 +68,10 @@ public class CourseItem {
     @Column(name = "stay_minutes", nullable = false)
     private int stayMinutes;
 
-    /** 앞 관광지에서 오는 이동 시간(분, 직선거리 추정). 그날 첫 관광지와 식사 항목은 null이다. */
+    /**
+     * 바로 앞 지점(관광지 또는 고른 식당)에서 오는 이동 시간(분, 직선거리 추정). 식당 미정 식사는 건너뛰므로 null이고,
+     * 그날 첫 지점도 null이다.
+     */
     @Column(name = "travel_minutes_from_previous")
     private Integer travelMinutesFromPrevious;
 

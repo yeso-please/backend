@@ -5,6 +5,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.yeso.backend.auth.application.AuthService;
 import com.yeso.backend.auth.application.AuthService.IssuedTokens;
+import com.yeso.backend.auth.application.AuthService.SocialLogin;
+import com.yeso.backend.auth.application.KakaoLoginService;
 import com.yeso.backend.auth.infrastructure.RefreshTokenCookieFactory;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final KakaoLoginService kakaoLoginService;
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
 
     @Operation(summary = "1-1 회원가입")
@@ -58,6 +61,14 @@ public class AuthController {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.clear().toString())
                 .build();
+    }
+
+    @Operation(summary = "1-6 카카오 로그인", description = "새 회원이면 201, 기존 카카오 회원이면 200")
+    @SecurityRequirements()
+    @PostMapping("/kakao")
+    public ResponseEntity<AuthResponse> kakaoLogin(@Valid @RequestBody KakaoLoginRequest request) {
+        SocialLogin login = kakaoLoginService.login(request.code(), request.redirectUri());
+        return withRefreshCookie(login.newUser() ? HttpStatus.CREATED : HttpStatus.OK, login.tokens());
     }
 
     private ResponseEntity<AuthResponse> withRefreshCookie(HttpStatus status, IssuedTokens issued) {

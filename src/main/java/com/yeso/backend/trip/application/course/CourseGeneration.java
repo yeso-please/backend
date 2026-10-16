@@ -25,11 +25,17 @@ public final class CourseGeneration {
      * @param attractionVectors 관광지 취향 벡터(관광지 ID → 벡터). 없으면 빈 맵
      * @param officialCourses   같은 지역 TourAPI 공식 코스. 장소는 추천 가능 관광지 ID로 연결된 것만. 없으면 빈 목록
      * @param randomOnly        사용자가 완전 랜덤을 골랐으면 true. 취향·공식 코스를 쓰지 않는다
+     * @param evidence          요청자 설문에서 나온 추천 이유 근거. 없으면 {@link TasteEvidence#NONE}
      */
     public record Request(
             String regionName, int days, String scheduleDensity, Transport transport,
             List<CourseCandidate> candidates, float[] requesterVector, Map<Long, float[]> attractionVectors,
-            List<OfficialCourse> officialCourses, boolean randomOnly) {
+            List<OfficialCourse> officialCourses, boolean randomOnly, TasteEvidence evidence) {
+        public Request {
+            if (evidence == null) {
+                evidence = TasteEvidence.NONE;
+            }
+        }
     }
 
     /** TourAPI 공식 코스. {@code attractionIds}는 코스에 나오는 순서다. */

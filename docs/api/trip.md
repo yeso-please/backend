@@ -854,12 +854,13 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
       "items": [
         {"itemId": "a-101", "type": "ATTRACTION", "attractionId": 5012, "name": "대릉원", "category": "HISTORY_CULTURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 황남동 …", "lat": 35.838, "lng": 129.211, "durationMinutes": 90,
-         "travelFromPreviousMinutes": null, "estimated": true, "source": "RECOMMEND", "reason": "역사 선호와 맞아요"},
-        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null},
+         "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "estimated": true, "source": "RECOMMEND", "reason": "'역사와 문화 탐방' 여행 동기와 맞아요"},
+        {"itemId": "m-31", "type": "MEAL", "meal": "LUNCH", "durationMinutes": 60, "travelFromPreviousMinutes": null, "travelFromPreviousMeters": null, "restaurant": null},
         {"itemId": "a-102", "type": "ATTRACTION", "attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE",
          "thumbnailUrl": "https://…", "address": "경북 경주시 원화로 …", "lat": 35.834, "lng": 129.226, "durationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "estimated": true, "source": "RECOMMEND", "reason": "자연·산책 선호와 맞아요"},
-        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": null, "restaurant": null}
+         "travelFromPreviousMinutes": 10, "travelFromPreviousMeters": 1800, "estimated": true, "source": "RECOMMEND", "reason": "자연을 좋아하는 취향과 맞아요"},
+        {"itemId": "m-32", "type": "MEAL", "meal": "DINNER", "durationMinutes": 60, "travelFromPreviousMinutes": 5, "travelFromPreviousMeters": 650,
+         "restaurant": {"provider": "TOUR_API", "name": "황남맷돌순두부", "lat": 35.83, "lng": 129.21, "…": "…"}}
       ]
     }
   ],
@@ -881,12 +882,42 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 | `items[].type` | `ATTRACTION` \| `MEAL`. 아래 타입별 필드 표 참고 |
 | `items[].category` | `NATURE`(자연) \| `HISTORY_CULTURE`(역사·문화) \| `ACTIVITY`(체험·레포츠) \| `WALK_REST`(산책·휴식) \| `ETC`(기타) |
 | `items[].durationMinutes` | 체류시간(참고용). 관광지는 유형별 기본 체류(짧은 장소 60·일반 90·대형 문화·레포츠 120분)이며 실측이 아니므로 `estimated: true`. 식사는 60 고정 |
-| `items[].travelFromPreviousMinutes` | 앞 관광지에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). 식사 항목은 항상 `null`이고(식당 이동은 계산하지 않는다), 식사 바로 뒤 관광지는 식사 앞의 마지막 관광지에서 잰다. 그날 앞에 관광지가 없으면 `null` |
+| `items[].travelFromPreviousMinutes` | 바로 앞 지점에서의 이동시간(참고용). 직선거리 × 보정계수 / 속도로 추정(도보 1.25·4km/h, 자동차 1.35·35km/h, 대중교통 1.50·25km/h, 최소 5분). **지점은 관광지와 식당을 고른 식사**다. 식당을 고른 식사는 앞 지점에서 그 식당까지, 식사 뒤 항목은 그 식당에서 잰다. 식당 미정 식사는 건너뛴다(그 식사는 `null`, 뒤 항목은 식사 앞 지점에서 잰다). 그날 첫 지점은 `null`. 식당을 고르거나 해제하면 서버가 다시 계산한다(2026-10-12, #101) |
+| `items[].travelFromPreviousMeters` | `travelFromPreviousMinutes`와 같은 두 지점 사이의 **직선거리**(m, 참고용). 도로 거리가 아니다. 이동시간이 `null`이면 `null`. 저장하지 않고 응답할 때 현재 좌표로 계산한다(2026-10-12, #101) |
 | `items[].source` | `RECOMMEND`(자동 추천) \| `MANUAL`(사용자가 추가·교체) |
-| `items[].reason` | 추천 이유. 실제 태그·장소에 근거한 문장만. `MANUAL`이면 `null` |
+| `items[].reason` | 추천 이유. 요청자의 실제 설문 답·취향 점수·공식 코스에 근거한 문장만. 근거가 없으면 `null`. `MANUAL`이면 `null`. 규칙은 아래 [추천 이유](#추천-이유) |
 | `items[].restaurant` | 식사 슬롯의 식당 스냅샷(`RestaurantSnapshot`). 코스 생성 시 자동 배정([5-1](#5-1-코스-생성재생성))되거나 사용자가 고른다. 후보가 없거나 해제했으면 `null`이고 화면에는 "미정"으로 보인다 |
 | 관광지 표시 정보 | 관광지 항목의 `name`·`category`·`thumbnailUrl`·`address`·`lat`·`lng`는 코스를 볼 때마다 현재 관광지 데이터로 채운다(생성 당시 복사가 아니다, 2026-09-27). 추천 대상에서 빠졌으면 `ATTRACTION_NO_LONGER_RECOMMENDABLE` 경고를 붙인다 |
 | `updatedBy` | 마지막으로 코스를 바꾼 참여자. `myRole: VIEWER`면 `null` |
+
+<a id="추천-이유"></a>
+**추천 이유 (`items[].reason`, 5-4 `reason`)** — 근거가 있을 때만 문장을 붙이고, 없으면 `null`이다. 일반적인 칭찬("취향과 잘 맞는 곳이에요")이나 유형 라벨만 반복하는 문장은 쓰지 않는다(2026-10-10, #84).
+
+설문 근거 — 요청자의 최신 온보딩 답에서 관광지 유형(`category`)과 이어지는 것만 쓴다. 여행 스타일 4는 중립이라 근거가 아니다.
+
+| 근거 | 조건 | 유형 | 문장 |
+|---|---|---|---|
+| 여행 스타일 1 (자연 ↔ 도시) | 1~3 | `NATURE`, `WALK_REST` | 자연을 좋아하는 취향과 맞아요 |
+| 여행 스타일 5 (휴양 ↔ 체험) | 1~3 | `WALK_REST` | 휴식을 좋아하는 취향과 맞아요 |
+| 여행 스타일 5 | 5~7 | `ACTIVITY` | 체험 활동을 좋아하는 취향과 맞아요 |
+| 동기 2 휴식과 재충전 | 선택 | `WALK_REST` | '휴식과 재충전' 여행 동기와 맞아요 |
+| 동기 6 운동과 건강 | 선택 | `ACTIVITY` | '운동과 건강' 여행 동기와 맞아요 |
+| 동기 7 새로운 경험 | 선택 | `ACTIVITY` | '새로운 경험' 여행 동기와 맞아요 |
+| 동기 8 역사와 문화 탐방 | 선택 | `HISTORY_CULTURE` | '역사와 문화 탐방' 여행 동기와 맞아요 |
+
+스타일 3·6과 나머지 동기는 관광지 유형과 직접 이어지지 않아 쓰지 않는다. `ETC`(기타) 유형에는 설문 근거가 없다.
+
+코스 항목(5-1 생성 결과)
+1. 공식 코스 모드(`TOUR_OFFICIAL`)에서 공식 코스에 나오는 장소: "관광공사 추천 코스 「{코스 제목}」에 나오는 곳이에요".
+2. 취향 반영 모드(`PERSONALIZED`): 그 장소 유형에 맞는 설문 근거 문장. 같은 문장은 한 코스에서 **최대 2번**만 쓰고, 넘으면 그 유형의 다음 근거를 쓴다.
+3. 설문 근거를 쓰지 못한 장소 중 취향 유사도가 코스 안에서 **상위 3곳**이면 "내 취향과 비슷한 장소예요".
+4. 그 밖, 규칙 코스(`RULE_BASED`)·완전 랜덤(`RANDOM`)은 `null`이다. 유형은 `category`로 이미 보인다.
+
+교체·추가 후보(5-4) — 아래 근거를 순서대로 보고 **최대 2개를 " · "로 이어** 붙인다. 하나도 없으면 `null`.
+1. 교체 대상과 같은 유형: "바꾸려는 곳과 같은 {유형 라벨} 장소예요" (`itemId`가 있을 때)
+2. 설문 근거 문장 (위 표, 첫 번째 것)
+3. 동선: "앞 장소에서 약 {N}분이에요" (그날 앞 관광지가 있을 때, `travelFromPreviousMinutes`와 같은 값)
+4. 취향 유사도가 그 유형 묶음에서 상위 3곳: "내 취향과 비슷한 장소예요"
 
 **항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
 
@@ -894,7 +925,7 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 |---|---|---|
 | `itemId`, `type`, `durationMinutes` | 필수 | 필수(`durationMinutes`는 60) |
 | `attractionId`, `name`, `category`, `thumbnailUrl`, `address`, `lat`, `lng` | 필수(`thumbnailUrl`·`address`는 nullable) | — |
-| `travelFromPreviousMinutes` | 그날 앞에 관광지가 없으면 `null` | 항상 `null`(식당 이동은 계산하지 않는다) |
+| `travelFromPreviousMinutes`, `travelFromPreviousMeters` | 그날 첫 지점이면 `null` | 식당을 골랐으면 앞 지점에서 식당까지, 미정이면 `null` |
 | `estimated`, `source`, `reason` | 필수(`reason`은 nullable) | — |
 | `meal` | — | `LUNCH` \| `DINNER` |
 | `restaurant` | — | `RestaurantSnapshot` 또는 `null` |
@@ -1130,14 +1161,14 @@ GET /api/courses/{tripId}/alternatives?itemId=a-101&q=월정
       "items": [
         {"attractionId": 5020, "name": "경주 동궁과 월지", "category": "NATURE", "thumbnailUrl": "https://…",
          "lat": 35.834, "lng": 129.226, "estimatedDurationMinutes": 90,
-         "travelFromPreviousMinutes": 10, "reason": "자연·산책 선호와 맞아요"}
+         "travelFromPreviousMinutes": 10, "reason": "자연을 좋아하는 취향과 맞아요 · 앞 장소에서 약 10분이에요"}
       ]
     }
   ]
 }
 ```
 
-후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다. `q`를 주면 이 조건에 이름 검색을 더한다. 검색은 이 서비스의 관광지(같은 지역) 안에서만 하며, 카카오 같은 외부 장소는 관광지로 쓰지 않는다. 화면은 교체를 누르면 검색창과 추천 목록을 함께 보여준다(2026-09-27).
+후보는 같은 지역, 추천 가능, 현재 코스에 없음을 모두 만족한다. 정렬은 **요청자** 취향 점수와 이동 부담을 함께 반영한다. `reason`은 [추천 이유](#추천-이유)의 5-4 규칙을 따른다. `q`를 주면 이 조건에 이름 검색을 더한다. 검색은 이 서비스의 관광지(같은 지역) 안에서만 하며, 카카오 같은 외부 장소는 관광지로 쓰지 않는다. 화면은 교체를 누르면 검색창과 추천 목록을 함께 보여준다(2026-09-27).
 
 | 오류 | HTTP | code |
 |---|---:|---|
@@ -1259,6 +1290,52 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 | 없는 항목 | 404 | `COURSE_ITEM_NOT_FOUND` |
 | 카카오 장애 | 502 | `COURSE_KAKAO_LOCAL_UNAVAILABLE` |
 | 카카오 한도 | 503 | `COURSE_KAKAO_LOCAL_RATE_LIMITED` |
+
+---
+
+### 5-7. 코스 경로
+
+`GET /api/courses/{tripId}/routes?dayIndex=0` · 참여자
+
+하루 코스의 지도용 경로다. 프론트는 이 응답의 `path`를 지도에 선으로 그리고, 거리·시간을 구간 위에 보여 준다. 코스 편집과 분리된 조회 API라서 편집(5-3) 응답은 지금처럼 추정값으로 바로 나가고, 지도를 열거나 편집 뒤 지도를 다시 그릴 때 이 API를 부른다(2026-10-12, #101).
+
+- 구간은 5장과 같은 규칙이다. 지점은 관광지와 식당을 고른 식사이고, 식당 미정 식사는 건너뛰어 앞뒤 지점을 잇는다.
+- 이동수단이 `CAR`면 서버가 카카오모빌리티 자동차 길찾기로 도로 경로·거리·시간을 받는다(`source: ROAD`). 그 밖의 이동수단이거나 길찾기에 실패·지연(요청당 4초 상한)되면 그 구간은 직선이다(`source: STRAIGHT`). 직선 구간의 시간·거리는 5장 `travelFromPreviousMinutes`·`travelFromPreviousMeters`와 같다. 길찾기 실패로 요청이 실패하지는 않는다.
+- 서버는 구간 결과를 출발·도착 좌표로 잠깐(기본 24시간) 기억한다. 편집으로 바뀌지 않은 구간과 다른 참여자가 다시 연 코스는 길찾기를 다시 하지 않는다. 장소 하나를 바꾸면 그 앞뒤 구간만 새로 길찾기한다.
+- 카카오 REST 키는 서버에만 있다. 프론트는 지도 표시용 JavaScript 키만 쓴다.
+
+**Response `200 OK`**
+
+```json
+{
+  "tripId": 42,
+  "version": 3,
+  "dayIndex": 0,
+  "transport": "CAR",
+  "legs": [
+    {"fromItemId": "a-101", "toItemId": "a-102", "source": "ROAD", "distanceMeters": 2400, "durationMinutes": 7,
+     "path": [[35.838, 129.211], [35.8372, 129.2151], [35.834, 129.226]]},
+    {"fromItemId": "a-102", "toItemId": "m-32", "source": "STRAIGHT", "distanceMeters": 650, "durationMinutes": 5,
+     "path": [[35.834, 129.226], [35.83, 129.21]]}
+  ]
+}
+```
+
+| 필드 | 설명 |
+|---|---|
+| `version` | 경로를 계산한 시점의 여행 버전. 화면의 코스 `version`과 다르면 그사이 편집된 것이므로 다시 부른다 |
+| `transport` | 여행 이동수단. `CAR`가 아니면 모든 구간이 `STRAIGHT`다 |
+| `legs` | 방문 순서대로의 구간. 지점이 하나 이하면 빈 배열 |
+| `legs[].fromItemId`, `toItemId` | 구간의 출발·도착 코스 항목(5장 `itemId`) |
+| `legs[].source` | `ROAD`(도로) \| `STRAIGHT`(직선) |
+| `legs[].distanceMeters`, `durationMinutes` | `ROAD`는 도로 거리·시간, `STRAIGHT`는 직선거리와 5장 추정 시간 |
+| `legs[].path` | `[위도, 경도]` 점 목록(출발→도착 순서). `STRAIGHT`는 두 점. 연속 구간의 이음점은 앞 구간의 끝과 다음 구간의 시작에 모두 들어 있다 |
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| `dayIndex`가 없거나 여행 날짜 범위 밖 | 400 | `COMMON_INVALID_REQUEST` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
 
 ---
 

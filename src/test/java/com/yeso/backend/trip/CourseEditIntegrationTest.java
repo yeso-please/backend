@@ -408,11 +408,51 @@ class CourseEditIntegrationTest extends IntegrationTest {
             Long tripId = trip();
             generate(tripId);
             attraction("추가 장소", 35.89, 129.29);
+            // 지역 후보는 잠깐 기억된다(CourseDataCache). 기억 시간이 지나 새 관광지가 반영된 상황으로 둔다.
+            courseDataCache.clear();
             mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
                             .header("Authorization", member.bearer()).param("q", "추가 장소"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.groups[1].category").value("HISTORY_CULTURE"))
                     .andExpect(jsonPath("$.groups[1].items[0].name").value("추가 장소"));
+        }
+
+        @Test
+        @DisplayName("교체 후보의 이유는 같은 유형·동선 같은 실제 근거로 최대 2개를 잇는다")
+        void replacementReasons() throws Exception {
+            Long tripId = trip();
+            MvcResult first = generate(tripId);
+            String second = JsonPath.read(first.getResponse().getContentAsString(), "$.days[0].items[1].itemId");
+
+            MvcResult result = mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
+                            .header("Authorization", member.bearer()).param("itemId", second))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.groups[1].category").value("HISTORY_CULTURE"))
+                    .andReturn();
+            List<String> reasons = JsonPath.read(result.getResponse().getContentAsString(), "$.groups[1].items[*].reason");
+            List<Integer> minutes = JsonPath.read(result.getResponse().getContentAsString(),
+                    "$.groups[1].items[*].travelFromPreviousMinutes");
+
+            assertThat(reasons).isNotEmpty();
+            for (int i = 0; i < reasons.size(); i++) {
+                assertThat(reasons.get(i)).isEqualTo(
+                        "바꾸려는 곳과 같은 역사·문화 장소예요 · 앞 장소에서 약 " + minutes.get(i) + "분이에요");
+            }
+        }
+
+        @Test
+        @DisplayName("추가 후보(itemId 없음)는 근거가 없으면 이유가 없다")
+        void additionWithoutEvidence_hasNoReason() throws Exception {
+            Long tripId = trip();
+            generate(tripId);
+
+            MvcResult result = mockMvc.perform(get("/api/courses/{tripId}/alternatives", tripId)
+                            .header("Authorization", member.bearer()))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            List<Object> reasons = JsonPath.read(result.getResponse().getContentAsString(), "$.groups[*].items[*].reason");
+
+            assertThat(reasons).containsOnlyNulls();
         }
 
         @Test
@@ -613,10 +653,20 @@ class CourseEditIntegrationTest extends IntegrationTest {
             assertThat(selected.getResponse().getStatus()).isEqualTo(200);
             assertThat((String) JsonPath.read(selected.getResponse().getContentAsString(),
                     "$.days[0].items[2].restaurant.name")).isEqualTo("식당 하나");
+            // 식당을 고르면 식사도 지점이 된다: 앞 관광지 → 식당, 식당 → 뒤 관광지
+            assertThat((Integer) read(selected, "$.days[0].items[2].travelFromPreviousMinutes")).isNotNull();
+            // 이 식당은 바로 앞 관광지와 같은 좌표다
+            assertThat((Integer) read(selected, "$.days[0].items[2].travelFromPreviousMeters")).isZero();
+            assertThat((Integer) read(selected, "$.days[0].items[3].travelFromPreviousMeters")).isNotNull();
             MvcResult cleared = edit(tripId, """
                     {"version":2,"operations":[{"op":"CLEAR_RESTAURANT","itemId":"%s"}]}
                     """.formatted(meal));
             assertThat(cleared.getResponse().getStatus()).isEqualTo(200);
+            // 해제하면 식사는 건너뛰고 뒤 관광지는 식사 앞 관광지에서 잰다
+            assertThat((Object) read(cleared, "$.days[0].items[2].travelFromPreviousMinutes")).isNull();
+            assertThat((Object) read(cleared, "$.days[0].items[2].travelFromPreviousMeters")).isNull();
+            assertThat((Integer) read(cleared, "$.days[0].items[3].travelFromPreviousMinutes")).isNotNull();
+            assertThat((Integer) read(cleared, "$.days[0].items[3].travelFromPreviousMeters")).isNotNull();
             assertThat(jdbc.queryForObject("select count(*) from app.course_meal_restaurants", Integer.class)).isZero();
         }
     }

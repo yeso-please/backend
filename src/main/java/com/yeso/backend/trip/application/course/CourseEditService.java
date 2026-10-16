@@ -83,13 +83,10 @@ public class CourseEditService {
             days.put(day, new ArrayList<>());
         }
         existing.forEach(item -> days.get(item.getDayIndex()).add(item));
-        Map<Long, CourseCandidate> candidates = new HashMap<>();
-        eligibilityService.findCourseCandidates(trip.getRegion().getSigCd())
-                .forEach(candidate -> candidates.put(candidate.attractionId(), candidate));
         for (Operation operation : request.operations()) {
             switch (operation.op()) {
-                case "ADD" -> add(trip, days, operation, candidates);
-                case "REPLACE" -> replace(trip, days, operation, candidates);
+                case "ADD" -> add(trip, days, operation);
+                case "REPLACE" -> replace(trip, days, operation);
                 case "REMOVE" -> remove(days, operation);
                 case "MOVE" -> move(days, operation);
                 case "SET_RESTAURANT" -> setRestaurant(userId, tripId, days, operation);
@@ -117,9 +114,8 @@ public class CourseEditService {
         return courseService.view(trip, CourseResponse.PARTICIPANT, List.of());
     }
 
-    private void add(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op,
-                     Map<Long, CourseCandidate> candidates) {
-        CourseCandidate candidate = eligible(trip, days, op.attractionId(), candidates);
+    private void add(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op) {
+        CourseCandidate candidate = eligible(trip, days, op.attractionId());
         List<CourseItem> target = day(days, op.dayIndex());
         int position = op.position() == null ? target.size() : op.position();
         requirePosition(position, target.size());
@@ -130,11 +126,10 @@ public class CourseEditService {
         target.add(position, item);
     }
 
-    private void replace(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op,
-                         Map<Long, CourseCandidate> candidates) {
+    private void replace(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op) {
         CourseItem item = item(days, op.itemId());
         requireAttraction(item);
-        CourseCandidate candidate = eligible(trip, days, op.attractionId(), candidates);
+        CourseCandidate candidate = eligible(trip, days, op.attractionId());
         item.replaceAttraction(entityManager.getReference(Attraction.class, candidate.attractionId()), candidate.stayMinutes());
     }
 
@@ -178,8 +173,8 @@ public class CourseEditService {
         restaurantRepository.deleteById(slot.getId());
     }
 
-    private CourseCandidate eligible(TripPlan trip, Map<Integer, List<CourseItem>> days, Long id,
-                                     Map<Long, CourseCandidate> candidates) {
+    /** 추가·교체할 관광지 하나만 지금 DB로 확인한다(지역 후보 전체를 읽지 않는다). */
+    private CourseCandidate eligible(TripPlan trip, Map<Integer, List<CourseItem>> days, Long id) {
         Attraction attraction = entityManager.find(Attraction.class, id);
         if (attraction == null) {
             throw new AttractionNotFoundException(id);
@@ -187,10 +182,8 @@ public class CourseEditService {
         if (!attraction.getRegion().getSigCd().equals(trip.getRegion().getSigCd())) {
             throw new CourseAttractionException(ErrorCode.ATTRACTION_REGION_MISMATCH, id);
         }
-        CourseCandidate candidate = candidates.get(id);
-        if (candidate == null) {
-            throw new CourseAttractionException(ErrorCode.ATTRACTION_NOT_RECOMMENDABLE, id);
-        }
+        CourseCandidate candidate = eligibilityService.findCourseCandidate(trip.getRegion().getSigCd(), id)
+                .orElseThrow(() -> new CourseAttractionException(ErrorCode.ATTRACTION_NOT_RECOMMENDABLE, id));
         if (days.values().stream().flatMap(List::stream)
                 .anyMatch(item -> !item.isMeal() && id.equals(item.getAttractionId()))) {
             throw new CourseAttractionException(ErrorCode.ATTRACTION_ALREADY_IN_COURSE, id);
