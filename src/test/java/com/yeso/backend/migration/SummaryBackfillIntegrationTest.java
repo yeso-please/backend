@@ -150,6 +150,43 @@ class SummaryBackfillIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("외부 생성: 대상을 JSONL로 내보내고, 같은 근거 해시의 문장만 DRAFT로 가져온다(사전 밖 태그·긴 문장·바뀐 근거는 버린다)")
+    void exportTargetsAndImportGenerated() throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            Path targets = dir.resolve("targets.jsonl");
+            Options export = Options.parse(new String[] {"--mode=export-targets", "--scope=attractions", "--out=" + targets});
+            assertThat(SummaryBackfill.exportTargets(connection, export, targets)).isEqualTo(3);
+            List<Map<String, Object>> lines = new ArrayList<>();
+            for (String line : Files.readAllLines(targets)) {
+                lines.add(new tools.jackson.databind.json.JsonMapper().readValue(line, Map.class));
+            }
+            Map<String, Object> beach = lines.stream().filter(l -> l.get("name").equals("경포해변")).findFirst().orElseThrow();
+            Map<String, Object> bridge = lines.stream().filter(l -> l.get("name").equals("솔바람다리")).findFirst().orElseThrow();
+            Map<String, Object> other = lines.stream().filter(l -> l.get("name").equals("실패하는 곳")).findFirst().orElseThrow();
+            assertThat(bridge).containsEntry("basis", "NAME_CATEGORY");
+
+            Path generated = dir.resolve("generated.jsonl");
+            Files.write(generated, List.of(
+                    "{\"id\":\"%s\",\"sourceHash\":\"%s\",\"oneLine\":\"솔숲 너머 고운 모래를 따라 걷는 바닷가\",\"tags\":[\"바다\",\"감성여행\"]}"
+                            .formatted(beach.get("id"), beach.get("sourceHash")),
+                    "{\"id\":\"%s\",\"sourceHash\":\"%s\",\"oneLine\":\"다리\",\"tags\":[\"맛집\"]}"
+                            .formatted(bridge.get("id"), bridge.get("sourceHash")),
+                    "{\"id\":\"%s\",\"sourceHash\":\"old\",\"oneLine\":\"이전 근거로 쓴 문장\",\"tags\":[]}".formatted(other.get("id"))));
+            Options importOptions = Options.parse(new String[] {"--mode=import-generated", "--scope=attractions",
+                    "--in=" + generated, "--generator=claude-sonnet-5-5"});
+            SummaryBackfill.GeneratedImport result = SummaryBackfill.importGenerated(connection, importOptions, generated);
+            assertThat(result.saved()).isEqualTo(1);
+            assertThat(result.invalid()).isEqualTo(1);
+            assertThat(result.stale()).isEqualTo(1);
+            assertThat(jdbc.queryForMap("select status, generator_model, tags::text as tags from app.attraction_summaries"))
+                    .containsEntry("status", "DRAFT").containsEntry("generator_model", "claude-sonnet-5-5")
+                    .containsEntry("tags", "[\"바다\", \"감성여행\"]");
+            // 같은 근거는 다시 대상이 되지 않는다(멱등)
+            assertThat(SummaryBackfill.plan(connection, options("attractions", 5)).totalTargets()).isEqualTo(2);
+        }
+    }
+
+    @Test
     @DisplayName("호출 수 상한을 넘겨 계획하지 않는다")
     void plan_respectsMaxCalls() throws Exception {
         for (int i = 0; i < 12; i++) {
