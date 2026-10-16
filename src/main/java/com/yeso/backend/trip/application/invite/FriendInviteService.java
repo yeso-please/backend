@@ -1,5 +1,6 @@
 package com.yeso.backend.trip.application.invite;
 
+import com.yeso.backend.attraction.application.region.RegionQueryService;
 import com.yeso.backend.auth.domain.User;
 import com.yeso.backend.auth.domain.UserNotFoundException;
 import com.yeso.backend.auth.infrastructure.UserRepository;
@@ -44,6 +45,7 @@ public class FriendInviteService {
     private final UserRepository userRepository;
     private final TripService tripService;
     private final FriendQueryService friendQueryService;
+    private final RegionQueryService regionQueryService;
     private final Clock clock;
 
     /**
@@ -82,7 +84,10 @@ public class FriendInviteService {
                     TripPlan tripPlan = invitation.getTripPlan();
                     boolean dateConflict = tripService.hasDateConflict(
                             userId, tripPlan.getStartDate(), tripPlan.getEndDate());
-                    return ReceivedTripInviteResponse.of(invitation, dateConflict);
+                    String heroImageUrl = tripPlan.getRegion() == null ? null
+                            : regionQueryService.heroImageUrl(tripPlan.getRegion().getSigCd()).orElse(null);
+                    return ReceivedTripInviteResponse.of(invitation, dateConflict,
+                            tripService.participantNicknames(tripPlan.getId()), heroImageUrl);
                 })
                 .toList();
     }

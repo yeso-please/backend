@@ -54,6 +54,18 @@ public class OnboardingQueryService {
         return raw == null ? List.of() : raw.stream().map(v -> Integer.valueOf(String.valueOf(v))).toList();
     }
 
+    /**
+     * 최신 설문의 여행 MBTI 4글자(v2만). 표시용 성향 문장(7-6)에만 쓰고 추천 계산에는 쓰지 않는다.
+     * v1 제출·설문 전이면 빈 값.
+     */
+    public Optional<String> findLatestMbtiCode(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getLatestOnboardingSubmissionId())
+                .flatMap(onboardingSubmissionRepository::findById)
+                .map(submission -> submission.getMbtiCode())
+                .filter(code -> code != null && code.matches("[EI][SN][TF][JP]"));
+    }
+
     /** 최신 설문의 일정 밀도({@code RELAXED}·{@code PACKED}). 설문 전이면 빈 값. */
     public Optional<String> findLatestScheduleDensity(Long userId) {
         return userRepository.findById(userId)

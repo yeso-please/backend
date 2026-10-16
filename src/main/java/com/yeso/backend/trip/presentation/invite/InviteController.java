@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import com.yeso.backend.shared.web.CurrentUserId;
+import com.yeso.backend.trip.presentation.course.CourseResponse;
 import com.yeso.backend.trip.application.invite.InviteService;
 import com.yeso.backend.trip.presentation.context.TripContextResponse;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +53,14 @@ public class InviteController {
     @GetMapping("/api/invites/{token}")
     public InvitePublicSummaryResponse publicSummary(@PathVariable String token) {
         return inviteService.publicSummary(token);
+    }
+
+    /** 비회원도 초대 링크로 코스를 읽기 전용으로 둘러본다(D9). 모양은 4-13과 같다. */
+    @Operation(summary = "4-16 초대 링크로 코스 둘러보기")
+    @SecurityRequirements()
+    @GetMapping("/api/invites/{token}/course")
+    public CourseResponse course(@PathVariable String token) {
+        return inviteService.course(token);
     }
 
     /** 새로 참여하면 201, 이미 참여 중이면 같은 여행을 200으로 돌려준다. */

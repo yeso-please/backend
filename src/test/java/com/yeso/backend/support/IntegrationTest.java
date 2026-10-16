@@ -3,6 +3,7 @@ package com.yeso.backend.support;
 import com.yeso.backend.attraction.application.region.CourseDataCache;
 import com.yeso.backend.auth.infrastructure.FakeKakaoOAuthClient;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.shared.ai.FakeAiTextClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoLocalClient;
 import com.yeso.backend.trip.infrastructure.FakeKakaoMobilityClient;
 import com.yeso.backend.trip.infrastructure.RouteLegCache;
@@ -64,6 +65,9 @@ public abstract class IntegrationTest {
     protected FakeDiaryPhotoStorage fakeDiaryPhotoStorage;
 
     @Autowired
+    protected FakeAiTextClient fakeAiTextClient;
+
+    @Autowired
     private DatabaseCleaner databaseCleaner;
 
     @AfterEach
@@ -76,6 +80,7 @@ public abstract class IntegrationTest {
         courseDataCache.clear();
         fakeKakaoOAuthClient.reset();
         fakeDiaryPhotoStorage.reset();
+        fakeAiTextClient.reset();
         clock.reset();
     }
 }

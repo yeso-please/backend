@@ -66,6 +66,7 @@ public class RegionQueryService {
     private final RegionRepository regionRepository;
     private final RegionEligibilityService regionEligibilityService;
     private final AttractionQueryRepository attractionQueryRepository;
+    private final CourseMaterialService courseMaterialService;
     private final JsonMapper jsonMapper;
 
     // ---------- 7-1 ----------
@@ -107,14 +108,26 @@ public class RegionQueryService {
         Map<Long, CourseCandidate> recommendable = regionEligibilityService.findCourseCandidates(sigCd).stream()
                 .collect(Collectors.toMap(CourseCandidate::attractionId, Function.identity()));
         // 대표 관광지는 소개문에 나온 순서대로, 지금 추천 가능한 것만 최대 3곳.
-        List<RegionCardResponse.Landmark> landmarks = content == null ? List.of() : readList(content.landmarksJson(), new TypeReference<List<LandmarkRef>>() { })
+        List<CourseCandidate> picked = content == null ? List.of() : readList(content.landmarksJson(), new TypeReference<List<LandmarkRef>>() { })
                 .stream()
                 .sorted(Comparator.comparing(LandmarkRef::order, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(ref -> recommendable.get(ref.attractionId()))
                 .filter(candidate -> candidate != null)
                 .limit(MAX_LANDMARKS)
+                .toList();
+        if (picked.isEmpty()) {
+            // 승인된 소개문이 없으면 대표 관광지 규칙(추천코스 지점 빈도 순)으로 채운다(D13-2).
+            picked = attractionQueryRepository.findRepresentativeAttractions(sigCd, MAX_LANDMARKS).stream()
+                    .map(row -> recommendable.get(row.id()))
+                    .filter(candidate -> candidate != null)
+                    .toList();
+        }
+        Map<Long, CourseMaterialService.ApprovedSummary> oneLines = courseMaterialService.findApprovedSummaries(
+                picked.stream().map(CourseCandidate::attractionId).toList());
+        List<RegionCardResponse.Landmark> landmarks = picked.stream()
                 .map(candidate -> new RegionCardResponse.Landmark(
-                        candidate.attractionId(), candidate.name(), candidate.thumbnailUrl()))
+                        candidate.attractionId(), candidate.name(), candidate.thumbnailUrl(),
+                        oneLines.containsKey(candidate.attractionId()) ? oneLines.get(candidate.attractionId()).oneLine() : null))
                 .toList();
 
         boolean hasValidHeroImage = content != null && "VALID".equals(content.heroImageStatus());
@@ -196,6 +209,18 @@ public class RegionQueryService {
                 summary == null ? null : summary.oneLine(),
                 summary == null ? List.of() : tags(summary.tagsJson()),
                 summary == null ? null : SummaryBasis.valueOf(summary.basis()));
+    }
+
+    /**
+     * 지역 대표 사진 URL만(초대 미리보기·받은 초대·홈 카드용, trip 4-4·4-7). 지역 카드 7-2의 {@code heroImage}와 같은 규칙이다:
+     * 승인된 지역 소개의 검증된 사진 → 대표 관광지의 검증된 사진 → 없음.
+     */
+    public java.util.Optional<String> heroImageUrl(String sigCd) {
+        RegionContentRow content = attractionQueryRepository.findLatestApprovedContent(sigCd).orElse(null);
+        if (content != null && "VALID".equals(content.heroImageStatus()) && content.heroImageUrl() != null) {
+            return java.util.Optional.of(content.heroImageUrl());
+        }
+        return java.util.Optional.ofNullable(representativeHeroImage(sigCd)).map(RegionCardResponse.HeroImage::url);
     }
 
     // ---------- helpers ----------

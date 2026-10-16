@@ -7,6 +7,7 @@ import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.TripPlan;
 import com.yeso.backend.trip.infrastructure.CourseItemRepository;
 import com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository;
+import com.yeso.backend.trip.infrastructure.CourseRemovalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class CourseStorage {
     private final CourseItemRepository courseItemRepository;
     private final CourseMaterialService courseMaterialService;
     private final CourseMealRestaurantRepository courseMealRestaurantRepository;
+    private final CourseRemovalRepository courseRemovalRepository;
 
     @Transactional(readOnly = true)
     public boolean hasCourse(Long tripPlanId) {
@@ -48,6 +50,7 @@ public class CourseStorage {
      */
     public void emptyCourse(TripPlan tripPlan) {
         courseItemRepository.deleteByTripPlanId(tripPlan.getId());
+        courseRemovalRepository.deleteByTripPlanId(tripPlan.getId());
         tripPlan.clearCourseInfo();
     }
 

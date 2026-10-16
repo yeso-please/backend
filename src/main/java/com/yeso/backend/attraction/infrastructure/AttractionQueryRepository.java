@@ -197,6 +197,38 @@ public class AttractionQueryRepository {
                 .stream().findFirst();
     }
 
+    public record PlaceTextRow(Long id, String name, String lclsSystm1, String lclsSystm2, String lclsSystm3,
+                               String description) {
+    }
+
+    /** 생성형 문장(ai /explanations)의 근거로 보낼 공개 원천 데이터: 이름·분류·설명. */
+    public List<PlaceTextRow> findPlaceTexts(java.util.Collection<Long> attractionIds) {
+        if (attractionIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query("""
+                select a.id, a.name, a.lcls_systm1, a.lcls_systm2, a.lcls_systm3, a.description
+                from %s.attractions a where a.id in (:ids)
+                """.formatted(schema), new MapSqlParameterSource("ids", attractionIds),
+                (rs, n) -> new PlaceTextRow(rs.getLong("id"), rs.getString("name"), rs.getString("lcls_systm1"),
+                        rs.getString("lcls_systm2"), rs.getString("lcls_systm3"), rs.getString("description")));
+    }
+
+    public record ApprovedSummaryRow(Long attractionId, String oneLine, String basis) {
+    }
+
+    /** 여러 관광지의 승인된 한 줄 소개(#89). 코스 항목·대표 관광지 카드가 쓴다. */
+    public List<ApprovedSummaryRow> findApprovedAttractionSummaries(java.util.Collection<Long> attractionIds) {
+        if (attractionIds.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query("""
+                select s.attraction_id, s.one_line, s.basis from %s.attraction_summaries s
+                where s.attraction_id in (:ids) and s.status = 'APPROVED'
+                """.formatted(schema), new MapSqlParameterSource("ids", attractionIds),
+                (rs, n) -> new ApprovedSummaryRow(rs.getLong("attraction_id"), rs.getString("one_line"), rs.getString("basis")));
+    }
+
     public record RegionSummaryRow(String tagline, String tagsJson) {
     }
 

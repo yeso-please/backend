@@ -3,6 +3,7 @@ package com.yeso.backend.trip.presentation.context;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.yeso.backend.shared.web.CurrentUserId;
+import com.yeso.backend.trip.application.context.PresenceService;
 import com.yeso.backend.trip.application.context.RegionDrawService;
 import com.yeso.backend.trip.application.context.TripService;
 import com.yeso.backend.trip.domain.TripPeriod;
@@ -32,6 +33,7 @@ public class TripController {
 
     private final TripService tripService;
     private final RegionDrawService regionDrawService;
+    private final PresenceService presenceService;
 
     @Operation(summary = "3-1 선택 불가 날짜")
     @GetMapping("/unavailable-dates")
@@ -75,6 +77,28 @@ public class TripController {
     public ResponseEntity<Void> leave(@CurrentUserId Long userId, @PathVariable Long tripId) {
         tripService.leave(userId, tripId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** 관리자(생성자, 생성자가 나갔으면 가장 먼저 들어온 참여자)만. 자기 자신은 3-9. */
+    @Operation(summary = "3-10 참여자 내보내기")
+    @DeleteMapping("/{tripId}/participants/{targetUserId}")
+    public ResponseEntity<Void> kick(
+            @CurrentUserId Long userId, @PathVariable Long tripId, @PathVariable Long targetUserId) {
+        tripService.kick(userId, tripId, targetUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "3-11 접속 신호")
+    @PostMapping("/{tripId}/presence")
+    public ResponseEntity<Void> heartbeat(@CurrentUserId Long userId, @PathVariable Long tripId) {
+        presenceService.heartbeat(userId, tripId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "3-12 보고 있는 참여자")
+    @GetMapping("/{tripId}/presence")
+    public PresenceResponse presence(@CurrentUserId Long userId, @PathVariable Long tripId) {
+        return presenceService.active(userId, tripId);
     }
 
     @Operation(summary = "3-4 여행 context 조회")

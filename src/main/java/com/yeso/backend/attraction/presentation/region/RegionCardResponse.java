@@ -17,7 +17,8 @@ public record RegionCardResponse(
     public record HeroImage(String url, String sourceName, String sourceUrl, String license, Long attractionId) {
     }
 
-    public record Landmark(Long attractionId, String name, String thumbnailUrl) {
+    /** {@code oneLine}은 승인된 관광지 한 줄 소개(#89, B4 "만나볼 순간"), 없으면 null. */
+    public record Landmark(Long attractionId, String name, String thumbnailUrl, String oneLine) {
     }
 
     public record Source(String name, String url) {

@@ -1,6 +1,7 @@
 package com.yeso.backend.trip.presentation.course;
 
 import com.yeso.backend.shared.web.CurrentUserId;
+import com.yeso.backend.trip.application.course.CourseExplanationService;
 import com.yeso.backend.trip.application.course.CourseService;
 import com.yeso.backend.trip.application.course.CourseEditService;
 import com.yeso.backend.trip.application.course.CourseAlternativesService;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CourseController {
 
     private final CourseService courseService;
+    private final CourseExplanationService courseExplanationService;
     private final CourseEditService courseEditService;
     private final CourseAlternativesService alternativesService;
     private final CourseRouteService courseRouteService;
@@ -33,7 +35,9 @@ public class CourseController {
     @PostMapping("/api/courses/{tripId}/generate")
     public ResponseEntity<CourseResponse> generate(
             @CurrentUserId Long userId, @PathVariable Long tripId, @Valid @RequestBody GenerateCourseRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(courseService.generate(userId, tripId, request));
+        CourseResponse generated = courseService.generate(userId, tripId, request);
+        // 생성 트랜잭션이 끝난 뒤 ai 문장을 붙인다(D16). 실패하면 규칙 문장 그대로다.
+        return ResponseEntity.status(HttpStatus.CREATED).body(courseExplanationService.explain(userId, generated));
     }
 
     @Operation(summary = "5-2 코스 조회")

@@ -33,6 +33,29 @@ public class CourseMaterialService {
             Double lat, Double lng, String thumbnailUrl, boolean recommendable) {
     }
 
+    /** 생성형 문장 근거로 보내는 관광지 공개 데이터(이름·TourAPI 분류코드·원천 설명). */
+    public record PlaceText(String name, String lclsSystm1, String lclsSystm2, String lclsSystm3, String description) {
+    }
+
+    public Map<Long, PlaceText> findPlaceTexts(Collection<Long> attractionIds) {
+        Map<Long, PlaceText> texts = new HashMap<>();
+        attractionQueryRepository.findPlaceTexts(attractionIds).forEach(row -> texts.put(row.id(), new PlaceText(
+                row.name(), row.lclsSystm1(), row.lclsSystm2(), row.lclsSystm3(), row.description())));
+        return texts;
+    }
+
+    /** 승인된 한 줄 소개(#89). {@code basis}는 {@code SOURCE_SUMMARY} 또는 {@code NAME_CATEGORY}. */
+    public record ApprovedSummary(String oneLine, String basis) {
+    }
+
+    /** 승인된(APPROVED) 한 줄 소개만. 없는 관광지는 맵에 없다. */
+    public Map<Long, ApprovedSummary> findApprovedSummaries(Collection<Long> attractionIds) {
+        Map<Long, ApprovedSummary> summaries = new HashMap<>();
+        attractionQueryRepository.findApprovedAttractionSummaries(attractionIds).forEach(row ->
+                summaries.put(row.attractionId(), new ApprovedSummary(row.oneLine(), row.basis())));
+        return summaries;
+    }
+
     /** 공식 코스. {@code attractionIds}는 코스에 나오는 순서다. */
     public record OfficialCourseView(String title, List<Long> attractionIds) {
     }

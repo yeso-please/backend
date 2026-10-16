@@ -15,7 +15,18 @@ import com.yeso.backend.trip.domain.TripDateOverlapException;
 import com.yeso.backend.trip.domain.TripDatesImmutableException;
 import com.yeso.backend.trip.domain.TripEndedException;
 import com.yeso.backend.trip.domain.TripFullException;
+import com.yeso.backend.attraction.domain.Region;
+import com.yeso.backend.attraction.domain.RegionNotFoundException;
+import com.yeso.backend.attraction.infrastructure.RegionRepository;
+import com.yeso.backend.profile.application.onboarding.OnboardingQueryService;
+import com.yeso.backend.trip.domain.DrawInvalidModeException;
+import com.yeso.backend.trip.domain.DrawRegionNotEligibleException;
+import com.yeso.backend.trip.domain.InvalidKickTargetException;
+import com.yeso.backend.trip.domain.InvalidScheduleDensityException;
+import com.yeso.backend.trip.domain.RegionSelectionMode;
+import com.yeso.backend.trip.domain.TripManagerOnlyException;
 import com.yeso.backend.trip.domain.TripNotFoundException;
+import com.yeso.backend.trip.domain.TripParticipantNotFoundException;
 import com.yeso.backend.trip.domain.TripParticipant;
 import com.yeso.backend.trip.domain.TripPeriod;
 import com.yeso.backend.trip.domain.TripPlan;
@@ -56,12 +67,17 @@ import java.util.stream.Collectors;
 @Transactional
 public class TripService {
 
+    /** 이동수단을 생략하고 만든 여행의 기본값(Q3). */
+    static final Transport DEFAULT_TRANSPORT = Transport.CAR;
+
     private final TripPlanRepository tripPlanRepository;
     private final TripParticipantRepository tripParticipantRepository;
     private final CourseItemRepository courseItemRepository;
     private final TravelDiaryRepository travelDiaryRepository;
     private final CourseStorage courseStorage;
     private final RegionEligibilityService regionEligibilityService;
+    private final RegionRepository regionRepository;
+    private final OnboardingQueryService onboardingQueryService;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -72,24 +88,47 @@ public class TripService {
 
         List<TripConflict> conflicts = findConflicts(userId, startDate, endDate);
         long eligibleRegionCount = regionEligibilityService.countEligible(nights + 1, "RELAXED");
+        // 지역을 먼저 골랐으면(D1) 그 지역이 이 일수·밀도로 코스를 만들 수 있는지도 본다. 밀도는 요청 → 설문 → RELAXED.
+        Boolean regionEligible = null;
+        if (request.sigCd() != null) {
+            String density = resolveDensity(request.scheduleDensity(), userId);
+            requireRegion(request.sigCd());
+            regionEligible = regionEligibilityService.isDrawEligible(request.sigCd(), nights + 1, density);
+        }
         return new CheckTripContextResponse(
                 conflicts.isEmpty(),
                 endDate,
                 conflicts.stream().map(TripConflictResponse::from).toList(),
-                eligibleRegionCount);
+                eligibleRegionCount,
+                regionEligible);
     }
 
     public TripContextResponse createTrip(Long userId, CreateTripRequest request) {
         LocalDate startDate = validateStartDate(request.startDate());
         int nights = validateNights(request.nights());
-        Transport transport = validateTransport(request.transport());
+        // 이동수단은 선택값이다. 생략하면 자동차(D2·Q3). 3-5로 나중에 바꾼다.
+        Transport transport = request.transport() == null ? DEFAULT_TRANSPORT : validateTransport(request.transport());
         validateOrigin(request.originLat(), request.originLng());
+        RegionSelectionMode selection = request.regionSigCd() == null ? null : parseSelection(request.regionSelection());
 
         User user = lockOnboardedUser(userId);
         requireNoConflict(userId, startDate, startDate.plusDays(nights));
 
         TripPlan tripPlan = new TripPlan(user, startDate, nights, transport, request.originLat(), request.originLng());
         tripPlan.markRetroactiveIfEnded(LocalDate.now(clock));
+        if (request.regionSigCd() != null) {
+            // 지역을 먼저 고른 흐름(D1): 지역까지 한 번에 저장한다. 이 일수·밀도로 코스를 못 만들면 422.
+            Region region = requireRegion(request.regionSigCd());
+            String density = resolveDensity(request.scheduleDensity(), userId);
+            if (!regionEligibilityService.isDrawEligible(region.getSigCd(), nights + 1, density)) {
+                throw new DrawRegionNotEligibleException(region.getSigCd());
+            }
+            tripPlan.setRegion(region);
+            tripPlan.setRegionSelection(selection.name());
+            tripPlan.setScheduleDensity(density);
+        } else if (request.scheduleDensity() != null) {
+            tripPlan.setScheduleDensity(validateDensity(request.scheduleDensity()));
+        }
         tripPlanRepository.save(tripPlan);
         tripParticipantRepository.save(TripParticipant.creator(tripPlan, user));
 
@@ -161,10 +200,49 @@ public class TripService {
 
     @Transactional(readOnly = true)
     public List<ParticipantResponse> listParticipants(Long userId, Long tripId) {
-        requireParticipantTrip(userId, tripId);
-        return tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId).stream()
-                .map(ParticipantResponse::from)
+        TripPlan tripPlan = requireParticipantTrip(userId, tripId);
+        List<TripParticipant> participants = tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId);
+        Long managerId = managerOf(tripPlan, participants);
+        return participants.stream()
+                .map(participant -> ParticipantResponse.from(participant, participant.getUser().getId().equals(managerId)))
                 .toList();
+    }
+
+    /**
+     * 여행 관리자(참여자 내보내기 권한, D7). 생성자가 참여 중이면 생성자, 생성자가 나갔으면 가장 먼저 들어온 참여자다(Q7).
+     *
+     * @param participants 참여 순서대로 정렬된 참여자
+     */
+    static Long managerOf(TripPlan tripPlan, List<TripParticipant> participants) {
+        Long creatorId = tripPlan.getOwnerUser().getId();
+        if (participants.stream().anyMatch(participant -> participant.getUser().getId().equals(creatorId))) {
+            return creatorId;
+        }
+        return participants.isEmpty() ? null : participants.get(0).getUser().getId();
+    }
+
+    /**
+     * 3-10 참여자 내보내기. 관리자만, 자기 자신은 안 된다(3-9 탈퇴를 쓴다). 내보낸 사람의 캘린더에서 여행이 사라지고
+     * 그 기간을 다시 쓸 수 있다. 변경 기록에 남은 그 사람의 닉네임은 그대로 둔다. 다시 초대하면 다시 참여할 수 있다.
+     */
+    public void kick(Long userId, Long tripId, Long targetUserId) {
+        TripPlan tripPlan = tripPlanRepository.lockById(tripId).orElseThrow(() -> new TripNotFoundException(tripId));
+        if (!tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId)) {
+            throw new TripNotFoundException(tripId);
+        }
+        if (userId.equals(targetUserId)) {
+            throw new InvalidKickTargetException();
+        }
+        List<TripParticipant> participants = tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId);
+        if (!userId.equals(managerOf(tripPlan, participants))) {
+            throw new TripManagerOnlyException(tripId);
+        }
+        requireNotEnded(tripPlan);
+        TripParticipant target = participants.stream()
+                .filter(participant -> participant.getUser().getId().equals(targetUserId))
+                .findFirst()
+                .orElseThrow(() -> new TripParticipantNotFoundException(targetUserId));
+        tripParticipantRepository.delete(target);
     }
 
     public void leave(Long userId, Long tripId) {
@@ -257,9 +335,48 @@ public class TripService {
         return tripParticipantRepository.existsByTripPlanIdAndUserId(tripId, userId);
     }
 
+    /** 참여 순서대로 닉네임(초대 미리보기 4-4·받은 초대 4-7, D8). */
+    @Transactional(readOnly = true)
+    public List<String> participantNicknames(Long tripId) {
+        return tripParticipantRepository.findByTripPlanIdOrderByCreatedAtAsc(tripId).stream()
+                .map(participant -> participant.getUser().getNickname())
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public long countParticipants(Long tripId) {
         return tripParticipantRepository.countByTripPlanId(tripId);
+    }
+
+    private Region requireRegion(String sigCd) {
+        return regionRepository.findById(sigCd).orElseThrow(() -> new RegionNotFoundException(sigCd));
+    }
+
+    /** 요청 → 요청자의 최신 설문 밀도 → RELAXED. */
+    private String resolveDensity(String requested, Long userId) {
+        if (requested != null) {
+            return validateDensity(requested);
+        }
+        return onboardingQueryService.findLatestScheduleDensity(userId).orElse("RELAXED");
+    }
+
+    private static String validateDensity(String density) {
+        if (!density.equals("RELAXED") && !density.equals("PACKED")) {
+            throw new InvalidScheduleDensityException();
+        }
+        return density;
+    }
+
+    /** 지역을 먼저 고른 방식. 생략하면 지도에서 직접 고른 것(MANUAL)으로 본다. */
+    private static RegionSelectionMode parseSelection(String selection) {
+        if (selection == null) {
+            return RegionSelectionMode.MANUAL;
+        }
+        try {
+            return RegionSelectionMode.valueOf(selection);
+        } catch (IllegalArgumentException e) {
+            throw new DrawInvalidModeException();
+        }
     }
 
     private User lockOnboardedUser(Long userId) {

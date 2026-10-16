@@ -84,7 +84,6 @@ public class OnboardingService {
     }
 
     private OnboardingSubmission buildAndPersistSubmission(User user, String version, OnboardingSubmissionRequest request) {
-        ScheduleDensity scheduleDensity = parseScheduleDensity(request.scheduleDensity());
         Map<Integer, Integer> travelStyles = validateTravelStyles(request.travelStyles());
         List<Integer> travelMotives = validateTravelMotives(request.travelMotives());
         List<String> excludeTags = validateExcludeTags(request.excludeTags());
@@ -94,6 +93,7 @@ public class OnboardingService {
                 ? validateMbtiAnswers(request.mbtiAnswers())
                 : null;
         String mbtiCode = mbtiAnswers == null ? null : MbtiScorer.score(mbtiAnswers);
+        ScheduleDensity scheduleDensity = resolveScheduleDensity(request.scheduleDensity(), mbtiCode);
         String profileText = AiHubProfileTextComposer.compose(
                 travelStyles, travelMotives, likedRegions.stream().map(Region::displayName).toList());
 
@@ -138,6 +138,20 @@ public class OnboardingService {
                 .map(trip -> trip.getRegion().getSigCd())
                 .toList();
         return OnboardingSubmissionResponse.from(submission, likedRegions);
+    }
+
+    /**
+     * 일정 밀도(D3-2·Q4): 보낸 값이 우선이고, 없으면 MBTI 판단 성향으로 정한다 — J(계획형)는 PACKED, P(즉흥형)는 RELAXED.
+     * MBTI가 없는 v1 제출은 RELAXED다.
+     */
+    static ScheduleDensity resolveScheduleDensity(String requested, String mbtiCode) {
+        if (requested != null && !requested.isBlank()) {
+            return parseScheduleDensity(requested);
+        }
+        if (mbtiCode != null && mbtiCode.endsWith("J")) {
+            return ScheduleDensity.PACKED;
+        }
+        return ScheduleDensity.RELAXED;
     }
 
     private static ScheduleDensity parseScheduleDensity(String value) {
