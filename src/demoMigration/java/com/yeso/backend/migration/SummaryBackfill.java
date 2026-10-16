@@ -53,6 +53,11 @@ public final class SummaryBackfill {
     static final int ONE_LINE_MAX = 50;
     static final int TAGLINE_MAX = 30;
     private static final int DEFAULT_MAX_CALLS = 100;
+    /** Gemini 무료 등급의 분당 한도(약 15회)에 맞춘 호출 간격. */
+    private static final long DEFAULT_PAUSE_MILLIS = 4_500;
+    /** 분당 한도에 걸리면 이만큼 쉬고 같은 요청을 다시 보낸다(최대 {@link #RATE_LIMIT_RETRIES}번). 그래도 걸리면 일일 한도로 보고 멈춘다. */
+    private static final long RATE_LIMIT_WAIT_MILLIS = 65_000;
+    private static final int RATE_LIMIT_RETRIES = 3;
     private static final int MAX_CALLS_PER_RUN = 1000;
     private static final int SOURCE_EXCERPT = 200;
     private static final String JOB_TYPE = "SUMMARY_DRAFTS";
@@ -94,7 +99,8 @@ public final class SummaryBackfill {
                         if (!plan.hash().equals(options.confirmPlan())) {
                             throw new IllegalArgumentException("Apply rejected: dry-run planSha256와 같은 --confirm-plan 값이 필요합니다.");
                         }
-                        Result result = apply(connection, plan, new HttpAiClient(requiredEnv("EMBEDDING_SERVICE_BASE_URL")));
+                        Result result = apply(connection, plan,
+                                new HttpAiClient(requiredEnv("EMBEDDING_SERVICE_BASE_URL"), options.pauseMillis()));
                         System.out.println(result);
                     }
                 }
@@ -639,7 +645,7 @@ public final class SummaryBackfill {
     }
 
     record Options(String mode, String scope, String region, int maxCalls, String confirmPlan, String out, String in,
-                   String reviewer, boolean help) {
+                   String reviewer, long pauseMillis, boolean help) {
         static Options parse(String[] args) {
             Map<String, String> values = new HashMap<>();
             boolean help = false;
@@ -652,7 +658,8 @@ public final class SummaryBackfill {
                     throw new IllegalArgumentException("Unknown argument. Use --help.");
                 }
                 String[] pair = arg.substring(2).split("=", 2);
-                if (!List.of("mode", "scope", "region", "max-calls", "confirm-plan", "out", "in", "reviewer").contains(pair[0])) {
+                if (!List.of("mode", "scope", "region", "max-calls", "confirm-plan", "out", "in", "reviewer", "pause-millis")
+                        .contains(pair[0])) {
                     throw new IllegalArgumentException("Unknown option: " + pair[0]);
                 }
                 values.put(pair[0], pair[1]);
@@ -669,8 +676,12 @@ public final class SummaryBackfill {
             if (mode.equals("export") && values.get("out") == null || mode.equals("import") && values.get("in") == null) {
                 throw new IllegalArgumentException("export는 --out, import는 --in이 필요합니다.");
             }
+            long pauseMillis = Long.parseLong(values.getOrDefault("pause-millis", Long.toString(DEFAULT_PAUSE_MILLIS)));
+            if (pauseMillis < 0 || pauseMillis > 60_000) {
+                throw new IllegalArgumentException("--pause-millis must be between 0 and 60000");
+            }
             return new Options(mode, scope, values.get("region"), maxCalls, values.get("confirm-plan"), values.get("out"),
-                    values.get("in"), values.get("reviewer"), help);
+                    values.get("in"), values.get("reviewer"), pauseMillis, help);
         }
     }
 
@@ -749,18 +760,52 @@ public final class SummaryBackfill {
         private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10)).build();
 
-        HttpAiClient(String baseUrl) {
+        private final long pauseMillis;
+        private long lastCallAt;
+
+        HttpAiClient(String baseUrl, long pauseMillis) {
             this.baseUrl = baseUrl.replaceAll("/+$", "");
+            this.pauseMillis = pauseMillis;
         }
 
         @Override
         public AttractionResponse summarizeAttractions(Map<String, Object> request) throws Exception {
-            return JSON.readValue(post("/summaries/attractions", request), AttractionResponse.class);
+            AttractionResponse response = null;
+            for (int attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt++) {
+                response = JSON.readValue(paced("/summaries/attractions", request), AttractionResponse.class);
+                if (!"RATE_LIMITED".equals(response.llmError()) || attempt == RATE_LIMIT_RETRIES) {
+                    break;
+                }
+                waitForRateLimit();
+            }
+            return response;
         }
 
         @Override
         public RegionResponse summarizeRegion(Map<String, Object> request) throws Exception {
-            return JSON.readValue(post("/summaries/region", request), RegionResponse.class);
+            RegionResponse response = null;
+            for (int attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt++) {
+                response = JSON.readValue(paced("/summaries/region", request), RegionResponse.class);
+                if (!"RATE_LIMITED".equals(response.llmError()) || attempt == RATE_LIMIT_RETRIES) {
+                    break;
+                }
+                waitForRateLimit();
+            }
+            return response;
+        }
+
+        private String paced(String path, Map<String, Object> body) throws Exception {
+            long wait = lastCallAt + pauseMillis - System.currentTimeMillis();
+            if (wait > 0) {
+                Thread.sleep(wait);
+            }
+            lastCallAt = System.currentTimeMillis();
+            return post(path, body);
+        }
+
+        private static void waitForRateLimit() throws InterruptedException {
+            System.out.println("Gemini 분당 한도: " + RATE_LIMIT_WAIT_MILLIS / 1000 + "초 쉬고 다시 시도합니다.");
+            Thread.sleep(RATE_LIMIT_WAIT_MILLIS);
         }
 
         private String post(String path, Map<String, Object> body) throws Exception {
