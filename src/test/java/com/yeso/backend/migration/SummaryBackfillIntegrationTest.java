@@ -137,6 +137,19 @@ class SummaryBackfillIntegrationTest extends IntegrationTest {
     }
 
     @Test
+    @DisplayName("Gemini 일시 오류(5xx)는 그 대상만 건너뛰고 계속한다. 다음 실행에서 다시 만든다")
+    void apply_skipsTransientErrors() throws Exception {
+        FakeAi ai = new FakeAi();
+        ai.llmError = "HTTP_503";
+        try (Connection connection = dataSource.getConnection()) {
+            SummaryBackfill.Result result = SummaryBackfill.apply(connection, SummaryBackfill.plan(connection, options("regions", 5)), ai);
+            assertThat(result.status()).isEqualTo("SUCCEEDED");
+            assertThat(result.saved()).isZero();
+            assertThat(SummaryBackfill.plan(connection, options("regions", 5)).regions()).hasSize(1);
+        }
+    }
+
+    @Test
     @DisplayName("호출 수 상한을 넘겨 계획하지 않는다")
     void plan_respectsMaxCalls() throws Exception {
         for (int i = 0; i < 12; i++) {

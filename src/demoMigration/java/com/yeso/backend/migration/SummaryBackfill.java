@@ -288,7 +288,8 @@ public final class SummaryBackfill {
                         status = stop;
                         break;
                     }
-                    if (response.tagline() == null || response.tagline().isBlank() || response.tagline().length() > TAGLINE_MAX) {
+                    if (response.llmError() != null || response.tagline() == null || response.tagline().isBlank()
+                            || response.tagline().length() > TAGLINE_MAX) {
                         rejected++;
                     } else {
                         saveRegion(connection, target, response);
@@ -310,10 +311,19 @@ public final class SummaryBackfill {
         if (!PROMPT_VERSION.equals(promptVersion)) {
             throw new IllegalStateException("ai 서버 promptVersion이 " + PROMPT_VERSION + "가 아닙니다: " + promptVersion);
         }
-        if (llmError == null) {
+        if (llmError == null || isTransient(llmError)) {
             return null;
         }
         return llmError.equals("RATE_LIMITED") ? "QUOTA_EXHAUSTED" : "PARTIAL";
+    }
+
+    /**
+     * Gemini 쪽 일시 오류(5xx·네트워크·응답 형식). 이 대상만 건너뛰고(저장하지 않음) 다음 대상으로 간다 — 다음 실행에서 다시
+     * 만든다. 키 없음(NO_LLM)·한도 초과(RATE_LIMITED)·4xx(키·요청 거부)는 계속해도 같은 결과라 멈춘다.
+     */
+    static boolean isTransient(String llmError) {
+        return llmError.startsWith("HTTP_5") || llmError.equals("NETWORK") || llmError.equals("MALFORMED_RESPONSE")
+                || llmError.equals("FORMAT");
     }
 
     private static Map<String, Object> attractionRequest(UUID runId, List<AttractionTarget> chunk) {
