@@ -2,10 +2,8 @@ package com.yeso.backend.migration;
 
 import com.yeso.backend.attraction.application.ingestion.IngestionWriterLock;
 import com.yeso.backend.attraction.domain.SummaryTags;
-import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository;
-import com.yeso.backend.attraction.infrastructure.AttractionQueryRepository.RepresentativeRow;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import com.yeso.backend.attraction.application.region.RegionSummaryMaterial;
+import com.yeso.backend.attraction.application.region.RegionSummaryMaterial.Representative;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -121,7 +119,7 @@ public final class SummaryBackfill {
     }
 
     record RegionTarget(String sigCd, String regionName, Map<String, Integer> classCounts,
-                        List<RepresentativeRow> representatives, String hash) {
+                        List<Representative> representatives, String hash) {
     }
 
     record Plan(String scope, List<AttractionTarget> attractions, List<RegionTarget> regions, int totalTargets,
@@ -184,7 +182,7 @@ public final class SummaryBackfill {
 
     /** 대표 관광지가 하나 이상 있는 지역 중 요약이 없거나 근거가 바뀐 곳. */
     static List<RegionTarget> findRegionTargets(Connection connection, String region) throws SQLException {
-        AttractionQueryRepository repository = repository(connection);
+        RegionSummaryMaterial material = RegionSummaryMaterial.forConnection(connection, "app");
         Map<String, String> existing = new HashMap<>();
         List<String[]> regions = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -204,11 +202,11 @@ public final class SummaryBackfill {
         }
         List<RegionTarget> targets = new ArrayList<>();
         for (String[] row : regions) {
-            List<RepresentativeRow> representatives = repository.findRepresentativeAttractions(row[0], REPRESENTATIVES);
+            List<Representative> representatives = material.representatives(row[0], REPRESENTATIVES);
             if (representatives.isEmpty()) {
                 continue;
             }
-            Map<String, Integer> counts = repository.countClassCodes(row[0]);
+            Map<String, Integer> counts = material.classCounts(row[0]);
             List<String> parts = new ArrayList<>(List.of(PROMPT_VERSION, row[1], counts.toString()));
             representatives.forEach(rep -> parts.add(rep.id() + "|" + rep.name() + "|" + nullToEmpty(rep.lclsSystm3())
                     + "|" + sha256(List.of(nullToEmpty(rep.description()).strip()))));
@@ -386,7 +384,7 @@ public final class SummaryBackfill {
             statement.setString(1, target.sigCd());
             statement.setString(2, response.tagline().strip());
             statement.setString(3, JSON.writeValueAsString(SummaryTags.normalize(response.tags() == null ? List.of() : response.tags())));
-            statement.setString(4, JSON.writeValueAsString(target.representatives().stream().map(RepresentativeRow::id).toList()));
+            statement.setString(4, JSON.writeValueAsString(target.representatives().stream().map(Representative::id).toList()));
             statement.setString(5, target.hash());
             statement.setString(6, response.generatorModel());
             statement.setString(7, PROMPT_VERSION);
@@ -581,11 +579,6 @@ public final class SummaryBackfill {
     }
 
     // ---------- helpers ----------
-
-    private static AttractionQueryRepository repository(Connection connection) {
-        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true));
-        return new AttractionQueryRepository(jdbc, "app", "unused", 2, 384);
-    }
 
     /** 원격 쓰기는 개발 RDS만, 스냅샷 이름을 남긴 경우에만 허용한다(TourApiDetailBackfill과 같은 규칙). */
     private static void guardTarget(String url, Options options) {

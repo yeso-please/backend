@@ -198,6 +198,14 @@ export function Discover({ user }) {
                     <Badge>{card.province}</Badge>
                     <h2>{card.city}</h2>
                     <h3>{card.title}</h3>
+                    {card.tagline && <p className="tagline">{card.tagline}</p>}
+                    {card.tags?.length > 0 && (
+                      <div className="chips">
+                        {card.tags.map((t) => (
+                          <Badge key={t}>#{t}</Badge>
+                        ))}
+                      </div>
+                    )}
                     {card.introduction?.map((p, i) => (
                       <p key={i}>{p}</p>
                     ))}
@@ -207,6 +215,7 @@ export function Discover({ user }) {
                       ))}
                     </div>
                     <small>
+                      {card.heroImage?.attractionId ? "대표 관광지 사진 · " : ""}
                       {card.heroImage?.sourceName} · {card.heroImage?.license}
                     </small>
                     <Sources items={card.sources} />
@@ -1292,6 +1301,21 @@ export function Course({ id, user, sharedCourse }) {
       {detail && (
         <Modal title={detail.name} onClose={() => setDetail(null)}>
           <Photo src={detail.images?.[0]?.url} alt={detail.name} />
+          {detail.oneLine && (
+            <p>
+              <strong>{detail.oneLine}</strong>
+              {detail.summaryBasis === "NAME_CATEGORY" && (
+                <small> (AI가 이름·분류로 만든 소개)</small>
+              )}
+            </p>
+          )}
+          {detail.tags?.length > 0 && (
+            <div className="chips">
+              {detail.tags.map((t) => (
+                <Badge key={t}>#{t}</Badge>
+              ))}
+            </div>
+          )}
           <p>{detail.description}</p>
           <p>{detail.address}</p>
           <p>
