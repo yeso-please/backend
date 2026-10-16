@@ -735,7 +735,9 @@ public final class SummaryBackfill {
     /** ai 서버 호출. 응답 원문은 오류 메시지에도 남기지 않는다. */
     static final class HttpAiClient implements AiClient {
         private final String baseUrl;
-        private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        // uvicorn은 평문 HTTP의 h2c 업그레이드 요청을 400으로 거부한다. HTTP/1.1로 고정한다.
+        private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10)).build();
 
         HttpAiClient(String baseUrl) {
             this.baseUrl = baseUrl.replaceAll("/+$", "");
