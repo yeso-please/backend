@@ -195,6 +195,55 @@ class RegionApiIntegrationTest extends IntegrationTest {
         }
 
         @Test
+        @DisplayName("지역 한 줄 소개·태그는 승인된 것만 준다(#89)")
+        void approvedSummaryOnly() throws Exception {
+            jdbc.update("""
+                    insert into app.region_summaries (region_id, tagline, tags, source_hash, prompt_version)
+                    values (?, '왕릉 사이 고요한 길을 걷는 곳', '["역사","산책"]'::jsonb, repeat('a', 64), 'summary-v1')
+                    """, GYEONGJU);
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(jsonPath("$.tagline").value(nullValue()))
+                    .andExpect(jsonPath("$.tags.length()").value(0));
+
+            jdbc.update("update app.region_summaries set status = 'APPROVED', reviewed_by = '검수자', reviewed_at = now()");
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.title").value("경주시"))
+                    .andExpect(jsonPath("$.tagline").value("왕릉 사이 고요한 길을 걷는 곳"))
+                    .andExpect(jsonPath("$.tags", contains("역사", "산책")));
+
+            jdbc.update("update app.region_summaries set status = 'REJECTED'");
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(jsonPath("$.tagline").value(nullValue()));
+        }
+
+        @Test
+        @DisplayName("소개 사진이 없으면 추천코스에 자주 나오는 대표 관광지의 검증된 사진으로 채운다")
+        void heroImageFallsBackToRepresentativeAttraction() throws Exception {
+            recommendable("대릉원");
+            Long popular = recommendable("첨성대");
+            attraction("사진 없는 곳", 35.84, 129.21, "아주 긴 설명이 있는 곳입니다", 12, "INVALID");
+            Long course = jdbc.queryForObject("""
+                    insert into app.official_courses (region_id, source_content_id, title) values (?, 'c1', '경주 코스') returning id
+                    """, Long.class, GYEONGJU);
+            jdbc.update("insert into app.official_course_stops (official_course_id, stop_order, attraction_id, name) values (?, 1, ?, '첨성대')",
+                    course, popular);
+
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.heroImage.url").value("https://img.example/" + popular + ".jpg"))
+                    .andExpect(jsonPath("$.heroImage.attractionId").value(popular))
+                    .andExpect(jsonPath("$.heroImage.sourceName").value("한국관광공사"))
+                    .andExpect(jsonPath("$.heroImage.license").value("공공누리 1유형"))
+                    .andExpect(jsonPath("$.heroImage.sourceUrl").value(nullValue()));
+
+            approvedContent("VALID", "[]");
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(jsonPath("$.heroImage.url").value("https://img.example/hero.jpg"))
+                    .andExpect(jsonPath("$.heroImage.attractionId").value(nullValue()));
+        }
+
+        @Test
         @DisplayName("없는 지역이면 404 REGION_NOT_FOUND다")
         void unknownRegion() throws Exception {
             mockMvc.perform(authed(get("/api/regions/{sigCd}/card", "99999")))
@@ -312,6 +361,44 @@ class RegionApiIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.notRecommendableReasons.length()").value(0))
                     .andExpect(jsonPath("$.sources[0].name").value("한국관광공사 TourAPI"))
                     .andExpect(jsonPath("$.sources[0].contentId").value(org.hamcrest.Matchers.startsWith("1262")));
+        }
+
+        @Test
+        @DisplayName("한 줄 소개·태그·근거는 승인된 것만 준다(#89)")
+        void approvedSummaryOnly() throws Exception {
+            Long id = recommendable("이름만 있는 곳");
+            jdbc.update("""
+                    insert into app.attraction_summaries (attraction_id, one_line, tags, basis, source_hash, prompt_version)
+                    values (?, '바람을 맞으며 걷는 바닷가', '["바다","데이트"]'::jsonb, 'NAME_CATEGORY', repeat('a', 64), 'summary-v1')
+                    """, id);
+            mockMvc.perform(authed(get("/api/attractions/{id}", id)))
+                    .andExpect(jsonPath("$.oneLine").value(nullValue()))
+                    .andExpect(jsonPath("$.tags.length()").value(0))
+                    .andExpect(jsonPath("$.summaryBasis").value(nullValue()))
+                    .andExpect(jsonPath("$.description").value("설명"));
+
+            jdbc.update("update app.attraction_summaries set status = 'APPROVED', reviewed_by = '검수자', reviewed_at = now()");
+            mockMvc.perform(authed(get("/api/attractions/{id}", id)))
+                    .andExpect(jsonPath("$.oneLine").value("바람을 맞으며 걷는 바닷가"))
+                    .andExpect(jsonPath("$.tags", contains("바다", "데이트")))
+                    .andExpect(jsonPath("$.summaryBasis").value("NAME_CATEGORY"))
+                    .andExpect(jsonPath("$.description").value("설명"));
+        }
+
+        @Test
+        @DisplayName("태그 사전에 없는 태그와 검수 시각 없는 승인은 DB가 거부한다")
+        void summaryConstraints() {
+            Long id = recommendable("곳");
+            String insert = """
+                    insert into app.attraction_summaries (attraction_id, one_line, tags, basis, source_hash, prompt_version, status)
+                    values (?, '한 줄', cast(? as jsonb), 'SOURCE_SUMMARY', repeat('a', 64), 'summary-v1', ?)
+                    """;
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(insert, id, "[\"맛집\"]", "DRAFT"))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(insert, id, "[\"바다\",\"산\",\"숲\",\"섬\",\"꽃\"]", "DRAFT"))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(insert, id, "[\"바다\"]", "APPROVED"))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
 
         @Test

@@ -184,6 +184,75 @@ public class AttractionQueryRepository {
                 (rs, n) -> new OfficialCourseStopRow(rs.getLong("course_id"), rs.getString("title"), rs.getLong("attraction_id")));
     }
 
+    public record AttractionSummaryRow(String oneLine, String tagsJson, String basis) {
+    }
+
+    /** 승인된(APPROVED) 한 줄 소개·태그(#89). DRAFT·REJECTED는 내보내지 않는다. */
+    public Optional<AttractionSummaryRow> findApprovedAttractionSummary(Long attractionId) {
+        return jdbc.query("""
+                select s.one_line, s.tags::text as tags, s.basis from %s.attraction_summaries s
+                where s.attraction_id = :id and s.status = 'APPROVED'
+                """.formatted(schema), new MapSqlParameterSource("id", attractionId),
+                (rs, n) -> new AttractionSummaryRow(rs.getString("one_line"), rs.getString("tags"), rs.getString("basis")))
+                .stream().findFirst();
+    }
+
+    public record RegionSummaryRow(String tagline, String tagsJson) {
+    }
+
+    /** 승인된(APPROVED) 지역 한 줄 소개·태그(#89). */
+    public Optional<RegionSummaryRow> findApprovedRegionSummary(String sigCd) {
+        return jdbc.query("""
+                select s.tagline, s.tags::text as tags from %s.region_summaries s
+                where s.region_id = :sigCd and s.status = 'APPROVED'
+                """.formatted(schema), new MapSqlParameterSource("sigCd", sigCd),
+                (rs, n) -> new RegionSummaryRow(rs.getString("tagline"), rs.getString("tags")))
+                .stream().findFirst();
+    }
+
+    public record RepresentativeRow(Long id, String name, String lclsSystm1, String lclsSystm2, String lclsSystm3,
+                                    String description, String sourceSystem, String imageUrl, String imageLicense) {
+    }
+
+    /**
+     * 지역 대표 관광지(#89, 7-2 대표 사진 대체와 지역 한 줄 소개의 근거). 추천 가능한 관광지 중
+     * TourAPI 추천코스 지점으로 자주 나오는 순 → 설명이 긴 순 → ID 순. 이미지는 검증된 첫 장이다.
+     */
+    public List<RepresentativeRow> findRepresentativeAttractions(String sigCd, int limit) {
+        return jdbc.query("""
+                select a.id, a.name, a.lcls_systm1, a.lcls_systm2, a.lcls_systm3, a.description, a.source_system,
+                       img.image_url, img.license_note,
+                       (select count(*) from %1$s.official_course_stops s where s.attraction_id = a.id) as course_stops
+                from (%2$s) a
+                cross join lateral (
+                    select i.image_url, i.license_note from %1$s.attraction_images i
+                    where i.attraction_id = a.id and i.validation_status = 'VALID'
+                    order by i.display_order, i.id limit 1) img
+                where a.region_id = :sigCd
+                order by course_stops desc, length(a.description) desc, a.id
+                limit :limit
+                """.formatted(schema, recommendableSql), new MapSqlParameterSource("sigCd", sigCd).addValue("limit", limit),
+                (rs, n) -> new RepresentativeRow(
+                        rs.getLong("id"), rs.getString("name"), rs.getString("lcls_systm1"), rs.getString("lcls_systm2"),
+                        rs.getString("lcls_systm3"), rs.getString("description"), rs.getString("source_system"),
+                        rs.getString("image_url"), rs.getString("license_note")));
+    }
+
+    /** 지역 관광지의 세분류(lclsSystm3) → 개수. 지역 규칙 태그의 재료다. 숙박·음식점·캠핑장은 뺀다. */
+    public java.util.Map<String, Integer> countClassCodes(String sigCd) {
+        java.util.Map<String, Integer> counts = new java.util.TreeMap<>();
+        jdbc.query("""
+                select a.lcls_systm3, count(*) as n from %s.attractions a
+                where a.region_id = :sigCd and a.lcls_systm3 is not null
+                  and coalesce(a.content_type_id, 12) not in (32, 39) and coalesce(a.lcls_systm2, '') <> 'AC05'
+                group by a.lcls_systm3
+                """.formatted(schema), new MapSqlParameterSource("sigCd", sigCd),
+                rs -> {
+                    counts.put(rs.getString("lcls_systm3"), rs.getInt("n"));
+                });
+        return counts;
+    }
+
     public record RegionContentRow(String title, String introduction, String historyTags, String heroImageUrl,
                                    String heroImageSourceName, String heroImageSourceUrl, String heroImageLicense,
                                    String heroImageStatus, String characteristicsJson, String landmarksJson,
