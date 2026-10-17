@@ -15,19 +15,22 @@ services:
       context: ${TRIPIN_AI_DIR:-../ai}
     ports:
       - "127.0.0.1:8000:8000"
-    # 파인튜닝 모델은 git에 없다(약 470MB). 팀 공유 위치에서 받아 아래 폴더에 둔다(docs/runbooks/local-dev-stack.md).
+    # 개발 RDS는 E5 768차원/템플릿3을 사용한다. 체크포인트 전체 폴더는 Git 밖에서 전달한다.
     volumes:
-      - ${TRIPIN_MODEL_DIR:-../ai/data/interim/models/mminilm-l12-ft-b64-v2/final}:/models/final:ro
+      - ${TRIPIN_E5_MODEL_DIR:-${TRIPIN_MODEL_DIR:-../ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final}}:/models/final:ro
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       MODEL_NAME: /models/final
-      MODEL_VERSION: mminilm-l12-ft-b64-v2
+      MODEL_VERSION: e5-base-rating-2022-2023-t4-all-v2
+      MODEL_INPUT_FORMAT: e5
+      TEMPLATE_VERSIONS: "3"
+      MAX_BATCH_ITEMS: "8"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health')); assert d['status']=='UP' and d['dimension']==768 and d['modelVersion']=='e5-base-rating-2022-2023-t4-all-v2' and d['templateVersions']==[3]"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 30s
+      start_period: 180s
 
   backend:
     build:
@@ -49,9 +52,15 @@ services:
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       KAKAO_ALLOWED_REDIRECT_URIS: ${KAKAO_ALLOWED_REDIRECT_URIS:-}
       EMBEDDING_SERVICE_BASE_URL: http://ai:8000
+      EMBEDDING_MODEL_VERSION: e5-base-rating-2022-2023-t4-all-v2
+      EMBEDDING_EXPECTED_DIMENSION: "768"
+      EMBEDDING_PROFILE_TEMPLATE_VERSION: "3"
+      EMBEDDING_ATTRACTION_TEMPLATE_VERSION: "3"
+      EMBEDDING_BATCH_SIZE: "8"
+      EMBEDDING_TIMEOUT_MILLIS: "120000"
     depends_on:
       ai:
-        condition: service_started
+        condition: service_healthy
 
   frontend:
     build:

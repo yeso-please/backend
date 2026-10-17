@@ -47,8 +47,8 @@ class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
             assertThat(fakeEmbeddingClient.lastBatchRequest().templateVersion()).isEqualTo(2);
             assertThat(fakeEmbeddingClient.lastBatchRequest().items()).singleElement()
                     .satisfies(item -> assertThat(item)
-                            .extracting("id", "name", "regionName", "description")
-                            .containsExactly(String.valueOf(attractionId), "경복궁", "서울특별시 종로구", "조선의 법궁"));
+                            .extracting("id", "name", "regionName", "description", "lclsSystm1", "lclsSystm2", "lclsSystm3")
+                            .containsExactly(String.valueOf(attractionId), "경복궁", "서울특별시 종로구", "조선의 법궁", "HS", "HS01", "HS010100"));
             assertThat(jdbc.queryForObject("select embedding_status from app.attractions where id = ?", String.class, attractionId))
                     .isEqualTo("DONE");
             assertThat(jdbc.queryForObject("select count(*) from app.attraction_embeddings where attraction_id = ?", Integer.class, attractionId))
@@ -62,6 +62,7 @@ class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
             Long classified = insertRecommendableAttraction("경복궁", "조선의 법궁", "");
             Long unclassified = insertRecommendableAttraction("창덕궁", "조선의 궁궐", "");
             jdbc.update("update app.attractions set lcls_systm1 = 'HS', lcls_systm2 = 'HS01', lcls_systm3 = 'HS010100' where id = ?", classified);
+            jdbc.update("update app.attractions set lcls_systm1 = null, lcls_systm2 = null, lcls_systm3 = null where id = ?", unclassified);
 
             assertThat(processor.processNextBatch()).isEqualTo(2);
             assertThat(fakeEmbeddingClient.lastBatchRequest().items())
@@ -103,8 +104,9 @@ class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
     private Long insertRecommendableAttraction(String name, String description, String tags) {
         Long id = jdbc.queryForObject("""
                 insert into app.attractions
-                    (name, category, region_id, description, tags, lat, lng, content_type_id, source_content_id)
-                values (?, 'HISTORY_CULTURE', '11110', ?, ?, 37.57, 126.97, 14, ?)
+                    (name, category, region_id, description, tags, lat, lng, content_type_id, source_content_id,
+                     lcls_systm1, lcls_systm2, lcls_systm3)
+                values (?, 'HISTORY_CULTURE', '11110', ?, ?, 37.57, 126.97, 14, ?, 'HS', 'HS01', 'HS010100')
                 returning id
                 """, Long.class, name, description, tags, "test-" + name);
         jdbc.update("""

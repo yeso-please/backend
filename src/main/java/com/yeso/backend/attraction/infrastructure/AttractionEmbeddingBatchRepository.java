@@ -14,10 +14,11 @@ public interface AttractionEmbeddingBatchRepository {
             String city,
             String tags,
             String description,
+            LocalDateTime updatedAt,
             String lclsSystm1,
             String lclsSystm2,
             String lclsSystm3,
-            LocalDateTime updatedAt
+            String address
     ) {
     }
 

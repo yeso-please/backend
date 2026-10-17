@@ -4,7 +4,6 @@ import com.yeso.backend.auth.infrastructure.UserRepository;
 import com.yeso.backend.profile.domain.UserTasteVector;
 import com.yeso.backend.profile.domain.EmbeddingJob;
 import com.yeso.backend.profile.domain.OnboardingSubmission;
-import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.domain.TasteStatus;
 import com.yeso.backend.profile.infrastructure.EmbeddingClient;
 import com.yeso.backend.profile.infrastructure.EmbeddingJobRepository;
@@ -22,6 +21,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -43,6 +43,7 @@ public class OnboardingEmbeddingRunner {
     private final LikedTripRepository likedTripRepository;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingProperties embeddingProperties;
+    private final Clock clock;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void runJob(UUID submissionId) {
@@ -56,8 +57,8 @@ public class OnboardingEmbeddingRunner {
         }
         OnboardingSubmission submission = job.getSubmission();
 
-        if (job.getTemplateVersion() != OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION) {
-            // 구형 설문(템플릿 1)은 폐기했다. 남은 job은 다시 시도하지 않게 영구 실패로 끝낸다.
+        if (job.getTemplateVersion() != embeddingProperties.getProfileTemplateVersion()) {
+            // 다른 템플릿의 남은 작업을 현재 모델로 재해석하지 않는다.
             failPermanently(job, submission, "UNSUPPORTED_TEMPLATE_VERSION");
             return;
         }
@@ -105,14 +106,14 @@ public class OnboardingEmbeddingRunner {
         vector.setProfileText(submission.getProfileText());
         vector.setModelVersion(job.getModelVersion());
         vector.setTemplateVersion(job.getTemplateVersion());
-        vector.setUpdatedAt(LocalDateTime.now());
+        vector.setUpdatedAt(LocalDateTime.now(clock));
         userTasteVectorRepository.save(vector);
         job.markReady();
         submission.setTasteStatus(TasteStatus.READY);
     }
 
     private void retryOrFail(EmbeddingJob job, OnboardingSubmission submission, String errorCode) {
-        LocalDateTime nextAttemptAt = LocalDateTime.now()
+        LocalDateTime nextAttemptAt = LocalDateTime.now(clock)
                 .plusSeconds((long) embeddingProperties.getRetryBackoffSeconds() * (job.getAttempts() + 1));
         boolean willRetry = job.scheduleRetryOrFail(errorCode, nextAttemptAt, embeddingProperties.getMaxAttempts());
         submission.setTasteStatus(willRetry ? TasteStatus.PENDING : TasteStatus.FAILED);

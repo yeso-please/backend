@@ -14,13 +14,13 @@ Docker Desktop만 있으면 Spring backend, `ai` 임베딩 서버, `test_fronten
    ```
 
    다른 곳에 두었으면 실행 전에 `TRIPIN_AI_DIR` 환경변수로 ai 경로를 지정한다.
-3. **파인튜닝 임베딩 모델**: 추천 모델(`mminilm-l12-ft-b64-v2`, 약 470MB)은 git에 없다. 팀 공유 위치에서 받아 아래 폴더에 푼다.
+3. **파인튜닝 임베딩 모델**: 추천 모델(`e5-base-rating-2022-2023-t4-all-v2`, 가중치 약 1.1GB)은 git에 없다. 팀 공유 위치에서 받아 아래 폴더에 푼다.
 
    ```text
-   ai/data/interim/models/mminilm-l12-ft-b64-v2/final/   ← model.safetensors, config.json, tokenizer.json …
+   ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final/   ← model.safetensors, config.json, tokenizer.json …
    ```
 
-   다른 곳에 두었으면 `TRIPIN_MODEL_DIR`로 그 `final` 폴더를 지정한다. 모델이 없으면 AI 서버는 뜨지만 임베딩이 실패하고(`/health`의 `loadError`), backend는 취향 없이 추천한다. backend의 `embedding.model-version`과 AI의 `MODEL_VERSION`이 같아야 하며, 다르면 임베딩 요청이 409다. 학습·평가 근거는 ai `reports/evaluation_rationale.md`.
+   다른 곳에 두었으면 `TRIPIN_E5_MODEL_DIR`로 그 `final` 폴더를 지정한다. 모델이 없거나 구형 모델을 연결하면 AI healthcheck가 실패하여 새 backend 시작을 차단한다. backend의 `embedding.model-version`과 AI의 `MODEL_VERSION`이 같아야 하며, 다르면 임베딩 요청이 409다. E5 입력 계약과 체크포인트 확인은 [E5 전환 런북](e5-model-switch.md)을 따른다. `final` 전체 폴더(토크나이저·설정·`training_info.json` 포함)를 받아야 하며, MiniLM 폴더를 재사용하지 않는다.
 4. **`backend/.env`**: 팀에서 안전한 경로로 받는다(git에 없다). 필요한 키는 `DB_URL`, `DB_PASSWORD`, `FLYWAY_PASSWORD`, `JWT_SECRET`(32바이트 이상)이다. 선택 키는 `KAKAO_REST_API_KEY`, `COURSE_RESTAURANT_SELECTION_SECRET`, `GEMINI_API_KEY`다.
    - `DB_URL`의 `sslrootcert` 경로는 각자 PC 기준이어도 된다. RDS CA 인증서는 이미지에 들어 있고 컨테이너가 경로를 바꾼다.
    - 값에 `$`가 있으면 `$$`로 적는다(Compose가 변수로 해석한다).
@@ -44,7 +44,7 @@ docker compose -f compose.dev.yaml up -d --build
 ```powershell
 docker compose -f compose.dev.yaml ps
 docker compose -f compose.dev.yaml logs backend | Select-String "Flyway|Schema|Started BackendApplication|ERROR"
-Invoke-RestMethod http://127.0.0.1:8000/health          # status UP, dimension 384
+Invoke-RestMethod http://127.0.0.1:8000/health          # status UP, dimension 768, templateVersions [3]
 ```
 
 backend 로그에 `Schema "app" is up to date`와 `Started BackendApplication`이 보이면 정상이다.
@@ -76,7 +76,11 @@ docker compose -f compose.dev.yaml -f compose.dev.local-db.yaml down     # 데�
 | 빌드 중 `read-only file system`·I/O 오류 | C: 드라이브 공간 부족. 공간을 비우고 Docker Desktop을 재시작한다 |
 | 지역 추첨이 `DRAW_NO_ELIGIBLE_REGION`(422) | 아래 "개발 RDS 데이터 상태" 참고. 환경 문제가 아니다 |
 
-## 개발 RDS 데이터 상태 (2026-10-01)
+## E5 전환 (2026-10-17)
+
+추천 가능한 관광지 8,287곳은 E5 768차원/템플릿3으로 변환됐다. 팀원은 backend와 ai의 E5 PR을 모두 반영하고 체크포인트를 준비한 뒤 AI와 backend를 함께 재시작한다. 이전 MiniLM 서버를 이 개발 DB에 계속 연결하면 취향 추천에 사용할 벡터가 없다. AI Hub 응답이 있는 기존 사용자 2명은 변환됐고 구형 MBTI 설문 사용자 3명은 취향 재검사가 필요하다. PR 병합 자체가 실행 중인 서버나 모델 파일을 갱신하지 않는다.
+
+## 개발 RDS 데이터 상태 (2026-10-01, 과거 기록)
 
 지역 250, 관광지 12,164, 이미지 10,933건. 2026-10-01에 이미지 URL을 모두 내려받아 검증했다(HTTP 200, `image/*`, Pillow로 형식·크기 판독, 가로·세로 100px 이상). 10,933건 전부 `VALID`로 바꿨다. 추천 가능 관광지는 3,982곳이다. RELAXED 기준 추첨 가능 지역 수는 1일 242, 2일 204, 3일 77, 4일 47, 5일 41, 6일 29, 7일 23곳이다.
 

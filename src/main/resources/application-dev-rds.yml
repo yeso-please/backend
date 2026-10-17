@@ -13,3 +13,13 @@ spring:
 
 server:
   forward-headers-strategy: framework
+
+# 2026-10-17 개발 RDS 벡터와 일치. bootRun으로 직접 실행해도 같은 계약을 사용한다.
+embedding:
+  model-version: ${EMBEDDING_MODEL_VERSION:e5-base-rating-2022-2023-t4-all-v2}
+  expected-dimension: ${EMBEDDING_EXPECTED_DIMENSION:768}
+  profile-template-version: ${EMBEDDING_PROFILE_TEMPLATE_VERSION:3}
+  attraction-batch:
+    batch-size: ${EMBEDDING_BATCH_SIZE:8}
+    template-version: ${EMBEDDING_ATTRACTION_TEMPLATE_VERSION:3}
+  timeout-millis: ${EMBEDDING_TIMEOUT_MILLIS:120000}

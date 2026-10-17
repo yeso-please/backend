@@ -57,6 +57,11 @@
 
 ## 5. 임베딩과 취향 집계
 
+학습 E5를 적용할 때는 [E5 모델 전환 런북](../runbooks/e5-model-switch.md)을 따른다.
+개발 RDS와 개발 Compose의 기본 E5는 `e5-base-rating-2022-2023-t4-all-v2`, 768차원,
+프로필·관광지 템플릿3을 함께 선택한다. 템플릿3은 스타일4문항·동기만 사용하며 선호지역을 제외한다.
+관광지 배치는 기존 `lcls_systm1~3`와 주소를 AI에 전달한다. 아래 템플릿2 설명은 기존 설정의 계약이다.
+
 - 새 회원 온보딩은 AI Hub `travelStyles`·`travelMotives`·`likedRegions` 구조화 입력을 Python에 보낸다. 서비스가 template v2의 문장으로 합성하며, 제외 조건·일정 밀도·여행 MBTI는 임베딩에 섞지 않는다(MBTI는 표시용). 구형 `demo-mbti-v1`과 template v1은 폐기했고, 남은 template v1 job은 영구 실패로 끝낸다.
 - Python 서비스는 회원/관광지에 같은 모델·벡터 차원을 쓴다. 현재 template v2는 AI Hub 회원 프로필과 TourAPI 유형을 포함한 관광지 문장 쌍이다. v1 구형 프로필 벡터는 보존하지만 v2 관광지 벡터와 혼합해 코사인 계산하지 않는다. 회원이 최신 설문을 다시 제출하기 전에는 취향 점수를 비개인화 폴백으로 처리한다. RDS 업무 테이블을 직접 쓰지 않고 벡터를 Spring에 반환한다.
 - 임베딩 서비스는 별도 레포 [`yeso-please/ai`](https://github.com/yeso-please/ai)에 둔다. 벡터는 **float32 리틀엔디언 바이트**(PyTorch/NumPy `tobytes()` 그대로)를 base64로 주고받고, DB(`user_taste_vectors`, `attraction_embeddings`)에도 같은 바이트로 저장한다(2026-09-27).

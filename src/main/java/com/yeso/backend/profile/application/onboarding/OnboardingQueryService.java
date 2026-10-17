@@ -1,7 +1,6 @@
 package com.yeso.backend.profile.application.onboarding;
 
 import com.yeso.backend.auth.infrastructure.UserRepository;
-import com.yeso.backend.profile.domain.OnboardingQuestionBank;
 import com.yeso.backend.profile.infrastructure.OnboardingSubmissionRepository;
 import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.profile.infrastructure.UserTasteVectorRepository;
@@ -79,7 +78,7 @@ public class OnboardingQueryService {
         return userTasteVectorRepository.findById(userId)
                 .filter(vector -> embeddingProperties.getModelVersion().equals(vector.getModelVersion()))
                 .filter(vector -> vector.getDimension() == embeddingProperties.getExpectedDimension())
-                .filter(vector -> vector.getTemplateVersion() == OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION)
+                .filter(vector -> vector.getTemplateVersion() == embeddingProperties.getProfileTemplateVersion())
                 .flatMap(vector -> VectorCodec.tryDecode(vector.getEmbedding(), vector.getDimension()));
     }
 }

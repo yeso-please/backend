@@ -7,7 +7,7 @@
 
 ## 로컬 개발 스택 (backend + AI + 테스트 프론트, 개발 RDS)
 
-Docker Desktop만 있으면 됩니다. 준비물(`.env`, RDS 보안 그룹 IP 등록)과 문제 해결은 [로컬 개발 스택 런북](docs/runbooks/local-dev-stack.md)을 봅니다.
+Docker Desktop과 별도로 전달받은 E5 체크포인트가 필요합니다. 개발 RDS는 E5 768차원/템플릿3으로 전환됐으므로 backend·ai 코드를 함께 갱신하고 두 서버를 재시작해야 합니다. [E5 전환 런북](docs/runbooks/e5-model-switch.md)을 먼저 확인합니다. 준비물(`.env`, RDS 보안 그룹 IP 등록)과 문제 해결은 [로컬 개발 스택 런북](docs/runbooks/local-dev-stack.md)을 봅니다.
 
 ```powershell
 cd backend
