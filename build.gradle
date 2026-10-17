@@ -103,6 +103,16 @@ tasks.register('summaryBackfill', JavaExec) {
 	environment loadLocalIngestionEnv()
 }
 
+tasks.register('regionPhotoBackfill', JavaExec) {
+	group = 'migration'
+	description = 'Load region hero photo candidates (Korea Tourism Organization photo gallery), export, or import a reviewed CSV'
+	dependsOn tasks.named('demoMigrationClasses')
+	classpath = sourceSets.demoMigration.runtimeClasspath
+	mainClass = 'com.yeso.backend.migration.RegionPhotoBackfill'
+	workingDir = projectDir
+	environment loadLocalIngestionEnv()
+}
+
 /** Load only known local ingestion settings; process environment always wins over .env. */
 def loadLocalIngestionEnv() {
 	def allowed = ['DB_URL', 'DB_USERNAME', 'DB_PASSWORD', 'TOUR_API_KEY', 'TOUR_API_BASE_URL',
