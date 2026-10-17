@@ -242,6 +242,21 @@ public class AttractionQueryRepository {
                 .stream().findFirst();
     }
 
+    public record RegionPhotoRow(String imageUrl, String sourceName, String sourceUrl, String license, String photographer) {
+    }
+
+    /** 승인된 지역 대표 사진(지역마다 한 장, 7-2 heroImage ②). */
+    public Optional<RegionPhotoRow> findApprovedRegionPhoto(String sigCd) {
+        return jdbc.query("""
+                select p.image_url, p.source_name, p.source_url, p.license_note, p.photographer
+                from %s.region_hero_photos p
+                where p.region_id = :sigCd and p.status = 'APPROVED'
+                """.formatted(schema), new MapSqlParameterSource("sigCd", sigCd),
+                (rs, n) -> new RegionPhotoRow(rs.getString("image_url"), rs.getString("source_name"),
+                        rs.getString("source_url"), rs.getString("license_note"), rs.getString("photographer")))
+                .stream().findFirst();
+    }
+
     public record RepresentativeRow(Long id, String name, String lclsSystm1, String lclsSystm2, String lclsSystm3,
                                     String description, String sourceSystem, String imageUrl, String imageLicense) {
     }

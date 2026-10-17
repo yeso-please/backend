@@ -139,7 +139,7 @@ public class RegionQueryService {
                 content == null ? List.of() : paragraphs(content.introduction()),
                 hasValidHeroImage ? new RegionCardResponse.HeroImage(
                         content.heroImageUrl(), content.heroImageSourceName(), content.heroImageSourceUrl(),
-                        content.heroImageLicense(), null) : representativeHeroImage(sigCd),
+                        content.heroImageLicense(), null, null) : fallbackHeroImage(sigCd),
                 content == null ? List.of() : readList(content.characteristicsJson(), new TypeReference<List<String>>() { }),
                 content == null ? List.of() : commaSeparated(content.historyTags()),
                 landmarks,
@@ -213,19 +213,29 @@ public class RegionQueryService {
 
     /**
      * 지역 대표 사진 URL만(초대 미리보기·받은 초대·홈 카드용, trip 4-4·4-7). 지역 카드 7-2의 {@code heroImage}와 같은 규칙이다:
-     * 승인된 지역 소개의 검증된 사진 → 대표 관광지의 검증된 사진 → 없음.
+     * 승인된 지역 소개의 검증된 사진 → 승인된 지역 대표 사진 → 대표 관광지의 검증된 사진 → 없음.
      */
     public java.util.Optional<String> heroImageUrl(String sigCd) {
         RegionContentRow content = attractionQueryRepository.findLatestApprovedContent(sigCd).orElse(null);
         if (content != null && "VALID".equals(content.heroImageStatus()) && content.heroImageUrl() != null) {
             return java.util.Optional.of(content.heroImageUrl());
         }
-        return java.util.Optional.ofNullable(representativeHeroImage(sigCd)).map(RegionCardResponse.HeroImage::url);
+        return java.util.Optional.ofNullable(fallbackHeroImage(sigCd)).map(RegionCardResponse.HeroImage::url);
     }
 
     // ---------- helpers ----------
 
-    /** 승인된 지역 소개에 쓸 사진이 없으면 대표 관광지의 검증된 사진으로 채운다(원천 이미지라 승인 없이 쓴다). */
+    /**
+     * 승인된 지역 소개에 쓸 사진이 없을 때: 승인된 지역 대표 사진(관광사진 API) → 대표 관광지의 검증된 사진
+     * (원천 이미지라 승인 없이 쓴다).
+     */
+    private RegionCardResponse.HeroImage fallbackHeroImage(String sigCd) {
+        return attractionQueryRepository.findApprovedRegionPhoto(sigCd)
+                .map(photo -> new RegionCardResponse.HeroImage(photo.imageUrl(), photo.sourceName(), photo.sourceUrl(),
+                        photo.license(), photo.photographer(), null))
+                .orElseGet(() -> representativeHeroImage(sigCd));
+    }
+
     private RegionCardResponse.HeroImage representativeHeroImage(String sigCd) {
         return attractionQueryRepository.findRepresentativeAttractions(sigCd, 1).stream()
                 .findFirst()
@@ -235,7 +245,7 @@ public class RegionQueryService {
 
     private static RegionCardResponse.HeroImage heroImageOf(RepresentativeRow row) {
         return new RegionCardResponse.HeroImage(row.imageUrl(), TOUR_API.equals(row.sourceSystem()) ? TOUR_API_SOURCE_NAME : null,
-                null, row.imageLicense(), row.id());
+                null, row.imageLicense(), null, row.id());
     }
 
     private List<String> tags(String json) {
