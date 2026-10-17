@@ -5,6 +5,7 @@ import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
 import com.yeso.backend.profile.application.onboarding.OnboardingEmbeddingRunner;
 import com.yeso.backend.profile.infrastructure.FakeEmbeddingClient;
+import com.yeso.backend.profile.infrastructure.EmbeddingProperties;
 import com.yeso.backend.support.ApiFixtures;
 import com.yeso.backend.support.IntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,43 @@ class OnboardingIntegrationTest extends IntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private EmbeddingProperties embeddingProperties;
+
+    @Test
+    void e5SubmissionPersistsTemplateThreeAnd768Dimensions() throws Exception {
+        String originalModel = embeddingProperties.getModelVersion();
+        int originalDimension = embeddingProperties.getExpectedDimension();
+        int originalTemplate = embeddingProperties.getProfileTemplateVersion();
+        try {
+            embeddingProperties.setModelVersion("e5-base-rating-2022-2023-t4-all-v2");
+            embeddingProperties.setExpectedDimension(768);
+            embeddingProperties.setProfileTemplateVersion(3);
+            fakeEmbeddingClient.setDimension(768);
+            var member = fixtures.signup();
+            mockMvc.perform(post("/api/onboarding/submissions")
+                            .header("Authorization", member.bearer())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"questionVersion":"aihub-traveler-v1",
+                                     "travelStyles":{"1":1,"3":4,"5":6,"6":7},
+                                     "travelMotives":[2,7],"likedRegions":[],"scheduleDensity":"RELAXED"}
+                                    """))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.tasteStatus").value("READY"));
+            assertThat(fakeEmbeddingClient.lastRequest().templateVersion()).isEqualTo(3);
+            assertThat(fakeEmbeddingClient.lastRequest().modelVersion()).isEqualTo("e5-base-rating-2022-2023-t4-all-v2");
+            assertThat(jdbc.queryForObject("select dimension from app.user_taste_vectors where user_id = ?",Integer.class,member.userId()))
+                    .isEqualTo(768);
+            assertThat(jdbc.queryForObject("select octet_length(embedding) from app.user_taste_vectors where user_id = ?",Integer.class,member.userId()))
+                    .isEqualTo(3072);
+        } finally {
+            embeddingProperties.setModelVersion(originalModel);
+            embeddingProperties.setExpectedDimension(originalDimension);
+            embeddingProperties.setProfileTemplateVersion(originalTemplate);
+        }
+    }
 
     @BeforeEach
     void seedRegions() {

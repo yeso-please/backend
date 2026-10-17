@@ -15,6 +15,7 @@ public class FakeEmbeddingClient implements EmbeddingClient, AttractionEmbedding
     public enum Mode { SUCCESS, TRANSIENT, PERMANENT, DIMENSION_MISMATCH }
 
     private volatile Mode mode = Mode.SUCCESS;
+    private volatile int dimension = 384;
     private volatile EmbeddingRequest lastRequest;
     private volatile AttractionEmbeddingBatchRequest lastBatchRequest;
 
@@ -30,9 +31,14 @@ public class FakeEmbeddingClient implements EmbeddingClient, AttractionEmbedding
         this.mode = mode;
     }
 
+    public void setDimension(int dimension) {
+        this.dimension = dimension;
+    }
+
     /** IntegrationTest가 매 테스트 후 호출한다 — 한 테스트가 바꾼 모드가 다음 테스트로 새지 않게. */
     public void reset() {
         this.mode = Mode.SUCCESS;
+        this.dimension = 384;
         this.lastRequest = null;
         this.lastBatchRequest = null;
     }
@@ -41,7 +47,7 @@ public class FakeEmbeddingClient implements EmbeddingClient, AttractionEmbedding
     public EmbeddingResult embed(EmbeddingRequest request) throws EmbeddingTransientException, EmbeddingPermanentException {
         this.lastRequest = request;
         return switch (mode) {
-            case SUCCESS -> new EmbeddingResult(Base64.getEncoder().encodeToString(new byte[384 * Float.BYTES]), 384);
+            case SUCCESS -> new EmbeddingResult(Base64.getEncoder().encodeToString(new byte[dimension * Float.BYTES]), dimension);
             case DIMENSION_MISMATCH -> new EmbeddingResult(Base64.getEncoder().encodeToString(new byte[]{1, 2, 3, 4}), 1);
             case TRANSIENT -> throw new EmbeddingTransientException("TIMEOUT", "fake timeout");
             case PERMANENT -> throw new EmbeddingPermanentException("BAD_REQUEST", "fake bad request");
@@ -57,10 +63,10 @@ public class FakeEmbeddingClient implements EmbeddingClient, AttractionEmbedding
         if (mode == Mode.PERMANENT) {
             throw new AttractionEmbeddingServiceException("BAD_REQUEST", false, null);
         }
-        int dimension = mode == Mode.DIMENSION_MISMATCH ? 1 : 384;
-        byte[] bytes = new byte[dimension * Float.BYTES];
+        int outputDimension = mode == Mode.DIMENSION_MISMATCH ? 1 : dimension;
+        byte[] bytes = new byte[outputDimension * Float.BYTES];
         String vector = Base64.getEncoder().encodeToString(bytes);
-        return new AttractionEmbeddingBatchResponse(dimension, request.items().stream()
+        return new AttractionEmbeddingBatchResponse(outputDimension, request.items().stream()
                 .map(item -> new AttractionEmbeddingBatchResponse.Item(item.id(), vector)).toList());
     }
 }

@@ -27,8 +27,6 @@ import java.util.Set;
 @Slf4j
 public class AttractionEmbeddingBatchProcessor {
 
-    static final int ATTRACTION_TEMPLATE_VERSION = 2;
-
     private final AttractionEmbeddingBatchRepository repository;
     private final AttractionEmbeddingBatchClient embeddingClient;
 
@@ -49,8 +47,8 @@ public class AttractionEmbeddingBatchProcessor {
         if (batchSize < 1 || batchSize > 64) {
             throw new IllegalStateException("embedding.attraction-batch.batch-size는 1~64여야 합니다.");
         }
-        if (templateVersion != ATTRACTION_TEMPLATE_VERSION) {
-            throw new IllegalStateException("현재 AI Hub 계약의 관광지 templateVersion은 2여야 합니다.");
+        if (templateVersion != 2 && templateVersion != 3) {
+            throw new IllegalStateException("관광지 templateVersion은 2 또는 3이어야 합니다.");
         }
         List<Candidate> candidates = repository.lockNextBatch(
                 batchSize, modelVersion, templateVersion, expectedDimension);
@@ -76,9 +74,25 @@ public class AttractionEmbeddingBatchProcessor {
                 ? List.of()
                 : Arrays.stream(candidate.tags().split(",")).map(String::trim).filter(tag -> !tag.isEmpty()).toList();
         return new Item(String.valueOf(candidate.id()), candidate.name(), candidate.contentTypeId(),
-                candidate.province() + " " + candidate.city(), tags,
+                regionName(candidate), tags,
                 candidate.description() == null ? "" : candidate.description(),
                 candidate.lclsSystm1(), candidate.lclsSystm2(), candidate.lclsSystm3());
+    }
+
+    /** AI 학습의 region_from_address와 같은 시도·시군구 추출 규칙. */
+    private static String regionName(Candidate candidate) {
+        if (candidate.address() == null || candidate.address().isBlank()) {
+            return candidate.province() + " " + candidate.city();
+        }
+        String[] tokens = candidate.address().trim().split("\\s+");
+        if (tokens[0].startsWith("세종")) {
+            return tokens[0];
+        }
+        int count = Math.min(2, tokens.length);
+        if (tokens.length > 2 && tokens[1].endsWith("시") && tokens[2].endsWith("구")) {
+            count = 3;
+        }
+        return String.join(" ", Arrays.copyOf(tokens, count));
     }
 
     private Map<Long, byte[]> validateAndDecode(List<Candidate> candidates, AttractionEmbeddingBatchResponse response) {

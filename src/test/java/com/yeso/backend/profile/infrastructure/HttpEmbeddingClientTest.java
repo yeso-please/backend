@@ -129,9 +129,10 @@ class HttpEmbeddingClientTest {
         assertThat(requestBody.get()).contains("\"templateVersion\":2")
                 .contains("\"contentTypeId\":14")
                 .contains("\"regionName\":\"서울특별시 종로구\"")
-                .contains("\"description\":\"조선의 법궁\"")
                 .contains("\"lclsSystm1\":\"HS\"")
-                .contains("\"lclsSystm3\":\"HS010100\"");
+                .contains("\"lclsSystm2\":\"HS01\"")
+                .contains("\"lclsSystm3\":\"HS010100\"")
+                .contains("\"description\":\"조선의 법궁\"");
         assertThat(result.dimension()).isEqualTo(384);
         assertThat(result.items()).singleElement().satisfies(item -> {
             assertThat(item.id()).isEqualTo("101");

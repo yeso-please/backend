@@ -109,7 +109,7 @@ public class OnboardingService {
     private void registerEmbeddingJob(OnboardingSubmission submission, EmbeddingOwnerType ownerType, Long ownerId) {
         embeddingJobRepository.save(new EmbeddingJob(
                 submission, ownerType, ownerId,
-                embeddingProperties.getModelVersion(), OnboardingQuestionBank.AIHUB_TEMPLATE_VERSION));
+                embeddingProperties.getModelVersion(), embeddingProperties.getProfileTemplateVersion()));
         eventPublisher.publishEvent(new OnboardingSubmittedEvent(submission.getId()));
     }
 

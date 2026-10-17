@@ -1,0 +1,25 @@
+# compose.dev.yaml 뒤에 추가. 공유 DB를 자동 재임베딩하지 않는다.
+services:
+  ai:
+    environment:
+      MODEL_NAME: /models/final
+      MODEL_VERSION: e5-base-rating-2022-2023-t4-all-v2
+      MODEL_INPUT_FORMAT: e5
+      TEMPLATE_VERSIONS: "3"
+      MAX_BATCH_ITEMS: "8"
+    volumes:
+      - ${TRIPIN_E5_MODEL_DIR:-../ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final}:/models/final:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health')); assert d['status']=='UP' and d['dimension']==768 and d['modelVersion']=='e5-base-rating-2022-2023-t4-all-v2' and d['templateVersions']==[3]"]
+      start_period: 180s
+  backend:
+    environment:
+      EMBEDDING_MODEL_VERSION: e5-base-rating-2022-2023-t4-all-v2
+      EMBEDDING_EXPECTED_DIMENSION: "768"
+      EMBEDDING_PROFILE_TEMPLATE_VERSION: "3"
+      EMBEDDING_ATTRACTION_TEMPLATE_VERSION: "3"
+      EMBEDDING_BATCH_SIZE: "8"
+      EMBEDDING_TIMEOUT_MILLIS: "120000"
+    depends_on:
+      ai:
+        condition: service_healthy

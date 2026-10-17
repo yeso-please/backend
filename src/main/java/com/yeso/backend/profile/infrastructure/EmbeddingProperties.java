@@ -16,6 +16,8 @@ public class EmbeddingProperties {
     private String baseUrl = "";
     private String modelVersion = "mminilm-l12-ft-b64-v2";
     private int expectedDimension = 384;
+    /** 2: 기존 AI Hub, 3: 스타일·동기만 사용하는 학습 E5. */
+    private int profileTemplateVersion = 2;
     private int timeoutMillis = 5000;
     private int maxAttempts = 5;
     private int retryBackoffSeconds = 30;

@@ -106,7 +106,7 @@ POST /api/onboarding/submissions
 | `excludeTags` | `string[]` | 아니오 | 제외 태그 사전의 부분집합. 기본 `[]` |
 | `mbtiAnswers` | `object<number,number>` | v2면 예 | 키는 1~12 모두, 값은 선택지 1 또는 2. v1이면 무시한다 |
 
-`scheduleDensity`와 `excludeTags`는 여행 일정·필터 규칙에 사용하고 임베딩 입력에는 포함하지 않는다. `mbtiAnswers`로 계산한 `mbtiCode`도 표시용이며 임베딩 입력이 아니다. AI에 보내는 프로필은 `travelStyles`, `travelMotives`, `likedRegions`의 구조화 객체이며 문장 생성은 AI 서비스가 소유한다.
+`scheduleDensity`와 `excludeTags`는 여행 일정·필터 규칙에 사용하고 임베딩 입력에는 포함하지 않는다. `mbtiAnswers`로 계산한 `mbtiCode`도 표시용이며 임베딩 입력이 아니다. 문장 생성은 AI 서비스가 소유한다. 기존 임베딩 템플릿 2는 `travelStyles`, `travelMotives`, `likedRegions`를 사용한다. 학습한 E5 배포용 템플릿 3은 같은 구조화 요청에서 **스타일 1·3·5·6과 여행 동기만 사용**하고 선호 지역은 사용하지 않는다. 설문 API와 표시용 결과는 유지하며, `embedding.profile-template-version`으로 임베딩 규칙만 선택한다(범용 기본 2, 개발 RDS·E5 배포 3).
 
 **Response `201 Created`** — `OnboardingSubmission`
 

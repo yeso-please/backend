@@ -19,5 +19,9 @@ public record AttractionEmbeddingBatchRequest(
             String lclsSystm2,
             String lclsSystm3
     ) {
+        public Item(String id, String name, Integer contentTypeId, String regionName,
+                    List<String> tags, String description) {
+            this(id, name, contentTypeId, regionName, tags, description, null, null, null);
+        }
     }
 }
