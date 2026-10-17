@@ -38,7 +38,7 @@
 | B1 기본 지도 | `GET /regions`(7-1) | 250개 지역 중심 좌표에 핀. 지역 경계 데이터는 없다(중심 좌표만) |
 | B2 핀 모드 | `POST /regions/draw`(7-5) `{"mode":"RANDOM"}` | 저장하지 않는다. 결과 `sigCd`로 지도 이동 |
 | B2 조건 필터(숨김 레이어 `Region conditions`) | `POST /regions/draw` `{"mode":"CONDITIONAL","conditions":["DISTANCE","MY_TASTE"],"originLat","originLng"}` | ⚠️ 디자인의 "바다·도시·자연" 분위기 칩은 아직 서버 조건이 없다([남은 질문 Q9](#남은-질문)). 지금은 거리·내 취향 조건만 |
-| B3 강릉 발견 | `GET /regions/{sigCd}/card`(7-2) | 대표 사진 `heroImage`(출처 `sourceName`·`license` 표기, `attractionId`가 있으면 "대표 관광지 사진"), `tagline`, `tags`(`#` 붙여 표시) |
+| B3 강릉 발견 | `GET /regions/{sigCd}/card`(7-2) | 대표 사진 `heroImage`(출처 `sourceName`·`photographer`·`license` 표기 — 지역 대표 사진은 공공누리 제1유형이라 출처 표시가 조건, `attractionId`가 있으면 "대표 관광지 사진"), `tagline`, `tags`(`#` 붙여 표시) |
 | B4 강릉 추천 | 7-2 + `GET /regions/{sigCd}/match`(7-6) | "만나볼 순간" 3개 = `landmarks[]`(이름·사진·`oneLine`, D13-2). 개인화 문장 = 7-6 `text`, 앞에 "{닉네임}님은" 을 붙인다. `aiGenerated`면 "AI가 작성" 표시. `text`가 `null`이면(MBTI 없음) 영역을 숨긴다. 저장 아이콘은 숨김(D14) |
 | 다시 뽑기 | 같은 7-5를 다시 | 이전 지역을 빼지 않는다 |
 

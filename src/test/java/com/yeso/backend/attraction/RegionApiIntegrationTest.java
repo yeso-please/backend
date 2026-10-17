@@ -218,7 +218,7 @@ class RegionApiIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("소개 사진이 없으면 추천코스에 자주 나오는 대표 관광지의 검증된 사진으로 채운다")
+        @DisplayName("소개 사진이 없으면 승인된 지역 대표 사진, 그것도 없으면 추천코스에 자주 나오는 대표 관광지 사진으로 채운다")
         void heroImageFallsBackToRepresentativeAttraction() throws Exception {
             recommendable("대릉원");
             Long popular = recommendable("첨성대");
@@ -237,9 +237,25 @@ class RegionApiIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.heroImage.license").value("공공누리 1유형"))
                     .andExpect(jsonPath("$.heroImage.sourceUrl").value(nullValue()));
 
+            jdbc.update("""
+                    insert into app.region_hero_photos (region_id, source_system, source_content_id, image_url, photographer,
+                        source_name, license_note, candidate_rank, status, reviewed_by, reviewed_at)
+                    values (?, 'TOUR_PHOTO_GALLERY', 'g1', 'https://tong.visitkorea.or.kr/g1.jpg', '한국관광공사 김지호',
+                        '한국관광공사', '공공누리 제1유형', 1, 'REJECTED', '검수자', now())
+                    """, GYEONGJU);
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(jsonPath("$.heroImage.attractionId").value(popular));
+            jdbc.update("update app.region_hero_photos set status = 'APPROVED'");
+            mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
+                    .andExpect(jsonPath("$.heroImage.url").value("https://tong.visitkorea.or.kr/g1.jpg"))
+                    .andExpect(jsonPath("$.heroImage.photographer").value("한국관광공사 김지호"))
+                    .andExpect(jsonPath("$.heroImage.license").value("공공누리 제1유형"))
+                    .andExpect(jsonPath("$.heroImage.attractionId").value(nullValue()));
+
             approvedContent("VALID", "[]");
             mockMvc.perform(authed(get("/api/regions/{sigCd}/card", GYEONGJU)))
                     .andExpect(jsonPath("$.heroImage.url").value("https://img.example/hero.jpg"))
+                    .andExpect(jsonPath("$.heroImage.photographer").value(nullValue()))
                     .andExpect(jsonPath("$.heroImage.attractionId").value(nullValue()));
         }
 

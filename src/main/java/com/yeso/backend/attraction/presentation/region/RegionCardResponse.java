@@ -13,8 +13,9 @@ public record RegionCardResponse(
         HeroImage heroImage, List<String> characteristics, List<String> historyHighlights,
         List<Landmark> landmarks, List<Source> sources, LocalDateTime updatedAt) {
 
-    /** {@code attractionId}는 대표 관광지 사진으로 채웠을 때만 있다. */
-    public record HeroImage(String url, String sourceName, String sourceUrl, String license, Long attractionId) {
+    /** {@code photographer}는 지역 대표 사진일 때만, {@code attractionId}는 대표 관광지 사진으로 채웠을 때만 있다. */
+    public record HeroImage(String url, String sourceName, String sourceUrl, String license, String photographer,
+                            Long attractionId) {
     }
 
     /** {@code oneLine}은 승인된 관광지 한 줄 소개(#89, B4 "만나볼 순간"), 없으면 null. */

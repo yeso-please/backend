@@ -117,7 +117,7 @@ GET /api/regions/{sigCd}/card
   "tagline": "왕릉 사이 고요한 길을 걷는 곳",
   "tags": ["역사", "야경", "산책"],
   "introduction": ["첫 문단…", "둘째 문단…"],
-  "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 1유형", "attractionId": null},
+  "heroImage": {"url": "https://…", "sourceName": "한국관광공사", "sourceUrl": "https://…", "license": "공공누리 제1유형", "photographer": "한국관광공사 김지호", "attractionId": null},
   "characteristics": ["역사 유적", "야경"],
   "historyHighlights": ["신라의 수도"],
   "landmarks": [{"attractionId": 5012, "name": "대릉원", "thumbnailUrl": "https://…", "oneLine": "왕릉 사이 고요한 길을 걷는 곳"}],
@@ -136,13 +136,18 @@ GET /api/regions/{sigCd}/card
 | `characteristics`, `historyHighlights` | 승인된 지역 소개 콘텐츠의 태그. 없으면 빈 배열 |
 | `tagline` | 지도에서 지역을 눌렀을 때 보이는 한 줄 소개(30자 이내). **사람이 승인한 것만**. 없으면 `null` ([한 줄 소개와 태그](#한-줄-소개와-태그-89)) |
 | `tags` | [태그 사전](#태그-사전)의 값 0~4개, 승인된 것만. 없으면 빈 배열. 화면은 `#`을 붙여 그린다 |
-| `heroImage` | ① 승인된 지역 소개의 검증된 이미지 → ② 없으면 **지역 대표 관광지의 검증된(`VALID`) 첫 이미지** → ③ 둘 다 없으면 `null` |
-| `heroImage.attractionId` | ②로 채웠을 때 그 관광지 ID(화면에서 관광지 상세로 이을 수 있다). ①이면 `null` |
+| `heroImage` | ① 승인된 지역 소개의 검증된 이미지 → ② 없으면 **승인된 지역 대표 사진**([아래](#지역-대표-사진)) → ③ 없으면 **지역 대표 관광지의 검증된(`VALID`) 첫 이미지** → ④ 모두 없으면 `null` |
+| `heroImage.attractionId` | ③으로 채웠을 때 그 관광지 ID(화면에서 관광지 상세로 이을 수 있다). ①·②면 `null` |
 | `heroImage.license` | 원천이 밝힌 이용 조건. 없으면 `null` |
+| `heroImage.photographer` | ②일 때 촬영자(예: `한국관광공사 김지호`). 출처 표시에 함께 쓴다. ①·③이면 `null` |
 
 승인 콘텐츠가 없는 지역에는 도시명을 제목으로 쓰고, 소개·특징·관광지·출처는 빈 배열, `updatedAt`은 `null`로 응답한다. 임시 문구·허구 소개를 만들지 않는다. `tagline`·`tags`는 지역 소개(`region_contents`)와 따로 승인하므로 소개가 없어도 나올 수 있다.
 
-**대표 관광지**(②와 한 줄 소개 생성의 근거) — 그 지역의 추천 가능 관광지 중 **TourAPI 추천코스(관광공사)에 지점으로 자주 나오는 순**, 같으면 상세 설명이 긴 순, 그다음 ID 순. 대표 사진은 원천 이미지라 생성물이 아니므로 승인 없이 쓴다(2026-10-10). AI Hub 방문 빈도는 쓰지 않는다(이용 조건상 학습·평가용).
+### 지역 대표 사진
+
+시군구 풍경 사진. 한국관광공사 관광사진 정보 API(포토코리아, 공공누리 제1유형 — 출처 표시 시 상업 이용·변경 가능)에서 시군구 이름으로 검색해 촬영지가 그 지역인 사진을 후보로 모으고(지역당 최대 5장), **사람이 지역마다 한 장을 승인한 것만** 낸다(2026-10-17). 검색 결과에 안내판·실내·인물 사진이 섞여 자동으로 고르지 않는다. 화면은 사진 위나 아래에 `sourceName`·`photographer`·`license`를 표시한다. 저장은 `region_hero_photos`, 수집·검수는 `regionPhotoBackfill`([런북](../runbooks/region-photo-review.md)).
+
+**대표 관광지**(③과 한 줄 소개 생성의 근거) — 그 지역의 추천 가능 관광지 중 **TourAPI 추천코스(관광공사)에 지점으로 자주 나오는 순**, 같으면 상세 설명이 긴 순, 그다음 ID 순. 대표 사진은 원천 이미지라 생성물이 아니므로 승인 없이 쓴다(2026-10-10). AI Hub 방문 빈도는 쓰지 않는다(이용 조건상 학습·평가용).
 
 | 오류 | HTTP | code |
 |---|---:|---|
