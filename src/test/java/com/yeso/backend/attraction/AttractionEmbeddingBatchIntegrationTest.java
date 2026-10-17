@@ -62,6 +62,7 @@ class AttractionEmbeddingBatchIntegrationTest extends IntegrationTest {
             Long classified = insertRecommendableAttraction("경복궁", "조선의 법궁", "");
             Long unclassified = insertRecommendableAttraction("창덕궁", "조선의 궁궐", "");
             jdbc.update("update app.attractions set lcls_systm1 = 'HS', lcls_systm2 = 'HS01', lcls_systm3 = 'HS010100' where id = ?", classified);
+            jdbc.update("update app.attractions set lcls_systm1 = null, lcls_systm2 = null, lcls_systm3 = null where id = ?", unclassified);
 
             assertThat(processor.processNextBatch()).isEqualTo(2);
             assertThat(fakeEmbeddingClient.lastBatchRequest().items())
