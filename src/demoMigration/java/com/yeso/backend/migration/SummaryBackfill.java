@@ -110,7 +110,15 @@ public final class SummaryBackfill {
                         System.out.println(imported);
                     }
                 }
-                default -> throw new IllegalArgumentException("--mode must be dry-run, apply, export, or import");
+                case "export-targets" -> System.out.printf("생성 대상 %d건 → %s%n",
+                        exportTargets(connection, options, Path.of(options.out())), options.out());
+                case "import-generated" -> {
+                    try (IngestionWriterLock ignored = IngestionWriterLock.acquire(connection, JOB_TYPE)) {
+                        System.out.println(importGenerated(connection, options, Path.of(options.in())));
+                    }
+                }
+                default -> throw new IllegalArgumentException(
+                        "--mode must be dry-run, apply, export, import, export-targets, or import-generated");
             }
         }
     }
@@ -155,6 +163,12 @@ public final class SummaryBackfill {
 
     /** 상세가 보이는 관광지(쇼핑·숙박·음식점·캠핑장 제외) 중 요약이 없거나 근거가 바뀐 곳. */
     static List<AttractionTarget> findAttractionTargets(Connection connection, String region) throws SQLException {
+        return findAttractionTargets(connection, region, false);
+    }
+
+    /** @param includeUnchanged 근거가 그대로인 관광지도 담는다(외부 생성 결과를 다시 가져올 때). */
+    static List<AttractionTarget> findAttractionTargets(Connection connection, String region, boolean includeUnchanged)
+            throws SQLException {
         List<AttractionTarget> targets = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT a.id, a.name, a.lcls_systm1, a.lcls_systm2, a.lcls_systm3, r.province || ' ' || r.city AS region_name,
@@ -163,6 +177,7 @@ public final class SummaryBackfill {
                 JOIN app.regions r ON r.sig_cd = a.region_id
                 LEFT JOIN app.attraction_summaries s ON s.attraction_id = a.id
                 WHERE coalesce(a.content_type_id, 12) NOT IN (32, 38, 39) AND coalesce(a.lcls_systm2, '') <> 'AC05'
+                  AND coalesce(a.lcls_systm3, '') NOT IN ('VE090100', 'VE090300', 'VE120300')
                   AND (cast(? AS varchar) IS NULL OR a.region_id = ?)
                 ORDER BY a.id
                 """)) {
@@ -174,7 +189,7 @@ public final class SummaryBackfill {
                     String hash = sha256(List.of(PROMPT_VERSION, rs.getString("name"), nullToEmpty(rs.getString("lcls_systm1")),
                             nullToEmpty(rs.getString("lcls_systm2")), nullToEmpty(rs.getString("lcls_systm3")),
                             rs.getString("region_name"), nullToEmpty(description).strip()));
-                    if (hash.equals(rs.getString("source_hash"))) {
+                    if (!includeUnchanged && hash.equals(rs.getString("source_hash"))) {
                         continue;
                     }
                     targets.add(new AttractionTarget(rs.getLong("id"), rs.getString("name"), rs.getString("lcls_systm1"),
@@ -188,6 +203,11 @@ public final class SummaryBackfill {
 
     /** 대표 관광지가 하나 이상 있는 지역 중 요약이 없거나 근거가 바뀐 곳. */
     static List<RegionTarget> findRegionTargets(Connection connection, String region) throws SQLException {
+        return findRegionTargets(connection, region, false);
+    }
+
+    static List<RegionTarget> findRegionTargets(Connection connection, String region, boolean includeUnchanged)
+            throws SQLException {
         RegionSummaryMaterial material = RegionSummaryMaterial.forConnection(connection, "app");
         Map<String, String> existing = new HashMap<>();
         List<String[]> regions = new ArrayList<>();
@@ -217,7 +237,7 @@ public final class SummaryBackfill {
             representatives.forEach(rep -> parts.add(rep.id() + "|" + rep.name() + "|" + nullToEmpty(rep.lclsSystm3())
                     + "|" + sha256(List.of(nullToEmpty(rep.description()).strip()))));
             String hash = sha256(parts);
-            if (!hash.equals(existing.get(row[0]))) {
+            if (includeUnchanged || !hash.equals(existing.get(row[0]))) {
                 targets.add(new RegionTarget(row[0], row[1], counts, representatives, hash));
             }
         }
@@ -363,7 +383,10 @@ public final class SummaryBackfill {
                 "classCounts", target.classCounts(), "attractions", attractions);
     }
 
-    /** 근거가 바뀌어 다시 만든 행은 승인 상태를 지우고 DRAFT로 돌린다. */
+    /**
+     * 근거가 바뀌어 다시 만든 행은 승인 상태를 지우고 DRAFT로 돌린다. 근거가 같아도 아직 DRAFT면 새 결과로 바꾼다
+     * (예: 태그 규칙을 고친 뒤 다시 가져오기). 승인·반려한 행은 근거가 같으면 건드리지 않는다.
+     */
     private static void saveAttraction(Connection connection, AttractionTarget target, AttractionItem item, String model) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO app.attraction_summaries (attraction_id, one_line, tags, basis, source_hash, generator_model, prompt_version)
@@ -373,7 +396,7 @@ public final class SummaryBackfill {
                     source_hash = excluded.source_hash, generator_model = excluded.generator_model,
                     prompt_version = excluded.prompt_version, status = 'DRAFT', reviewed_by = NULL, reviewed_at = NULL,
                     review_note = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE attraction_summaries.source_hash <> excluded.source_hash
+                WHERE attraction_summaries.source_hash <> excluded.source_hash OR attraction_summaries.status = 'DRAFT'
                 """)) {
             statement.setLong(1, target.id());
             statement.setString(2, item.oneLine().strip());
@@ -395,7 +418,7 @@ public final class SummaryBackfill {
                     source_hash = excluded.source_hash, generator_model = excluded.generator_model,
                     prompt_version = excluded.prompt_version, status = 'DRAFT', reviewed_by = NULL, reviewed_at = NULL,
                     review_note = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE region_summaries.source_hash <> excluded.source_hash
+                WHERE region_summaries.source_hash <> excluded.source_hash OR region_summaries.status = 'DRAFT'
                 """)) {
             statement.setString(1, target.sigCd());
             statement.setString(2, response.tagline().strip());
@@ -406,6 +429,123 @@ public final class SummaryBackfill {
             statement.setString(7, PROMPT_VERSION);
             statement.executeUpdate();
         }
+    }
+
+    // ---------- 외부 생성(ai 서버 대신) ----------
+
+    /**
+     * 생성 대상을 JSON Lines로 내보낸다. ai 서버 대신 다른 생성기(예: Claude)로 문장을 만들 때 쓴다(2026-10-16). 한 줄이 대상 하나이고
+     * {@code sourceHash}를 그대로 돌려받아야 가져올 수 있다. 근거는 TourAPI 공개 데이터뿐이다.
+     */
+    static int exportTargets(Connection connection, Options options, Path out) throws Exception {
+        List<String> lines = new ArrayList<>();
+        if (options.scope().equals("attractions")) {
+            for (AttractionTarget target : findAttractionTargets(connection, options.region())) {
+                Map<String, Object> line = new LinkedHashMap<>();
+                line.put("id", String.valueOf(target.id()));
+                line.put("sourceHash", target.hash());
+                line.put("name", target.name());
+                line.put("lclsSystm1", target.lcls1());
+                line.put("lclsSystm2", target.lcls2());
+                line.put("lclsSystm3", target.lcls3());
+                line.put("regionName", target.regionName());
+                line.put("description", nullToEmpty(target.description()));
+                line.put("basis", target.hasDescription() ? "SOURCE_SUMMARY" : "NAME_CATEGORY");
+                lines.add(JSON.writeValueAsString(line));
+            }
+        } else {
+            for (RegionTarget target : findRegionTargets(connection, options.region())) {
+                Map<String, Object> line = new LinkedHashMap<>();
+                line.put("id", target.sigCd());
+                line.put("sourceHash", target.hash());
+                line.put("regionName", target.regionName());
+                line.put("classCounts", target.classCounts());
+                line.put("attractions", target.representatives().stream().map(rep -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", String.valueOf(rep.id()));
+                    item.put("name", rep.name());
+                    item.put("lclsSystm1", rep.lclsSystm1());
+                    item.put("lclsSystm2", rep.lclsSystm2());
+                    item.put("lclsSystm3", rep.lclsSystm3());
+                    item.put("description", nullToEmpty(rep.description()));
+                    return item;
+                }).toList());
+                lines.add(JSON.writeValueAsString(line));
+            }
+        }
+        Files.write(out, lines, StandardCharsets.UTF_8);
+        return lines.size();
+    }
+
+    record Generated(String id, String sourceHash, String oneLine, String tagline, List<String> tags) {
+    }
+
+    record GeneratedImport(int saved, int stale, int invalid) {
+        @Override
+        public String toString() {
+            return "saved=%d staleOrMissing=%d invalid=%d".formatted(saved, stale, invalid);
+        }
+    }
+
+    /**
+     * 외부 생성기가 만든(이미 검증한) 문장을 DRAFT로 저장한다. 지금 근거의 {@code sourceHash}와 같은 것만 받는다 — 그사이 근거가
+     * 바뀌었으면 건너뛴다. 이미 같은 근거로 저장한 DRAFT는 새 결과(예: 태그를 다시 계산한 것)로 바꾸고, 승인·반려한 행은 건드리지 않는다. 길이·태그 사전은 여기서 다시 확인한다. 승인은 기존 검수 CSV로 한다.
+     */
+    static GeneratedImport importGenerated(Connection connection, Options options, Path in) throws Exception {
+        boolean attractions = options.scope().equals("attractions");
+        Map<String, AttractionTarget> attractionTargets = new HashMap<>();
+        Map<String, RegionTarget> regionTargets = new HashMap<>();
+        if (attractions) {
+            findAttractionTargets(connection, options.region(), true).forEach(target -> attractionTargets.put(String.valueOf(target.id()), target));
+        } else {
+            findRegionTargets(connection, options.region(), true).forEach(target -> regionTargets.put(target.sigCd(), target));
+        }
+        UUID runId = UUID.randomUUID();
+        Plan plan = new Plan(options.scope(), List.of(), List.of(), 0, 0, sha256(List.of(in.toString())));
+        startRun(connection, runId, plan);
+        int saved = 0;
+        int stale = 0;
+        int invalid = 0;
+        for (String line : Files.readAllLines(in, StandardCharsets.UTF_8)) {
+            if (line.isBlank()) {
+                continue;
+            }
+            Generated generated = JSON.readValue(line, Generated.class);
+            List<String> tags;
+            try {
+                tags = SummaryTags.normalize(generated.tags() == null ? List.of() : generated.tags());
+            } catch (IllegalArgumentException e) {
+                invalid++;
+                continue;
+            }
+            if (attractions) {
+                AttractionTarget target = attractionTargets.get(generated.id());
+                String text = generated.oneLine() == null ? "" : generated.oneLine().strip();
+                if (target == null || !target.hash().equals(generated.sourceHash())) {
+                    stale++;
+                } else if (text.isEmpty() || text.length() > ONE_LINE_MAX) {
+                    invalid++;
+                } else {
+                    saveAttraction(connection, target, new AttractionItem(generated.id(), text, tags, null, "llm", List.of()),
+                            options.generator());
+                    saved++;
+                }
+            } else {
+                RegionTarget target = regionTargets.get(generated.id());
+                String text = generated.tagline() == null ? "" : generated.tagline().strip();
+                if (target == null || !target.hash().equals(generated.sourceHash())) {
+                    stale++;
+                } else if (text.isEmpty() || text.length() > TAGLINE_MAX) {
+                    invalid++;
+                } else {
+                    saveRegion(connection, target, new RegionResponse(text, tags, "llm", List.of(), PROMPT_VERSION,
+                            options.generator(), null));
+                    saved++;
+                }
+            }
+        }
+        finishRun(connection, runId, "SUCCEEDED", saved, stale + invalid);
+        return new GeneratedImport(saved, stale, invalid);
     }
 
     // ---------- 검수 ----------
@@ -602,7 +742,8 @@ public final class SummaryBackfill {
         if (!url.startsWith("jdbc:postgresql://") || lower.contains("prod")) {
             throw new IllegalArgumentException("PostgreSQL non-production target required; production targets are refused.");
         }
-        boolean writes = options.mode().equals("apply") || options.mode().equals("import");
+        boolean writes = options.mode().equals("apply") || options.mode().equals("import")
+                || options.mode().equals("import-generated");
         boolean local = lower.contains("localhost") || lower.contains("127.0.0.1");
         if (writes && !local) {
             if (!"dev".equals(System.getenv("MIGRATION_TARGET_ENV")) || !lower.matches(".*?/tripin_dev\\?.*sslmode=verify-full.*")) {
@@ -645,7 +786,7 @@ public final class SummaryBackfill {
     }
 
     record Options(String mode, String scope, String region, int maxCalls, String confirmPlan, String out, String in,
-                   String reviewer, long pauseMillis, boolean help) {
+                   String reviewer, long pauseMillis, String generator, boolean help) {
         static Options parse(String[] args) {
             Map<String, String> values = new HashMap<>();
             boolean help = false;
@@ -658,8 +799,8 @@ public final class SummaryBackfill {
                     throw new IllegalArgumentException("Unknown argument. Use --help.");
                 }
                 String[] pair = arg.substring(2).split("=", 2);
-                if (!List.of("mode", "scope", "region", "max-calls", "confirm-plan", "out", "in", "reviewer", "pause-millis")
-                        .contains(pair[0])) {
+                if (!List.of("mode", "scope", "region", "max-calls", "confirm-plan", "out", "in", "reviewer", "pause-millis",
+                                "generator").contains(pair[0])) {
                     throw new IllegalArgumentException("Unknown option: " + pair[0]);
                 }
                 values.put(pair[0], pair[1]);
@@ -673,15 +814,19 @@ public final class SummaryBackfill {
                 throw new IllegalArgumentException("--scope must be attractions or regions");
             }
             String mode = values.getOrDefault("mode", "dry-run");
-            if (mode.equals("export") && values.get("out") == null || mode.equals("import") && values.get("in") == null) {
-                throw new IllegalArgumentException("export는 --out, import는 --in이 필요합니다.");
+            if ((mode.equals("export") || mode.equals("export-targets")) && values.get("out") == null
+                    || (mode.equals("import") || mode.equals("import-generated")) && values.get("in") == null) {
+                throw new IllegalArgumentException("export·export-targets는 --out, import·import-generated는 --in이 필요합니다.");
+            }
+            if (mode.equals("import-generated") && (values.get("generator") == null || values.get("generator").isBlank())) {
+                throw new IllegalArgumentException("import-generated는 --generator(문장을 만든 모델 이름)가 필요합니다.");
             }
             long pauseMillis = Long.parseLong(values.getOrDefault("pause-millis", Long.toString(DEFAULT_PAUSE_MILLIS)));
             if (pauseMillis < 0 || pauseMillis > 60_000) {
                 throw new IllegalArgumentException("--pause-millis must be between 0 and 60000");
             }
             return new Options(mode, scope, values.get("region"), maxCalls, values.get("confirm-plan"), values.get("out"),
-                    values.get("in"), values.get("reviewer"), pauseMillis, help);
+                    values.get("in"), values.get("reviewer"), pauseMillis, values.get("generator"), help);
         }
     }
 

@@ -415,11 +415,18 @@ class RegionApiIntegrationTest extends IntegrationTest {
         }
 
         @Test
-        @DisplayName("없는 관광지와 쇼핑·숙박·음식점, 캠핑장(분류 AC05)은 404 ATTRACTION_NOT_FOUND다")
+        @DisplayName("없는 관광지와 쇼핑·숙박·음식점, 캠핑장(AC05)·문화원·도서관·기타 문화시설은 404 ATTRACTION_NOT_FOUND다")
         void notFound() throws Exception {
             Long shop = attraction("쇼핑몰", 35.84, 129.21, "설명", 38, "VALID");
             Long camping = camping("오토캠핑장");
-            for (Long id : List.of(999_999L, shop, camping)) {
+            Long library = attraction("시립도서관", 35.84, 129.21, "설명", 14, "VALID");
+            jdbc.update("update app.attractions set lcls_systm1 = 'VE', lcls_systm2 = 'VE09', lcls_systm3 = 'VE090300' where id = ?", library);
+            Long culturalCenter = attraction("문화원", 35.84, 129.21, "설명", 14, "VALID");
+            jdbc.update("update app.attractions set lcls_systm1 = 'VE', lcls_systm2 = 'VE09', lcls_systm3 = 'VE090100' where id = ?", culturalCenter);
+            Long museum = attraction("박물관", 35.84, 129.21, "설명", 14, "VALID");
+            jdbc.update("update app.attractions set lcls_systm1 = 'VE', lcls_systm2 = 'VE07', lcls_systm3 = 'VE070100' where id = ?", museum);
+            mockMvc.perform(authed(get("/api/attractions/{id}", museum))).andExpect(status().isOk());
+            for (Long id : List.of(999_999L, shop, camping, library, culturalCenter)) {
                 mockMvc.perform(authed(get("/api/attractions/{id}", id)))
                         .andExpect(status().isNotFound())
                         .andExpect(jsonPath("$.code").value("ATTRACTION_NOT_FOUND"));
