@@ -9,7 +9,7 @@
 스키마 변경이나 추가 학습은 수행하지 않았습니다.
 
 1. backend와 ai의 E5 PR을 **둘 다 반영**합니다.
-2. 별도로 전달받은 E5 `final` 전체 폴더를 준비합니다. 가중치는 Git에 없습니다.
+2. E5 `final` 전체 폴더를 `python scripts/fetch_e5_model.py`로 받습니다([체크포인트 준비](#체크포인트-준비)). 가중치는 Git에 없습니다.
 3. 모델을 마운트하고 AI·backend를 함께 재빌드/재시작합니다.
 4. AI 상태, 회원 벡터 READY, 실제 `MY_TASTE` 추천을 확인합니다.
 
@@ -18,6 +18,22 @@
 구형 서버의 관광지 재임베딩 배치도 실행하지 않습니다. 관광지당 벡터는 한 행이어서 다시 덮어쓰게 됩니다.
 
 ## 체크포인트 준비
+
+### 받기 (2026-10-18)
+
+체크포인트는 비공개 S3에 있습니다: `s3://tripin-dev-models-545769669608/e5/e5-base-rating-2022-2023-t4-all-v2.zip`
+(서울 리전, 퍼블릭 액세스 차단·암호화·버전 관리). zip SHA256은 `0bff9eff843ae88ffeecfb2274ba15aaa5acf63c9bb8c0cf7b2da8c1c78b9a39`이고 같은 경로의 `.sha256`에도 있습니다.
+
+```powershell
+# backend 폴더. 버킷 읽기 권한이 있는 AWS CLI 자격 증명이 있을 때
+python scripts/fetch_e5_model.py
+# 자격 증명이 없으면 팀에서 받은 기간 한정 링크(최대 7일)로
+python scripts/fetch_e5_model.py --url "<링크>"
+```
+
+스크립트는 zip과 가중치 SHA256을 확인하고 아래 기본 위치에 풉니다. 이미 같은 가중치가 있으면 아무것도 하지 않습니다.
+링크 만들기(버킷 권한이 있는 사람): `aws s3 presign s3://tripin-dev-models-545769669608/e5/e5-base-rating-2022-2023-t4-all-v2.zip --expires-in 604800`.
+AI Hub 학습 파생물이라 **팀 밖으로 전달하지 않습니다.** 공개 저장소(GitHub Release, 공개 Hugging Face 등)에 올리지 않고, 링크를 공개 채널에 붙이지 않습니다.
 
 기본 위치: `../ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final`.
 다른 위치라면 `TRIPIN_E5_MODEL_DIR`을 지정합니다. 기존 `TRIPIN_MODEL_DIR`을 사용하던 환경은
