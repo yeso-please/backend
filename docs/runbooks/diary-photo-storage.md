@@ -22,6 +22,29 @@ AWS SDK 기본 자격 증명 공급자를 사용한다. AWS 배포에서는 EC2 
 - 현재 단순 동기 저장소 삭제는 S3 호출과 PostgreSQL 트랜잭션을 원자화하지 않는다. 삭제 API의 실패/부분 실패를 모니터링하고, 운영 트래픽을 받기 전에는 삭제 outbox·재시도 작업을 별도 운영 개선으로 추가한다.
 - 사용자 사진은 민감한 데이터다. 접근 로그·애플리케이션 로그에 presigned URL이나 업로드 이미지 본문을 남기지 않는다.
 
+## 로컬 개발 (2026-10-18)
+
+개발용 사진 버킷은 `tripin-dev-diary-photos-545769669608`(서울 리전)이다. 퍼블릭 액세스 차단·AES256 암호화를 켰고, 끝나지 않은 멀티파트 업로드는 7일 뒤 지운다.
+버전 관리는 켜지 않았다(삭제 API로 지운 사진이 이전 버전으로 남지 않게).
+
+1. 내 IAM 사용자(또는 SSO 프로필)에 아래 권한을 붙인다. 버킷 설정 권한은 버킷을 만든 사람만 필요하다.
+
+   ```json
+   {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+    "Resource": "arn:aws:s3:::tripin-dev-diary-photos-545769669608/diaries/*"}
+   ```
+
+2. `aws configure`(또는 `aws sso login`)로 로컬 프로필을 만든다. 키를 `.env`·이미지·저장소에 넣지 않는다.
+3. `backend/.env`에 `DIARY_PHOTOS_S3_BUCKET=tripin-dev-diary-photos-545769669608`, `AWS_REGION=ap-northeast-2`를 넣는다.
+4. override와 함께 띄운다. `~/.aws`가 읽기 전용으로 backend 컨테이너에 연결되고 사진 저장소가 켜진다.
+
+   ```powershell
+   docker compose -f compose.dev.yaml -f compose.diary-photos.yaml up -d --build
+   ```
+
+   기본 프로필이 아니면 `AWS_PROFILE`, `~/.aws`가 다른 곳에 있으면 `AWS_CONFIG_DIR`를 지정한다.
+   `compose.dev.yaml`만 쓰면 사진 저장소는 꺼져 있고 사진 API는 `503 DIARY_PHOTO_STORAGE_UNAVAILABLE`을 준다.
+
 ## 확인
 
 1. 버킷 public access 차단과 암호화를 확인한다.
