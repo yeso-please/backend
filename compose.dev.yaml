@@ -51,6 +51,11 @@ services:
       KAKAO_LOGIN_CLIENT_ID: ${KAKAO_LOGIN_CLIENT_ID:-}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       KAKAO_ALLOWED_REDIRECT_URIS: ${KAKAO_ALLOWED_REDIRECT_URIS:-}
+      # 여행기 사진 S3(docs/runbooks/diary-photo-storage.md). 이 파일만 쓰면 꺼져 있다(AWS 자격 증명을 넘기지 않으므로).
+      # 켜려면 .env에 버킷을 넣고 compose.diary-photos.yaml을 함께 쓴다.
+      DIARY_PHOTOS_S3_ENABLED: "false"
+      DIARY_PHOTOS_S3_BUCKET: ${DIARY_PHOTOS_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       EMBEDDING_SERVICE_BASE_URL: http://ai:8000
       EMBEDDING_MODEL_VERSION: e5-base-rating-2022-2023-t4-all-v2
       EMBEDDING_EXPECTED_DIMENSION: "768"
