@@ -14,7 +14,11 @@ Docker Desktop만 있으면 Spring backend, `ai` 임베딩 서버, `test_fronten
    ```
 
    다른 곳에 두었으면 실행 전에 `TRIPIN_AI_DIR` 환경변수로 ai 경로를 지정한다.
-3. **파인튜닝 임베딩 모델**: 추천 모델(`e5-base-rating-2022-2023-t4-all-v2`, 가중치 약 1.1GB)은 git에 없다. 팀 공유 위치에서 받아 아래 폴더에 푼다.
+3. **파인튜닝 임베딩 모델**: 추천 모델(`e5-base-rating-2022-2023-t4-all-v2`, 가중치 약 1.1GB)은 git에 없다. 비공개 S3에 있고, 팀에서 받은 기간 한정 링크(7일)로 받는다. 링크는 팀 밖으로 전달하지 않는다.
+   - Python이 있으면 `backend` 폴더에서 `python scripts/fetch_e5_model.py --url "<링크>"` — SHA256 확인 후 아래 폴더에 푼다.
+   - Python이 없으면 링크를 브라우저로 열어 zip(약 800MB)을 받고, `Get-FileHash <zip> -Algorithm SHA256` 결과가 `0bff9eff843ae88ffeecfb2274ba15aaa5acf63c9bb8c0cf7b2da8c1c78b9a39`인지 확인한 뒤 `ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/`에 압축을 푼다(zip 안에 `final/` 폴더가 있다).
+   - 링크가 만료됐으면 버킷 권한이 있는 팀원에게 새 링크를 요청한다([E5 전환 런북](e5-model-switch.md#체크포인트-준비)).
+
 
    ```text
    ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final/   ← model.safetensors, config.json, tokenizer.json …
@@ -25,6 +29,8 @@ Docker Desktop만 있으면 Spring backend, `ai` 임베딩 서버, `test_fronten
    - `DB_URL`의 `sslrootcert` 경로는 각자 PC 기준이어도 된다. RDS CA 인증서는 이미지에 들어 있고 컨테이너가 경로를 바꾼다.
    - 값에 `$`가 있으면 `$$`로 적는다(Compose가 변수로 해석한다).
 5. **RDS 보안 그룹에 내 공인 IP 등록**: AWS 콘솔 권한이 있는 팀원에게 `내 IP/32` 추가를 요청한다. 빠지면 backend가 DB 연결 시간 초과로 뜨지 않는다. `0.0.0.0/0`으로 열지 않는다. 집·학교처럼 네트워크가 바뀌면 IP도 바뀌니 다시 등록한다.
+
+6. **(선택) 여행기 사진**: 사진 업로드까지 쓰려면 내 AWS 프로필에 사진 버킷 권한을 받고 `compose.diary-photos.yaml`을 함께 쓴다([여행기 사진 런북](diary-photo-storage.md#로컬-개발-2026-10-18)). 없으면 사진 API만 503이고 나머지는 정상이다.
 
 ## 2. 실행
 
