@@ -25,6 +25,7 @@ Docker Desktop만 있으면 Spring backend, `ai` 임베딩 서버, `test_fronten
    ```
 
    다른 곳에 두었으면 `TRIPIN_E5_MODEL_DIR`로 그 `final` 폴더를 지정한다. 모델이 없거나 구형 모델을 연결하면 AI healthcheck가 실패하여 새 backend 시작을 차단한다. backend의 `embedding.model-version`과 AI의 `MODEL_VERSION`이 같아야 하며, 다르면 임베딩 요청이 409다. E5 입력 계약과 체크포인트 확인은 [E5 전환 런북](e5-model-switch.md)을 따른다. `final` 전체 폴더(토크나이저·설정·`training_info.json` 포함)를 받아야 하며, MiniLM 폴더를 재사용하지 않는다.
+   - **순위 모델(선택)**: 취향 점수용 LightGBM 모델(`ranker.json`, 약 4MB)도 같은 방식으로 받는다 — `python scripts/fetch_ranker_model.py --url "<링크>"`, 위치는 `ai/data/interim/models/lgbm-ranker-v1/ranker.json`. 없으면 backend 로그에 `ranker disabled`가 남고 취향 점수는 E5 코사인으로 계산된다([E5 전환 런북](e5-model-switch.md#순위-모델-받기-2026-10-27-선택)).
 4. **`backend/.env`**: 팀에서 안전한 경로로 받는다(git에 없다). 필요한 키는 `DB_URL`, `DB_PASSWORD`, `FLYWAY_PASSWORD`, `JWT_SECRET`(32바이트 이상)이다. 선택 키는 `KAKAO_REST_API_KEY`, `COURSE_RESTAURANT_SELECTION_SECRET`, `GEMINI_API_KEY`다.
    - `DB_URL`의 `sslrootcert` 경로는 각자 PC 기준이어도 된다. RDS CA 인증서는 이미지에 들어 있고 컨테이너가 경로를 바꾼다.
    - 값에 `$`가 있으면 `$$`로 적는다(Compose가 변수로 해석한다).

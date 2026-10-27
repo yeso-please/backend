@@ -9,6 +9,9 @@ embedding:
   retry-sweep-enabled: false
 
 course:
+  cache:
+    # 시작 때·주기적으로 전국 후보·벡터를 채우는 작업은 테스트 데이터·TRUNCATE와 경합한다. 테스트에서는 끈다.
+    warm-enabled: false
   restaurant:
     # 테스트 전용 서명 키(32 byte 이상). 운영에서 쓰지 않는다.
     selection-secret: test-only-restaurant-selection-secret-0123456789

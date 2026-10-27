@@ -74,12 +74,15 @@ public class CourseMaterialService {
      * 전체를 요청마다 읽지 않도록 잠깐 기억한다({@link CourseDataCache}).
      */
     public Map<Long, float[]> findAttractionVectors(Collection<Long> attractionIds) {
-        return courseDataCache.vectors(attractionIds, missing -> {
-            Map<Long, float[]> vectors = new HashMap<>();
-            attractionQueryRepository.findEmbeddings(missing).forEach(row -> VectorCodec.tryDecode(
-                    row.embedding(), row.dimension()).ifPresent(vector -> vectors.put(row.attractionId(), vector)));
-            return vectors;
-        });
+        return courseDataCache.vectors(attractionIds, this::loadVectors);
+    }
+
+    /** 캐시를 거치지 않고 DB에서 읽는다({@link CourseDataWarmer}). */
+    public Map<Long, float[]> loadVectors(Collection<Long> attractionIds) {
+        Map<Long, float[]> vectors = new HashMap<>();
+        attractionQueryRepository.findEmbeddings(attractionIds).forEach(row -> VectorCodec.tryDecode(
+                row.embedding(), row.dimension()).ifPresent(vector -> vectors.put(row.attractionId(), vector)));
+        return vectors;
     }
 
     /** 지역의 TourAPI 공식 코스. 관광지로 연결된 장소만 담는다. */

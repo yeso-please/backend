@@ -35,6 +35,22 @@ python scripts/fetch_e5_model.py --url "<링크>"
 링크 만들기(버킷 권한이 있는 사람): `aws s3 presign s3://tripin-dev-models-545769669608/e5/e5-base-rating-2022-2023-t4-all-v2.zip --expires-in 604800`.
 AI Hub 학습 파생물이라 **팀 밖으로 전달하지 않습니다.** 공개 저장소(GitHub Release, 공개 Hugging Face 등)에 올리지 않고, 링크를 공개 채널에 붙이지 않습니다.
 
+### 순위 모델 받기 (2026-10-27, 선택)
+
+취향 점수를 내는 LightGBM 순위 모델(`ranker.json`, 약 4MB)도 같은 버킷에 있습니다:
+`s3://tripin-dev-models-545769669608/ranker/lgbm-ranker-v1.json` (SHA256 `8f2a0492…68439287`, 전체 값은 스크립트에 있음).
+
+```powershell
+# backend 폴더
+python scripts/fetch_ranker_model.py
+python scripts/fetch_ranker_model.py --url "<링크>"
+```
+
+기본 위치는 `../ai/data/interim/models/lgbm-ranker-v1/ranker.json`이고 다른 위치라면 `TRIPIN_RANKER_MODEL_DIR`(폴더)을 지정합니다.
+없어도 백엔드는 뜨고 로그에 `ranker disabled`가 남으며 취향 점수는 E5 코사인으로 돌아갑니다. 켜지면 `ranker enabled: lgbm-ranker-v1 (35 features)`.
+순위 모델은 E5 `e5-base-rating-2022-2023-t4-all-v2` 벡터로 학습했으므로 E5를 바꾸면 자동으로 꺼집니다(재학습 필요, ai `scripts/lgbm_ranker.py`).
+E5 체크포인트와 같은 이유로 팀 밖으로 전달하지 않습니다.
+
 기본 위치: `../ai/data/interim/models/e5-base-rating-2022-2023-t4-all-v2/final`.
 다른 위치라면 `TRIPIN_E5_MODEL_DIR`을 지정합니다. 기존 `TRIPIN_MODEL_DIR`을 사용하던 환경은
 MiniLM 경로가 남아 있는지 확인하고 E5 폴더로 바꾸거나 제거합니다.

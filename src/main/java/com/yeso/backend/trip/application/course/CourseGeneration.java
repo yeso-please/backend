@@ -26,15 +26,28 @@ public final class CourseGeneration {
      * @param officialCourses   같은 지역 TourAPI 공식 코스. 장소는 추천 가능 관광지 ID로 연결된 것만. 없으면 빈 목록
      * @param randomOnly        사용자가 완전 랜덤을 골랐으면 true. 취향·공식 코스를 쓰지 않는다
      * @param evidence          요청자 설문에서 나온 추천 이유 근거. 없으면 {@link TasteEvidence#NONE}
+     * @param rankerScores      순위 모델 점수(관광지 ID → 점수, 클수록 추천). 있으면 코사인 유사도 대신 쓴다. 없으면 빈 맵
      */
     public record Request(
             String regionName, int days, String scheduleDensity, Transport transport,
             List<CourseCandidate> candidates, float[] requesterVector, Map<Long, float[]> attractionVectors,
-            List<OfficialCourse> officialCourses, boolean randomOnly, TasteEvidence evidence) {
+            List<OfficialCourse> officialCourses, boolean randomOnly, TasteEvidence evidence,
+            Map<Long, Double> rankerScores) {
         public Request {
             if (evidence == null) {
                 evidence = TasteEvidence.NONE;
             }
+            if (rankerScores == null) {
+                rankerScores = Map.of();
+            }
+        }
+
+        /** 순위 모델 없이(코사인 유사도로) 만든다. */
+        public Request(String regionName, int days, String scheduleDensity, Transport transport,
+                       List<CourseCandidate> candidates, float[] requesterVector, Map<Long, float[]> attractionVectors,
+                       List<OfficialCourse> officialCourses, boolean randomOnly, TasteEvidence evidence) {
+            this(regionName, days, scheduleDensity, transport, candidates, requesterVector, attractionVectors,
+                    officialCourses, randomOnly, evidence, Map.of());
         }
     }
 

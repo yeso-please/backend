@@ -1,5 +1,6 @@
 package com.yeso.backend.attraction.application.region;
 
+import com.yeso.backend.attraction.application.ranking.TasteRanker;
 import com.yeso.backend.attraction.domain.AttractionCategory;
 import com.yeso.backend.attraction.domain.IneligibleReason;
 import com.yeso.backend.attraction.domain.RegionInvalidDaysException;
@@ -33,6 +34,7 @@ public class RegionEligibilityService {
     private final RegionQualityRepository regionQualityRepository;
     private final CourseMaterialService courseMaterialService;
     private final CourseDataCache courseDataCache;
+    private final TasteRanker tasteRanker;
 
     /** 지도에 그릴 지역 하나와 추첨 가능 여부. */
     public record RegionEligibility(
@@ -85,11 +87,27 @@ public class RegionEligibilityService {
      * 호환 가능한 관광지 벡터 중 유사도 상위 5개 평균을 0~1로 정규화한다.
      */
     public OptionalDouble tasteScore(String sigCd, float[] requesterVector) {
+        return tasteScore(sigCd, requesterVector, null);
+    }
+
+    /**
+     * 순위 모델이 켜져 있고 설문이 있으면 지역 추천 가능 관광지의 순위 점수 상위 5개 평균을 로지스틱으로 0~1로 바꾼다.
+     * 아니면 기존 코사인 유사도 방식.
+     */
+    public OptionalDouble tasteScore(String sigCd, float[] requesterVector, TasteRanker.Survey survey) {
         if (requesterVector == null || requesterVector.length == 0) {
             return OptionalDouble.empty();
         }
         List<Long> attractionIds = findCourseCandidates(sigCd).stream()
                 .map(CourseCandidate::attractionId).toList();
+        if (survey != null && tasteRanker.enabled()) {
+            var ranked = tasteRanker.score(survey, requesterVector, attractionIds);
+            if (ranked.isPresent()) {
+                double top = ranked.get().values().stream().sorted(java.util.Comparator.reverseOrder()).limit(5)
+                        .mapToDouble(Double::doubleValue).average().orElseThrow();
+                return OptionalDouble.of(1 / (1 + Math.exp(-top)));
+            }
+        }
         List<float[]> vectors = courseMaterialService.findAttractionVectors(attractionIds).values().stream()
                 .filter(vector -> vector.length == requesterVector.length)
                 .toList();
@@ -143,7 +161,7 @@ public class RegionEligibilityService {
                 .map(RegionEligibilityService::toCandidate);
     }
 
-    private static CourseCandidate toCandidate(RegionQualityRepository.RecommendableAttractionRow row) {
+    static CourseCandidate toCandidate(RegionQualityRepository.RecommendableAttractionRow row) {
         return new CourseCandidate(
                 row.getId(), row.getName(), AttractionCategory.fromContentType(row.getContentTypeId()),
                 AttractionCategory.stayMinutesOf(row.getContentTypeId()), row.getAddr(),

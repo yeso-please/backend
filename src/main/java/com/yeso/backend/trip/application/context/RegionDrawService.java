@@ -1,5 +1,6 @@
 package com.yeso.backend.trip.application.context;
 
+import com.yeso.backend.attraction.application.ranking.TasteRanker;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService;
 import com.yeso.backend.attraction.application.region.RegionEligibilityService.EligibleRegion;
 import com.yeso.backend.attraction.domain.Region;
@@ -63,6 +64,7 @@ public class RegionDrawService {
     private final RegionRepository regionRepository;
     private final OnboardingQueryService onboardingQueryService;
     private final RecommendationImpressionLogger impressionLogger;
+    private final TasteRanker tasteRanker;
     private final Random random;
 
     public DrawRegionResponse draw(Long userId, Long tripId, DrawRegionRequest request) {
@@ -182,8 +184,10 @@ public class RegionDrawService {
         }
         double chosen = outcome.exposure().stream().filter(c -> outcome.sigCd().equals(c.id()))
                 .mapToDouble(RecommendationImpressionLogger.Candidate::probability).findFirst().orElse(0);
+        String rankerVersion = outcome.appliedConditions().contains(DrawCondition.MY_TASTE)
+                ? tasteRanker.version().orElse(null) : null;
         impressionLogger.record(userId, tripId, stage, mode.name(),
-                outcome.appliedConditions().stream().map(Enum::name).toList(), outcome.exposure(),
+                outcome.appliedConditions().stream().map(Enum::name).toList(), rankerVersion, outcome.exposure(),
                 List.of(new RecommendationImpressionLogger.Chosen(outcome.sigCd(), 0, chosen)));
     }
 
@@ -232,7 +236,9 @@ public class RegionDrawService {
 
         if (requestedConditions.contains(DrawCondition.MY_TASTE)) {
             float[] requesterTaste = onboardingQueryService.findTasteVector(userId).orElse(null);
-            Map<String, Double> scores = requesterTaste == null ? Map.of() : tasteScores(candidates, requesterTaste);
+            TasteRanker.Survey survey = onboardingQueryService.findLatestTasteAnswers(userId)
+                    .map(answers -> new TasteRanker.Survey(answers.travelStyles(), answers.travelMotives())).orElse(null);
+            Map<String, Double> scores = requesterTaste == null ? Map.of() : tasteScores(candidates, requesterTaste, survey);
             if (scores.isEmpty()) {
                 ignored.add(new DrawIgnoredCondition(DrawCondition.MY_TASTE, DrawIgnoredReason.TASTE_NOT_READY));
             } else {
@@ -294,10 +300,11 @@ public class RegionDrawService {
     }
 
     /** 요청자의 취향 벡터와 지역의 추천 가능 관광지 벡터가 모두 준비된 지역만 담는다. */
-    private Map<String, Double> tasteScores(List<EligibleRegion> candidates, float[] requesterTaste) {
+    private Map<String, Double> tasteScores(List<EligibleRegion> candidates, float[] requesterTaste,
+                                            TasteRanker.Survey survey) {
         Map<String, Double> scores = new java.util.HashMap<>();
         for (EligibleRegion candidate : candidates) {
-            OptionalDouble score = regionEligibilityService.tasteScore(candidate.sigCd(), requesterTaste);
+            OptionalDouble score = regionEligibilityService.tasteScore(candidate.sigCd(), requesterTaste, survey);
             score.ifPresent(value -> scores.put(candidate.sigCd(), value));
         }
         return scores;

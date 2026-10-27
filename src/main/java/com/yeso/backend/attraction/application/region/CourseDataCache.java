@@ -87,6 +87,21 @@ public class CourseDataCache {
         return result;
     }
 
+    /** 미리 읽은 지역 후보를 한꺼번에 넣는다({@link CourseDataWarmer}). 기억 시간은 지금부터 다시 센다. */
+    void putCandidates(Map<String, List<CourseCandidate>> byRegion) {
+        Instant expiresAt = clock.instant().plus(candidatesTtl);
+        byRegion.forEach((sigCd, list) -> candidates.put(sigCd, new Timed<>(List.copyOf(list), expiresAt)));
+    }
+
+    /** 미리 읽은 관광지 벡터를 한꺼번에 넣는다. {@code requested} 중 결과에 없는 관광지는 "벡터 없음"으로 기억한다. */
+    void putVectors(Collection<Long> requested, Map<Long, float[]> loaded) {
+        Instant expiresAt = clock.instant().plus(vectorsTtl);
+        for (Long id : requested) {
+            float[] vector = loaded.get(id);
+            vectors.put(id, new Timed<>(vector == null ? NO_VECTOR : vector, expiresAt));
+        }
+    }
+
     /** 테스트가 매번 빈 상태로 시작하도록 비운다. */
     public void clear() {
         candidates.clear();

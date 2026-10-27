@@ -1,6 +1,7 @@
 package com.yeso.backend.trip.application.course;
 
 import com.yeso.backend.trip.application.RecommendationImpressionLogger;
+import com.yeso.backend.attraction.application.ranking.TasteRanker;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.ApprovedSummary;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
@@ -104,6 +105,7 @@ public class CourseService {
     private final RestaurantQueryService restaurantQueryService;
     private final EntityManager entityManager;
     private final RecommendationImpressionLogger impressionLogger;
+    private final TasteRanker tasteRanker;
     private final Clock clock;
 
     // ---------- 5-1 ----------
@@ -140,10 +142,17 @@ public class CourseService {
                         .toList();
 
         TasteEvidence evidence = randomOnly ? TasteEvidence.NONE : tasteEvidence(userId);
+        Map<Long, Double> rankerScores = requesterVector == null ? Map.of()
+                : onboardingQueryService.findLatestTasteAnswers(userId)
+                        .flatMap(answers -> tasteRanker.score(
+                                new TasteRanker.Survey(answers.travelStyles(), answers.travelMotives()), requesterVector,
+                                candidates.stream().map(CourseCandidate::attractionId).toList()))
+                        .orElse(Map.of());
 
         Result result = courseGenerator.generate(new CourseGeneration.Request(
                 region.getCity(), trip.getNights() + 1, density, trip.getTransport(), candidates,
-                requesterVector, attractionVectors, officialCourses, randomOnly, evidence), new SplittableRandom());
+                requesterVector, attractionVectors, officialCourses, randomOnly, evidence, rankerScores),
+                new SplittableRandom());
 
         courseItemRepository.deleteByTripPlanId(tripId);
         courseRemovalRepository.deleteByTripPlanId(tripId); // 새 기준점: 이전 변경 기록을 지운다(D11-3)
@@ -187,7 +196,7 @@ public class CourseService {
             trip.setCourseFirstGeneratedAt(now);
         }
         entityManager.flush(); // 여행 버전을 올린 값으로 응답한다
-        recordImpression(userId, tripId, result);
+        recordImpression(userId, tripId, result, rankerScores.isEmpty() ? null : tasteRanker.version().orElse(null));
 
         List<Warning> densityWarnings = result.warnings().stream()
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
@@ -196,7 +205,7 @@ public class CourseService {
     }
 
     /** 추첨 후보와 뽑힐 확률을 노출 기록으로 남긴다(docs/design/recommendation.md §9). 커밋 후 별도로 쓴다. */
-    private void recordImpression(Long userId, Long tripId, Result result) {
+    private void recordImpression(Long userId, Long tripId, Result result, String rankerVersion) {
         CourseGeneration.Exposure exposure = result.exposure();
         if (exposure == null || exposure.picks().isEmpty()) {
             return;
@@ -210,7 +219,7 @@ public class CourseService {
                 .map(pick -> new RecommendationImpressionLogger.Chosen(pick.attractionId(), pick.step(), pick.probability()))
                 .toList();
         impressionLogger.record(userId, tripId, RecommendationImpressionLogger.COURSE_GENERATION, result.mode().name(),
-                List.of(), candidates, chosen);
+                List.of(), rankerVersion, candidates, chosen);
     }
 
     /**
