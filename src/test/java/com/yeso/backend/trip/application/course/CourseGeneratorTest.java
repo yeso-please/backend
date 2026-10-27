@@ -207,6 +207,28 @@ class CourseGeneratorTest {
         }
 
         @Test
+        @DisplayName("순위 모델 점수가 있으면 코사인 유사도 대신 그 점수 상위 3배 안에서 고른다")
+        void rankerScoresOverrideCosine() {
+            List<CourseCandidate> list = candidates(40);
+            Map<Long, float[]> vectors = new HashMap<>();
+            Map<Long, Double> ranker = new HashMap<>();
+            for (CourseCandidate c : list) {
+                // 코사인은 ID가 작을수록 높지만, 순위 모델은 ID가 클수록 높다
+                double angle = Math.toRadians(c.attractionId() * 2);
+                vectors.put(c.attractionId(), new float[]{(float) Math.cos(angle), (float) Math.sin(angle)});
+                ranker.put(c.attractionId(), c.attractionId() * 0.1 - 2);
+            }
+            Request request = new Request("경주시", 1, "RELAXED", Transport.CAR, list, new float[]{1, 0}, vectors,
+                    List.of(), false, null, ranker);
+
+            for (int seed = 0; seed < 30; seed++) {
+                Result result = generator.generate(request, new Random(seed));
+                assertThat(result.mode()).isEqualTo(RecommendationMode.PERSONALIZED);
+                assertThat(selectedIds(result)).allSatisfy(id -> assertThat(id).isGreaterThan(28));
+            }
+        }
+
+        @Test
         @DisplayName("벡터가 있는 관광지가 필요 수보다 적으면 취향 반영을 하지 않는다")
         void personalizedNeedsEnoughVectors() {
             List<CourseCandidate> list = candidates(10);

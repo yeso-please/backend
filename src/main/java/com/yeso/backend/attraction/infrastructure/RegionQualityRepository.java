@@ -108,6 +108,24 @@ public interface RegionQualityRepository extends Repository<Region, String> {
             """, nativeQuery = true)
     List<RecommendableAttractionRow> findRecommendableAttractions(@Param("sigCd") String sigCd);
 
+    interface RegionRecommendableAttractionRow extends RecommendableAttractionRow {
+        String getRegionId();
+    }
+
+    /** 전국 추천 가능 관광지를 지역과 함께. 코스 후보 캐시를 한 번에 채울 때 쓴다(지역마다 따로 읽지 않게). */
+    @Query(value = """
+            select ra.region_id as regionId, ra.id as id, ra.name as name, ra.content_type_id as contentTypeId,
+                   ra.addr as addr, ra.lat as lat, ra.lng as lng,
+                   (select i.image_url from {h-schema}attraction_images i
+                    where i.attraction_id = ra.id and i.validation_status = 'VALID'
+                    order by i.display_order, i.id limit 1) as thumbnailUrl
+            from (""" + RECOMMENDABLE + """
+            ) ra
+            where ra.region_id is not null
+            order by ra.region_id, ra.id
+            """, nativeQuery = true)
+    List<RegionRecommendableAttractionRow> findAllRecommendableAttractions();
+
     /** 관광지 한 곳이 이 지역의 추천 가능 관광지인지. 편집(5-3)에서 고른 장소만 최신 데이터로 확인할 때 쓴다. */
     @Query(value = """
             select ra.id as id, ra.name as name, ra.content_type_id as contentTypeId, ra.addr as addr,

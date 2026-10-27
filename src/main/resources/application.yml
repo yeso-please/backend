@@ -72,6 +72,11 @@ auth:
 # ----- 온보딩 임베딩(Python) -----
 # base-url이 비어 있으면 호출이 항상 실패해 job이 PENDING/FAILED로 남는다 — submission 자체는
 # 항상 성공한다(작업서: "실패해도 submission과 onboarding 완료를 되돌리지 않는다").
+# ----- 개인화 순위 모델(docs/design/recommendation.md §5) -----
+# ai scripts/lgbm_ranker.py가 내보낸 ranker.json 경로. 비어 있거나 파일이 없거나 E5 버전이 다르면 꺼지고 코사인 유사도를 쓴다.
+ranker:
+  model-path: ${RANKER_MODEL_PATH:}
+
 embedding:
   base-url: ${EMBEDDING_SERVICE_BASE_URL:}
   model-version: ${EMBEDDING_MODEL_VERSION:mminilm-l12-ft-b64-v2}

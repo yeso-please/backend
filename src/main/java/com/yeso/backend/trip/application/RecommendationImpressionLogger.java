@@ -53,8 +53,9 @@ public class RecommendationImpressionLogger {
     public record Chosen(Object id, int step, double probability) {
     }
 
+    /** {@code rankerVersion}: 취향 점수를 순위 모델로 매겼으면 그 버전, 코사인 유사도면 null. */
     public void record(Long userId, Long tripPlanId, String stage, String policy, List<String> appliedConditions,
-                       List<Candidate> candidates, List<Chosen> chosen) {
+                       String rankerVersion, List<Candidate> candidates, List<Chosen> chosen) {
         UUID requestId = UUID.randomUUID();
         Runnable write = () -> {
             try {
@@ -62,7 +63,7 @@ public class RecommendationImpressionLogger {
                 String candidatesJson = JSON.writeValueAsString(candidates);
                 String chosenJson = JSON.writeValueAsString(chosen);
                 newTransaction.executeWithoutResult(status -> repository.insert(requestId, userId, tripPlanId, stage, policy,
-                        applied, modelVersion, templateVersion, candidatesJson, chosenJson));
+                        applied, modelVersion, templateVersion, rankerVersion, candidatesJson, chosenJson));
             } catch (RuntimeException e) {
                 log.warn("recommendation impression not recorded stage={} requestId={}: {}", stage, requestId, e.toString());
             }

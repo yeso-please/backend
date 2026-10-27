@@ -21,16 +21,18 @@ public class RecommendationImpressionRepository {
     }
 
     public void insert(UUID requestId, Long userId, Long tripPlanId, String stage, String policy, String appliedConditionsJson,
-                       String modelVersion, Integer templateVersion, String candidatesJson, String chosenJson) {
+                       String modelVersion, Integer templateVersion, String rankerVersion, String candidatesJson,
+                       String chosenJson) {
         jdbc.update("""
                 insert into %s.recommendation_impressions
                     (request_id, user_id, trip_plan_id, stage, policy, applied_conditions, model_version, template_version,
-                     candidates, chosen)
+                     ranker_version, candidates, chosen)
                 values (:requestId, :userId, :tripId, :stage, :policy, cast(:applied as jsonb), :model, :template,
-                        cast(:candidates as jsonb), cast(:chosen as jsonb))
+                        :ranker, cast(:candidates as jsonb), cast(:chosen as jsonb))
                 """.formatted(schema), new MapSqlParameterSource("requestId", requestId)
                 .addValue("userId", userId).addValue("tripId", tripPlanId).addValue("stage", stage)
                 .addValue("policy", policy).addValue("applied", appliedConditionsJson).addValue("model", modelVersion)
-                .addValue("template", templateVersion).addValue("candidates", candidatesJson).addValue("chosen", chosenJson));
+                .addValue("template", templateVersion).addValue("ranker", rankerVersion)
+                .addValue("candidates", candidatesJson).addValue("chosen", chosenJson));
     }
 }

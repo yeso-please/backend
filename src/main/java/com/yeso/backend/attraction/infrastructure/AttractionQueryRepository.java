@@ -170,6 +170,37 @@ public class AttractionQueryRepository {
                 (rs, n) -> new EmbeddingRow(rs.getLong("attraction_id"), rs.getBytes("embedding"), rs.getInt("dimension")));
     }
 
+    /** 순위 모델 특성(docs/design/recommendation.md §5). 설명 글자 수는 공백을 하나로 줄인 길이(학습과 같다). */
+    public record RankingMetaRow(Long attractionId, Integer contentTypeId, String lclsSystm1, String lclsSystm2,
+                                 String lclsSystm3, int descriptionChars) {
+    }
+
+    public List<RankingMetaRow> findRankingMeta(java.util.Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query("""
+                select a.id, a.content_type_id, a.lcls_systm1, a.lcls_systm2, a.lcls_systm3,
+                       char_length(btrim(regexp_replace(coalesce(a.description, ''), '\\s+', ' ', 'g'))) as description_chars
+                from %s.attractions a where a.id in (:ids)
+                """.formatted(schema), new MapSqlParameterSource("ids", ids),
+                (rs, n) -> new RankingMetaRow(rs.getLong("id"), (Integer) rs.getObject("content_type_id"),
+                        rs.getString("lcls_systm1"), rs.getString("lcls_systm2"), rs.getString("lcls_systm3"),
+                        rs.getInt("description_chars")));
+    }
+
+    /** 추천 가능 관광지 전체의 순위 메타. 서버 시작 때 한 번에 읽어 둔다. */
+    public List<RankingMetaRow> findAllRecommendableRankingMeta() {
+        return jdbc.query("""
+                select a.id, a.content_type_id, a.lcls_systm1, a.lcls_systm2, a.lcls_systm3,
+                       char_length(btrim(regexp_replace(coalesce(a.description, ''), '\\s+', ' ', 'g'))) as description_chars
+                from %s.attractions a where a.id in (select r.id from (%s) r)
+                """.formatted(schema, recommendableSql), new MapSqlParameterSource(),
+                (rs, n) -> new RankingMetaRow(rs.getLong("id"), (Integer) rs.getObject("content_type_id"),
+                        rs.getString("lcls_systm1"), rs.getString("lcls_systm2"), rs.getString("lcls_systm3"),
+                        rs.getInt("description_chars")));
+    }
+
     public record OfficialCourseStopRow(Long courseId, String title, Long attractionId) {
     }
 

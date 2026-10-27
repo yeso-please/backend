@@ -63,6 +63,10 @@ services:
       EMBEDDING_ATTRACTION_TEMPLATE_VERSION: "3"
       EMBEDDING_BATCH_SIZE: "8"
       EMBEDDING_TIMEOUT_MILLIS: "120000"
+      # 개인화 순위 모델(LightGBM). 파일이 없으면 꺼지고 코사인 유사도로 동작한다. 받는 법: docs/runbooks/e5-model-switch.md
+      RANKER_MODEL_PATH: /models/ranker/ranker.json
+    volumes:
+      - ${TRIPIN_RANKER_MODEL_DIR:-../ai/data/interim/models/lgbm-ranker-v1}:/models/ranker:ro
     depends_on:
       ai:
         condition: service_healthy

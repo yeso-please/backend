@@ -112,8 +112,20 @@ public class CourseGenerator {
 
     // ---------- 모드 ----------
 
-    /** 요청자 벡터가 있고 벡터가 있는 관광지가 필요 수 이상이면 취향 점수(코사인 유사도), 아니면 빈 맵. */
+    /**
+     * 취향 점수(0~1). 순위 모델 점수가 필요 수 이상이면 그 점수를 후보 안에서 0~1로 맞춘 값, 아니면 요청자 벡터와의
+     * 코사인 유사도. 둘 다 없으면 빈 맵.
+     */
     private static Map<Long, Double> tasteScores(Request request, int needed) {
+        Map<Long, Double> ranked = request.rankerScores();
+        if (ranked.size() >= needed) {
+            double min = ranked.values().stream().mapToDouble(Double::doubleValue).min().orElse(0);
+            double max = ranked.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
+            double span = max - min;
+            Map<Long, Double> scaled = new HashMap<>();
+            ranked.forEach((id, score) -> scaled.put(id, span > 0 ? (score - min) / span : 0.5));
+            return scaled;
+        }
         float[] requester = request.requesterVector();
         if (requester == null || request.attractionVectors() == null) {
             return Map.of();
