@@ -118,6 +118,22 @@ weight = 1
 
 ## 9. 관측·테스트
 
+### 추천 노출 기록 (`recommendation_impressions`, 2026-10-24)
+
+지역 뽑기(`RANDOM`·`CONDITIONAL`, 3-3·7-5)와 코스 생성(5-1)은 이미 확률 추첨이다. 그래서 요청마다 **후보와 각 후보가 뽑힐 확률, 실제로 뽑힌 것**을 한 행으로 남긴다. 출시 후 새 추천 방식(취향 갱신, 밴딧, 재순위)을 실제 사용자에게 내보내기 전에 이 기록으로 오프라인 평가(역성향 가중, IPS)를 하고, 밴딧 학습의 출발 데이터로 쓴다.
+
+| 열 | 내용 |
+|---|---|
+| `stage` | `REGION_DRAW`, `REGION_PRE_DRAW`, `COURSE_GENERATION` |
+| `policy` | 지역: `RANDOM`·`CONDITIONAL`. 코스: `PERSONALIZED`·`TOUR_OFFICIAL`·`RULE_BASED`·`RANDOM` |
+| `candidates` | 지역: 추첨 대상 시군구 전부 `{id, score(취향, 없으면 null), weight, probability}`. 코스: 추첨 풀(개인화면 필요 수의 3배) `{id, score, weight, probability(첫 단계 몫)}` |
+| `chosen` | 지역: 뽑힌 1곳. 코스: 뽑은 순서대로 `{id, step, probability}`. 코스는 유형 다양성 때문에 단계마다 가중치가 바뀌어 **각 단계의 조건부 확률**을 남긴다(곱하면 그 순서로 뽑힐 확률). 공식 코스에서 그대로 가져온 곳은 1 |
+| `model_version`, `template_version` | 그때 쓴 임베딩 모델·템플릿 |
+
+- 직접 고른 지역(`MANUAL`)은 추첨이 아니므로 남기지 않는다.
+- 요청이 커밋된 뒤 별도 트랜잭션으로 쓴다(코스 생성은 여행 행을 잠그므로 같은 트랜잭션 안에서 새 트랜잭션을 열면 잠금을 기다린다). 기록에 실패해도 사용자 요청은 성공한다(경고 로그).
+- 화면·API에 내보내지 않는다. 회원을 지우면 함께 지운다. 이후 사용자가 코스에서 빼거나 바꾼 기록(`course_removals`, `course_items.origin`)과 `trip_plan_id`로 이어 붙여 "보여 준 것 중 무엇을 받아들였나"를 본다.
+
 - 여행 일수별 적격 지역 수와 제외 사유, 지역별 추천 가능 관광지 수
 - 설명/이미지/좌표 각각과 교집합 보유율, `SOURCE_EMPTY`/실패/재시도 건수
 - 모델·템플릿 버전별 벡터 상태와 차원 불일치

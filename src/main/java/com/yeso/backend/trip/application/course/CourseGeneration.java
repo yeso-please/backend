@@ -42,8 +42,23 @@ public final class CourseGeneration {
     public record OfficialCourse(String title, List<Long> attractionIds) {
     }
 
-    /** 생성 결과. 날짜별 순서 목록이며 시각은 없다. */
-    public record Result(RecommendationMode mode, String title, List<Day> days, List<Warning> warnings) {
+    /** 생성 결과. 날짜별 순서 목록이며 시각은 없다. {@code exposure}는 노출 기록용(화면에 쓰지 않는다). */
+    public record Result(RecommendationMode mode, String title, List<Day> days, List<Warning> warnings, Exposure exposure) {
+    }
+
+    /**
+     * 추첨 기록. {@code pool}은 추첨 후보와 처음 가중치, {@code picks}는 뽑은 순서와 각 단계의 조건부 확률.
+     * 공식 코스에서 그대로 가져온 장소는 확률 1이다.
+     */
+    public record Exposure(List<PoolEntry> pool, List<Pick> picks) {
+        public static final Exposure NONE = new Exposure(List.of(), List.of());
+    }
+
+    /** {@code score}는 취향 점수(코사인), 없으면 null. */
+    public record PoolEntry(long attractionId, Double score, double weight) {
+    }
+
+    public record Pick(long attractionId, int step, double probability) {
     }
 
     public record Day(int dayIndex, List<Item> items) {

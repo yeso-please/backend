@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import static org.assertj.core.api.Assertions.within;
+import java.util.Map;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Duration;
@@ -140,6 +142,21 @@ class CourseApiIntegrationTest extends IntegrationTest {
             mockMvc.perform(get("/api/trips").header("Authorization", creator.bearer()))
                     .andExpect(jsonPath("$[0].hasCourse").value(true))
                     .andExpect(jsonPath("$[0].title").value("경주, 역사를 따라 걷는 2일"));
+
+            // 노출 기록: 뽑은 8곳과 각 단계 확률, 후보 확률 합 1
+            Map<String, Object> impression = jdbc.queryForMap("""
+                    select stage, policy, trip_plan_id, jsonb_array_length(chosen) as picks,
+                           (select sum((c->>'probability')::float) from jsonb_array_elements(candidates) c) as total,
+                           (select bool_and((c->>'probability')::float > 0 and (c->>'probability')::float <= 1)
+                              from jsonb_array_elements(chosen) c) as valid_steps
+                    from app.recommendation_impressions
+                    """);
+            assertThat(impression.get("stage")).isEqualTo("COURSE_GENERATION");
+            assertThat(impression.get("policy")).isEqualTo("RULE_BASED");
+            assertThat(((Number) impression.get("trip_plan_id")).longValue()).isEqualTo(tripId);
+            assertThat(((Number) impression.get("picks")).intValue()).isEqualTo(8);
+            assertThat(((Number) impression.get("total")).doubleValue()).isCloseTo(1.0, within(1e-9));
+            assertThat(impression.get("valid_steps")).isEqualTo(true);
         }
 
         @Test
