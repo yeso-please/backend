@@ -5,6 +5,7 @@ import com.yeso.backend.attraction.application.region.RegionEligibilityService.E
 import com.yeso.backend.attraction.domain.Region;
 import com.yeso.backend.attraction.infrastructure.RegionRepository;
 import com.yeso.backend.profile.application.onboarding.OnboardingQueryService;
+import com.yeso.backend.trip.application.RecommendationImpressionLogger;
 import com.yeso.backend.trip.application.course.CourseStorage;
 import com.yeso.backend.trip.domain.DrawCondition;
 import com.yeso.backend.trip.domain.DrawIgnoredCondition;
@@ -61,6 +62,7 @@ public class RegionDrawService {
     private final RegionEligibilityService regionEligibilityService;
     private final RegionRepository regionRepository;
     private final OnboardingQueryService onboardingQueryService;
+    private final RecommendationImpressionLogger impressionLogger;
     private final Random random;
 
     public DrawRegionResponse draw(Long userId, Long tripId, DrawRegionRequest request) {
@@ -108,6 +110,7 @@ public class RegionDrawService {
         } catch (ObjectOptimisticLockingFailureException e) {
             throw new TripVersionConflictException();
         }
+        recordImpression(userId, tripId, RecommendationImpressionLogger.REGION_DRAW, mode, outcome);
 
         return new DrawRegionResponse(
                 tripId,
@@ -146,6 +149,7 @@ public class RegionDrawService {
                 : drawConditional(request.originLat(), request.originLng(), userId, PRE_DRAW_DAYS, density, requestedConditions);
         Region region = regionRepository.findById(outcome.sigCd())
                 .orElseThrow(() -> new IllegalStateException("추첨된 지역이 regions 테이블에 없습니다: " + outcome.sigCd()));
+        recordImpression(userId, null, RecommendationImpressionLogger.REGION_PRE_DRAW, mode, outcome);
         return new PreDrawRegionResponse(
                 region.getSigCd(), region.getProvince(), region.getCity(), region.getLat(), region.getLng(), mode.name(),
                 density, maxNights(region.getSigCd(), density),
@@ -165,9 +169,22 @@ public class RegionDrawService {
         return -1;
     }
 
+    /** {@code exposure}: 추첨한 후보와 뽑힐 확률(직접 고른 MANUAL이면 빈 목록, 기록하지 않는다). */
     private record DrawOutcome(
             String sigCd, List<DrawCondition> appliedConditions,
-            List<DrawIgnoredCondition> ignoredConditions, long candidateCount, List<DrawWarning> warnings) {
+            List<DrawIgnoredCondition> ignoredConditions, long candidateCount, List<DrawWarning> warnings,
+            List<RecommendationImpressionLogger.Candidate> exposure) {
+    }
+
+    private void recordImpression(Long userId, Long tripId, String stage, RegionSelectionMode mode, DrawOutcome outcome) {
+        if (outcome.exposure().isEmpty()) {
+            return;
+        }
+        double chosen = outcome.exposure().stream().filter(c -> outcome.sigCd().equals(c.id()))
+                .mapToDouble(RecommendationImpressionLogger.Candidate::probability).findFirst().orElse(0);
+        impressionLogger.record(userId, tripId, stage, mode.name(),
+                outcome.appliedConditions().stream().map(Enum::name).toList(), outcome.exposure(),
+                List.of(new RecommendationImpressionLogger.Chosen(outcome.sigCd(), 0, chosen)));
     }
 
     private DrawOutcome drawRandom(int days, String density) {
@@ -176,7 +193,10 @@ public class RegionDrawService {
             throw new DrawNoEligibleRegionException();
         }
         EligibleRegion chosen = candidates.get(random.nextInt(candidates.size()));
-        return new DrawOutcome(chosen.sigCd(), List.of(), List.of(), candidates.size(), List.of());
+        double probability = 1.0 / candidates.size();
+        List<RecommendationImpressionLogger.Candidate> exposure = candidates.stream()
+                .map(c -> new RecommendationImpressionLogger.Candidate(c.sigCd(), null, 1.0, probability)).toList();
+        return new DrawOutcome(chosen.sigCd(), List.of(), List.of(), candidates.size(), List.of(), exposure);
     }
 
     private DrawOutcome drawManual(String sigCd, int days, String density) {
@@ -186,7 +206,7 @@ public class RegionDrawService {
             throw new DrawRegionNotEligibleException(sigCd);
         }
         long candidateCount = regionEligibilityService.countEligible(days, density);
-        return new DrawOutcome(sigCd, List.of(), List.of(), candidateCount, List.of());
+        return new DrawOutcome(sigCd, List.of(), List.of(), candidateCount, List.of(), List.of());
     }
 
     private DrawOutcome drawConditional(
@@ -222,18 +242,31 @@ public class RegionDrawService {
         }
 
         List<DrawWarning> warnings = applied.isEmpty() ? List.of(DrawWarning.ALL_CONDITIONS_IGNORED) : List.of();
-        EligibleRegion chosen = weightedPick(candidates, distanceScores, tasteScores);
-        return new DrawOutcome(chosen.sigCd(), List.copyOf(applied), List.copyOf(ignored), candidates.size(), warnings);
-    }
-
-    private EligibleRegion weightedPick(
-            List<EligibleRegion> candidates, Map<String, Double> distanceScores, Map<String, Double> tasteScores) {
-        double[] weights = new double[candidates.size()];
-        double total = 0;
+        double[] weights = weights(candidates, distanceScores, tasteScores);
+        EligibleRegion chosen = weightedPick(candidates, weights);
+        double total = java.util.Arrays.stream(weights).sum();
+        List<RecommendationImpressionLogger.Candidate> exposure = new ArrayList<>();
         for (int i = 0; i < candidates.size(); i++) {
             String sigCd = candidates.get(i).sigCd();
-            double weight = 1.0 + distanceScores.getOrDefault(sigCd, 0.0) + tasteScores.getOrDefault(sigCd, 0.0);
-            weights[i] = weight;
+            exposure.add(new RecommendationImpressionLogger.Candidate(sigCd, tasteScores.get(sigCd), weights[i], weights[i] / total));
+        }
+        return new DrawOutcome(chosen.sigCd(), List.copyOf(applied), List.copyOf(ignored), candidates.size(), warnings,
+                exposure);
+    }
+
+    private static double[] weights(
+            List<EligibleRegion> candidates, Map<String, Double> distanceScores, Map<String, Double> tasteScores) {
+        double[] weights = new double[candidates.size()];
+        for (int i = 0; i < candidates.size(); i++) {
+            String sigCd = candidates.get(i).sigCd();
+            weights[i] = 1.0 + distanceScores.getOrDefault(sigCd, 0.0) + tasteScores.getOrDefault(sigCd, 0.0);
+        }
+        return weights;
+    }
+
+    private EligibleRegion weightedPick(List<EligibleRegion> candidates, double[] weights) {
+        double total = 0;
+        for (double weight : weights) {
             total += weight;
         }
         double pick = random.nextDouble() * total;

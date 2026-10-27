@@ -1,5 +1,6 @@
 package com.yeso.backend.trip.application.course;
 
+import com.yeso.backend.trip.application.RecommendationImpressionLogger;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.ApprovedSummary;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
@@ -102,6 +103,7 @@ public class CourseService {
     private final CourseGenerator courseGenerator;
     private final RestaurantQueryService restaurantQueryService;
     private final EntityManager entityManager;
+    private final RecommendationImpressionLogger impressionLogger;
     private final Clock clock;
 
     // ---------- 5-1 ----------
@@ -185,11 +187,30 @@ public class CourseService {
             trip.setCourseFirstGeneratedAt(now);
         }
         entityManager.flush(); // 여행 버전을 올린 값으로 응답한다
+        recordImpression(userId, tripId, result);
 
         List<Warning> densityWarnings = result.warnings().stream()
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
                 .toList();
         return view(trip, Viewer.participant(userId), densityWarnings);
+    }
+
+    /** 추첨 후보와 뽑힐 확률을 노출 기록으로 남긴다(docs/design/recommendation.md §9). 커밋 후 별도로 쓴다. */
+    private void recordImpression(Long userId, Long tripId, Result result) {
+        CourseGeneration.Exposure exposure = result.exposure();
+        if (exposure == null || exposure.picks().isEmpty()) {
+            return;
+        }
+        double total = exposure.pool().stream().mapToDouble(CourseGeneration.PoolEntry::weight).sum();
+        List<RecommendationImpressionLogger.Candidate> candidates = exposure.pool().stream()
+                .map(e -> new RecommendationImpressionLogger.Candidate(e.attractionId(), e.score(), e.weight(),
+                        total > 0 ? e.weight() / total : 0))
+                .toList();
+        List<RecommendationImpressionLogger.Chosen> chosen = exposure.picks().stream()
+                .map(pick -> new RecommendationImpressionLogger.Chosen(pick.attractionId(), pick.step(), pick.probability()))
+                .toList();
+        impressionLogger.record(userId, tripId, RecommendationImpressionLogger.COURSE_GENERATION, result.mode().name(),
+                List.of(), candidates, chosen);
     }
 
     /**

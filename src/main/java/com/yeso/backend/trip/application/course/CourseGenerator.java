@@ -5,9 +5,12 @@ import com.yeso.backend.attraction.application.region.RegionEligibilityService.C
 import com.yeso.backend.attraction.domain.AttractionCategory;
 import com.yeso.backend.trip.application.course.CourseGeneration.AttractionItem;
 import com.yeso.backend.trip.application.course.CourseGeneration.Day;
+import com.yeso.backend.trip.application.course.CourseGeneration.Exposure;
 import com.yeso.backend.trip.application.course.CourseGeneration.Item;
 import com.yeso.backend.trip.application.course.CourseGeneration.MealItem;
 import com.yeso.backend.trip.application.course.CourseGeneration.OfficialCourse;
+import com.yeso.backend.trip.application.course.CourseGeneration.Pick;
+import com.yeso.backend.trip.application.course.CourseGeneration.PoolEntry;
 import com.yeso.backend.trip.application.course.CourseGeneration.Request;
 import com.yeso.backend.trip.application.course.CourseGeneration.Result;
 import com.yeso.backend.trip.application.course.CourseGeneration.Warning;
@@ -77,7 +80,8 @@ public class CourseGenerator {
                 : official != null ? RecommendationMode.TOUR_OFFICIAL
                 : RecommendationMode.RULE_BASED;
 
-        List<CourseCandidate> selected = select(request.candidates(), needed, mode, tasteScores, official, random);
+        Selection selection = select(request.candidates(), needed, mode, tasteScores, official, random);
+        List<CourseCandidate> selected = selection.picked();
         if (selected.size() < request.days()) {
             List<DayShortage> shortages = new ArrayList<>();
             for (int day = selected.size(); day < request.days(); day++) {
@@ -103,7 +107,7 @@ public class CourseGenerator {
                 warnings.add(new Warning("DENSITY_TARGET_NOT_MET", dayIndex));
             }
         }
-        return new Result(mode, title(request.regionName(), request.days(), selected), days, warnings);
+        return new Result(mode, title(request.regionName(), request.days(), selected), days, warnings, selection.exposure());
     }
 
     // ---------- 모드 ----------
@@ -138,17 +142,22 @@ public class CourseGenerator {
 
     // ---------- 고르기 ----------
 
-    private static List<CourseCandidate> select(
+    private record Selection(List<CourseCandidate> picked, Exposure exposure) {
+    }
+
+    private static Selection select(
             List<CourseCandidate> candidates, int needed, RecommendationMode mode, Map<Long, Double> tasteScores,
             OfficialCourse official, RandomGenerator random) {
         Map<Long, CourseCandidate> byId = candidates.stream()
                 .collect(Collectors.toMap(CourseCandidate::attractionId, c -> c, (a, b) -> a));
         List<CourseCandidate> picked = new ArrayList<>();
 
+        List<Pick> picks = new ArrayList<>();
         if (mode == RecommendationMode.TOUR_OFFICIAL) {
             for (Long id : official.attractionIds()) {
                 if (picked.size() < needed) {
                     picked.add(byId.get(id));
+                    picks.add(new Pick(id, picks.size(), 1.0));
                 }
             }
         }
@@ -167,6 +176,8 @@ public class CourseGenerator {
             pool.forEach(candidate -> weights.put(candidate, 1.0));
         }
 
+        List<PoolEntry> exposedPool = pool.stream()
+                .map(c -> new PoolEntry(c.attractionId(), tasteScores.get(c.attractionId()), weights.get(c))).toList();
         // 유형이 몰리지 않게: 이미 뽑힌 같은 유형 수만큼 가중치를 낮춘다.
         Map<AttractionCategory, Integer> categoryCounts = new EnumMap<>(AttractionCategory.class);
         picked.forEach(c -> categoryCounts.merge(c.category(), 1, Integer::sum));
@@ -187,11 +198,13 @@ public class CourseGenerator {
                     break;
                 }
             }
+            double probability = effective[chosen] / total;
             CourseCandidate candidate = pool.remove(chosen);
             picked.add(candidate);
+            picks.add(new Pick(candidate.attractionId(), picks.size(), probability));
             categoryCounts.merge(candidate.category(), 1, Integer::sum);
         }
-        return picked;
+        return new Selection(picked, new Exposure(exposedPool, picks));
     }
 
     // ---------- 나누기·잇기 ----------

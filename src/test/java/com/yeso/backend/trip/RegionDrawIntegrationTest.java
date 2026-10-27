@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,6 +90,11 @@ class RegionDrawIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.scheduleDensity").value("RELAXED"))
                     .andExpect(jsonPath("$.candidateCount").value(1))
                     .andExpect(jsonPath("$.version").value(1));
+
+            assertThat(jdbc.queryForObject("""
+                    select stage || ' ' || policy || ' ' || (chosen->0->>'id') || ' ' || (chosen->0->>'probability')
+                    from app.recommendation_impressions
+                    """, String.class)).isEqualTo("REGION_DRAW RANDOM " + GYEONGJU + " 1.0");
         }
 
         @Test
@@ -172,6 +179,11 @@ class RegionDrawIntegrationTest extends IntegrationTest {
                     .andExpect(jsonPath("$.appliedConditions[0]").value("MY_TASTE"))
                     .andExpect(jsonPath("$.ignoredConditions.length()").value(0))
                     .andExpect(jsonPath("$.warnings.length()").value(0));
+
+            assertThat(jdbc.queryForObject("""
+                    select policy || ' ' || applied_conditions::text || ' ' || (candidates->0->>'score' is not null)
+                    from app.recommendation_impressions
+                    """, String.class)).isEqualTo("CONDITIONAL [\"MY_TASTE\"] true");
         }
 
         @Test
@@ -213,6 +225,9 @@ class RegionDrawIntegrationTest extends IntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.regionSigCd").value(JEONJU))
                     .andExpect(jsonPath("$.regionSelection").value("MANUAL"));
+
+            // 직접 고른 지역은 추첨이 아니므로 노출 기록을 남기지 않는다
+            assertThat(jdbc.queryForObject("select count(*) from app.recommendation_impressions", Integer.class)).isZero();
         }
 
         @Test
