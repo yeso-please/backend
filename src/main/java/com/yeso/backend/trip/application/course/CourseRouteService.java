@@ -18,6 +18,7 @@ import com.yeso.backend.trip.infrastructure.KakaoMobilityClient.Point;
 import com.yeso.backend.trip.infrastructure.RouteLegCache;
 import com.yeso.backend.trip.infrastructure.RouteProperties;
 import com.yeso.backend.trip.domain.TravelTimeEstimator;
+import com.yeso.backend.trip.presentation.course.CourseFirstLegResponse;
 import com.yeso.backend.trip.presentation.course.CourseRoutesResponse;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -132,6 +133,82 @@ public class CourseRouteService {
             }
         };
         return new CourseRoutesResponse(plan.tripId(), plan.version(), dayIndex, transport.name(), legs);
+    }
+
+    /** 도보는 이 직선거리(km)까지만 계산한다. 더 멀면 카카오를 부르지 않고 null. */
+    static final double MAX_WALK_KM = 10.0;
+
+    private record FirstStop(Long tripId, String itemId, Long attractionId, String name, Point point) {
+    }
+
+    /**
+     * 5-8 지금 위치에서 그날 첫 관광지까지 자동차·도보·대중교통. 위치는 저장하지 않고, 기억(캐시) 키도 약 100m로 반올림한
+     * 좌표만 쓴다. 세 수단을 동시에 부르고 요청 전체 시간 상한을 넘기거나 실패한 수단은 직선 추정이다.
+     */
+    public CourseFirstLegResponse firstLeg(Long userId, Long tripId, int dayIndex, double lat, double lng) {
+        if (lat < 33 || lat > 39 || lng < 124 || lng > 132) {
+            throw new CourseInvalidQueryException("현재 위치가 국내 범위(위도 33~39, 경도 124~132) 밖입니다");
+        }
+        FirstStop stop = readOnlyTransaction.execute(status -> firstStop(userId, tripId, dayIndex));
+        Point origin = new Point(Math.round(lat * 1000) / 1000.0, Math.round(lng * 1000) / 1000.0);
+        Planned leg = new Planned("here", stop.itemId(), origin, stop.point());
+        double km = TravelTimeEstimator.distanceKm(origin.lat(), origin.lng(), stop.point().lat(), stop.point().lng());
+        boolean routable = km >= MIN_ROUTABLE_KM;
+        boolean walkable = km <= MAX_WALK_KM;
+
+        Optional<Leg> cachedCar = cache.get(leg.key());
+        Future<Optional<Leg>> car = cachedCar.isPresent() || !routable ? null
+                : executor.submit(() -> client.route(List.of(origin, stop.point())).map(found -> found.get(0)));
+        Optional<KakaoMapRouteClient.TransitLeg> cachedWalk = cache.getTransit(leg.key("WALK"));
+        Future<Optional<KakaoMapRouteClient.TransitLeg>> walk = cachedWalk.isPresent() || !routable || !walkable ? null
+                : executor.submit(() -> mapClient.walk(origin, stop.point())
+                        .map(found -> new KakaoMapRouteClient.TransitLeg(found, 0, null)));
+        Optional<KakaoMapRouteClient.TransitLeg> cachedTransit = cache.getTransit(leg.key("PUBLIC_TRANSIT"));
+        Future<Optional<KakaoMapRouteClient.TransitLeg>> transit = cachedTransit.isPresent() || !routable ? null
+                : executor.submit(() -> mapClient.transit(origin, stop.point()));
+
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(properties.getTotalBudgetMillis());
+        Optional<Leg> carLeg = car == null ? cachedCar : await(car, deadline);
+        if (car != null) carLeg.ifPresent(found -> cache.put(leg.key(), found));
+        Optional<KakaoMapRouteClient.TransitLeg> walkLeg = walk == null ? cachedWalk : await(walk, deadline);
+        if (walk != null) walkLeg.ifPresent(found -> cache.putTransit(leg.key("WALK"), found));
+        Optional<KakaoMapRouteClient.TransitLeg> transitLeg = transit == null ? cachedTransit : await(transit, deadline);
+        if (transit != null) transitLeg.ifPresent(found -> cache.putTransit(leg.key("PUBLIC_TRANSIT"), found));
+
+        return new CourseFirstLegResponse(stop.tripId(), dayIndex, stop.itemId(), stop.attractionId(), stop.name(),
+                stop.point().lat(), stop.point().lng(), (int) Math.round(km * 1000),
+                mode(leg, carLeg.orElse(null), "ROAD", null, Transport.CAR),
+                walkable ? mode(leg, walkLeg.map(KakaoMapRouteClient.TransitLeg::leg).orElse(null), "WALK", null, Transport.WALK) : null,
+                mode(leg, transitLeg.map(KakaoMapRouteClient.TransitLeg::leg).orElse(null), "TRANSIT",
+                        transitLeg.orElse(null), Transport.PUBLIC_TRANSIT));
+    }
+
+    private static CourseFirstLegResponse.Mode mode(Planned leg, Leg found, String source,
+                                                    KakaoMapRouteClient.TransitLeg transit, Transport transport) {
+        CourseRoutesResponse.Leg view = toResponse(leg, found, source, transit, transport);
+        return new CourseFirstLegResponse.Mode(view.source(), view.distanceMeters(), view.durationMinutes(),
+                view.transfers(), view.fare());
+    }
+
+    private FirstStop firstStop(Long userId, Long tripId, int dayIndex) {
+        TripPlan trip = tripService.requireParticipantTrip(userId, tripId);
+        if (dayIndex < 0 || dayIndex > trip.getNights()) {
+            throw new CourseInvalidQueryException("dayIndex가 여행 날짜 범위 밖입니다: " + dayIndex);
+        }
+        List<CourseItem> items = courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripId);
+        if (items.isEmpty()) {
+            throw new CourseNotFoundException(tripId);
+        }
+        CourseItem first = items.stream()
+                .filter(item -> item.getDayIndex() == dayIndex && !item.isMeal())
+                .findFirst()
+                .orElseThrow(() -> new CourseInvalidQueryException("그날 코스에 관광지가 없습니다: " + dayIndex));
+        AttractionView view = courseMaterialService.findAttractionViews(List.of(first.getAttractionId()))
+                .get(first.getAttractionId());
+        if (view == null || view.lat() == null || view.lng() == null) {
+            throw new CourseInvalidQueryException("첫 관광지의 좌표가 없습니다");
+        }
+        return new FirstStop(trip.getId(), first.itemId(), view.attractionId(), view.name(), new Point(view.lat(), view.lng()));
     }
 
     private static Transport parseTransport(String value) {

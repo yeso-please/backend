@@ -16,14 +16,15 @@ public interface RegionQualityRepository extends Repository<Region, String> {
 
     /**
      * 콘텐츠 유형과 관계없이 코스 후보가 아닌 분류: 숙박 > 캠핑(AC05, 2026-10-09), 한국문화원(VE090100)·도서관(VE090300)·
-     * 기타 문화시설(VE120300)(2026-10-17, 관광지라기보다 생활·행정 시설). 별칭 {@code a}(attractions)에 붙여 쓴다.
+     * 기타 문화시설(VE120300)(2026-10-17, 관광지라기보다 생활·행정 시설), 골프장(LS010400, 2026-10-30, 예약제 유료 시설이라 여행
+     * 코스로 추천하지 않는다). 별칭 {@code a}(attractions)에 붙여 쓴다.
      */
     String NOT_COURSE_CLASS = " coalesce(a.lcls_systm2, '') <> 'AC05'"
-            + " and coalesce(a.lcls_systm3, '') not in ('VE090100', 'VE090300', 'VE120300')";
+            + " and coalesce(a.lcls_systm3, '') not in ('VE090100', 'VE090300', 'VE120300', 'LS010400')";
 
     /**
      * 추천 가능 관광지: 좌표, 공백 아닌 설명, 검증된(VALID) 이미지 1장 이상, 열린 ERROR 품질 이슈 없음.
-     * 쇼핑(38)·숙박(32)·음식점(39)과 {@link #NOT_COURSE_CLASS}(캠핑장·문화원·도서관·기타 문화시설)는 코스 후보가 아니다.
+     * 쇼핑(38)·숙박(32)·음식점(39)과 {@link #NOT_COURSE_CLASS}(캠핑장·문화원·도서관·기타 문화시설·골프장)는 코스 후보가 아니다.
      */
     String RECOMMENDABLE = """
             select a.* from {h-schema}attractions a

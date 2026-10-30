@@ -70,4 +70,12 @@ public class CourseController {
                                        @RequestParam(required = false) String transport) {
         return courseRouteService.routes(userId, tripId, dayIndex, transport);
     }
+
+    @Operation(summary = "5-8 지금 위치에서 그날 첫 관광지까지 거리·자동차·도보·대중교통 시간")
+    @GetMapping("/api/courses/{tripId}/first-leg")
+    public CourseFirstLegResponse firstLeg(@CurrentUserId Long userId, @PathVariable Long tripId,
+                                           @RequestParam(defaultValue = "0") int dayIndex,
+                                           @RequestParam double lat, @RequestParam double lng) {
+        return courseRouteService.firstLeg(userId, tripId, dayIndex, lat, lng);
+    }
 }

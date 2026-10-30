@@ -254,4 +254,59 @@ class CourseRoutesIntegrationTest extends IntegrationTest {
                         .header("Authorization", fixtures.onboardedMember().bearer()).param("dayIndex", "0"))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
     }
+
+    private MvcResult firstLeg(Long tripId, double lat, double lng) throws Exception {
+        return mockMvc.perform(get("/api/courses/{tripId}/first-leg", tripId).header("Authorization", member.bearer())
+                        .param("lat", String.valueOf(lat)).param("lng", String.valueOf(lng)))
+                .andExpect(status().isOk()).andReturn();
+    }
+
+    @Test
+    @DisplayName("5-8 지금 위치에서 첫 관광지까지 자동차·도보·대중교통을 실제 경로로 내려준다")
+    void firstLegAllModes() throws Exception {
+        Long tripId = trip("CAR");
+        MvcResult course = generate(tripId);
+        MvcResult result = firstLeg(tripId, 35.79, 129.19);
+        assertThat((String) read(result, "$.itemId")).isEqualTo((String) read(course, "$.days[0].items[0].itemId"));
+        assertThat((String) read(result, "$.name")).isEqualTo((String) read(course, "$.days[0].items[0].name"));
+        assertThat((Integer) read(result, "$.straightMeters")).isPositive();
+        assertThat((String) read(result, "$.car.source")).isEqualTo("ROAD");
+        assertThat((Integer) read(result, "$.car.distanceMeters")).isEqualTo(FakeKakaoMobilityClient.DISTANCE_METERS);
+        assertThat((String) read(result, "$.walk.source")).isEqualTo("WALK");
+        assertThat((Integer) read(result, "$.walk.durationMinutes")).isEqualTo(FakeKakaoMapRouteClient.WALK_SECONDS / 60);
+        assertThat((String) read(result, "$.transit.source")).isEqualTo("TRANSIT");
+        assertThat((Integer) read(result, "$.transit.transfers")).isEqualTo(1);
+        assertThat((Integer) read(result, "$.transit.fare")).isEqualTo(FakeKakaoMapRouteClient.TRANSIT_FARE);
+        // 약 100m 안에서 다시 물으면 기억해 둔 경로를 쓴다
+        int calls = fakeKakaoMapRouteClient.calls().size();
+        int roadCalls = fakeKakaoMobilityClient.requests().size();
+        firstLeg(tripId, 35.7901, 129.1902);
+        assertThat(fakeKakaoMapRouteClient.calls()).hasSize(calls);
+        assertThat(fakeKakaoMobilityClient.requests()).hasSize(roadCalls);
+    }
+
+    @Test
+    @DisplayName("5-8 10km보다 멀면 도보는 계산하지 않고, 길찾기에 실패하면 직선 추정으로 내려준다")
+    void firstLegFarAndFallback() throws Exception {
+        Long tripId = trip("CAR");
+        generate(tripId);
+        fakeKakaoMapRouteClient.setFail(true);
+        MvcResult result = firstLeg(tripId, 37.5665, 126.978);
+        assertThat((Object) read(result, "$.walk")).isNull();
+        assertThat(fakeKakaoMapRouteClient.calls()).doesNotContain("WALK");
+        assertThat((String) read(result, "$.transit.source")).isEqualTo("STRAIGHT");
+    }
+
+    @Test
+    @DisplayName("5-8 국내 범위 밖 좌표는 400, 남의 여행은 404")
+    void firstLegErrors() throws Exception {
+        Long tripId = trip("CAR");
+        generate(tripId);
+        mockMvc.perform(get("/api/courses/{tripId}/first-leg", tripId).header("Authorization", member.bearer())
+                        .param("lat", "10").param("lng", "10"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/courses/{tripId}/first-leg", tripId)
+                        .header("Authorization", fixtures.onboardedMember().bearer()).param("lat", "35.79").param("lng", "129.19"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("TRIP_NOT_FOUND"));
+    }
 }
