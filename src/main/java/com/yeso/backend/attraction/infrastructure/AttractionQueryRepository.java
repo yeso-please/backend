@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * 지도 핀·관광지 상세·지역 카드 조회(docs/api/attraction.md 7-2~7-4). 조건을 붙였다 뗐다 하는 조회라 SQL을 직접 쓴다.
  * 추천 가능 여부는 {@link RegionQualityRepository#RECOMMENDABLE}을 그대로 써서 추첨 판정과 어긋나지 않게 한다.
- * 쇼핑(38)·숙박(32)·음식점(39)과 {@link RegionQualityRepository#NOT_COURSE_CLASS}(캠핑장·문화원·도서관·기타 문화시설)는
+ * 쇼핑(38)·숙박(32)·음식점(39)과 {@link RegionQualityRepository#NOT_COURSE_CLASS}(캠핑장·문화원·도서관·기타 문화시설·골프장)는
  * 코스 후보가 아니라서 핀·상세에 나오지 않는다.
  */
 @Repository

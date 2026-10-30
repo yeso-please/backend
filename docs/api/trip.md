@@ -1063,15 +1063,15 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
 
 코스 항목(5-1 생성 결과)
 1. 공식 코스 모드(`TOUR_OFFICIAL`)에서 공식 코스에 나오는 장소: "관광공사 추천 코스 「{코스 제목}」에 나오는 곳이에요".
-2. 취향 반영 모드(`PERSONALIZED`): 그 장소 유형에 맞는 설문 근거 문장. 같은 문장은 한 코스에서 **최대 2번**만 쓰고, 넘으면 그 유형의 다음 근거를 쓴다.
-3. 설문 근거를 쓰지 못한 장소 중 취향 유사도가 코스 안에서 **상위 3곳**이면 "내 취향과 비슷한 장소예요".
+2. 취향 반영 모드(`PERSONALIZED`): 요청자 취향 벡터와의 E5 유사도가 **지역 후보 전체에서 상위 30% 안**이면 "내 취향과 의미가 가까운 상위 {N}% 장소예요"(2026-10-30). N은 순위 백분율을 10% 이하는 1% 단위, 그 위는 5% 단위로 올린 값이다.
+3. 그 밖의 장소: 그 장소 유형에 맞는 설문 근거 문장. 같은 문장은 한 코스에서 **최대 2번**만 쓰고, 넘으면 그 유형의 다음 근거를 쓴다.
 4. 그 밖, 규칙 코스(`RULE_BASED`)·완전 랜덤(`RANDOM`)은 `null`이다. 유형은 `category`로 이미 보인다.
 
 교체·추가 후보(5-4) — 아래 근거를 순서대로 보고 **최대 2개를 " · "로 이어** 붙인다. 하나도 없으면 `null`.
 1. 교체 대상과 같은 유형: "바꾸려는 곳과 같은 {유형 라벨} 장소예요" (`itemId`가 있을 때)
-2. 설문 근거 문장 (위 표, 첫 번째 것)
-3. 동선: "앞 장소에서 약 {N}분이에요" (그날 앞 관광지가 있을 때, `travelFromPreviousMinutes`와 같은 값)
-4. 취향 유사도가 그 유형 묶음에서 상위 3곳: "내 취향과 비슷한 장소예요"
+2. 취향 유사도가 지역 후보 전체에서 상위 30% 안: "내 취향과 의미가 가까운 상위 {N}% 장소예요" (코스 항목과 같은 규칙)
+3. 설문 근거 문장 (위 표, 첫 번째 것)
+4. 동선: "앞 장소에서 약 {N}분이에요" (그날 앞 관광지가 있을 때, `travelFromPreviousMinutes`와 같은 값)
 
 **항목 타입별 필드** — 표에 없는 필드는 그 타입에 없다.
 
@@ -1516,6 +1516,39 @@ GET /api/courses/{tripId}/restaurants/search?itemId=m-31&query=칼국수&radius=
 | 오류 | HTTP | code |
 |---|---:|---|
 | `dayIndex`가 없거나 여행 날짜 범위 밖, `transport`가 목록 밖 | 400 | `COMMON_INVALID_REQUEST` |
+| 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
+| 코스 없음 | 404 | `COURSE_NOT_FOUND` |
+
+---
+
+### 5-8. 지금 위치에서 첫 장소까지
+
+`GET /api/courses/{tripId}/first-leg?dayIndex=0&lat=37.5665&lng=126.978` · 참여자 · `✅ 구현`(2026-10-30)
+
+코스 화면 첫 장소 카드에 "지금 여기서 얼마나 걸리는지"를 보여 준다. 그날 첫 **관광지**(식사 제외)까지 자동차·도보·대중교통을 한 번에 준다.
+
+| Query | 필수 | 설명 |
+|---|---|---|
+| `lat`, `lng` | 예 | 기기의 현재 위치. 국내 범위(위도 33~39, 경도 124~132) 밖이면 400 |
+| `dayIndex` | 아니오 | 기본 0 |
+
+- **위치는 저장하지 않는다.** 길찾기 결과 기억(24시간)도 소수점 셋째 자리(약 100m)로 반올림한 좌표로만 한다. 그래서 100m 안에서 다시 물으면 카카오를 다시 부르지 않는다.
+- 자동차는 카카오모빌리티, 도보·대중교통은 카카오맵 경로 조회(5-7과 같은 클라이언트·한도). 세 수단을 동시에 부르고 5-7과 같은 시간 상한을 넘기거나 실패하면 그 수단은 직선 추정(`source: STRAIGHT`)이다. 요청은 실패하지 않는다.
+- 직선거리가 **10km를 넘으면 도보는 계산하지 않고 `walk: null`**(호출 한도 절약).
+
+**Response `200 OK`**
+
+```json
+{"tripId": 42, "dayIndex": 0, "itemId": "a-101", "attractionId": 5012, "name": "대릉원", "lat": 35.838, "lng": 129.211,
+ "straightMeters": 2400,
+ "car": {"source": "ROAD", "distanceMeters": 3100, "durationMinutes": 9, "transfers": null, "fare": null},
+ "walk": {"source": "WALK", "distanceMeters": 2700, "durationMinutes": 38, "transfers": null, "fare": null},
+ "transit": {"source": "TRANSIT", "distanceMeters": 2900, "durationMinutes": 21, "transfers": 0, "fare": 1500}}
+```
+
+| 오류 | HTTP | code |
+|---|---:|---|
+| 좌표가 국내 범위 밖, `dayIndex`가 범위 밖, 그날 관광지가 없음 | 400 | `COMMON_INVALID_REQUEST` |
 | 없거나 참여자가 아닌 여행 | 404 | `TRIP_NOT_FOUND` |
 | 코스 없음 | 404 | `COURSE_NOT_FOUND` |
 

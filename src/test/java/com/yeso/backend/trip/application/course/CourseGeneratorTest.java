@@ -200,10 +200,9 @@ class CourseGeneratorTest {
             }
             Result result = generator.generate(request, new Random(1));
             assertThat(result.warnings()).doesNotContain(new Warning("PERSONALIZATION_FALLBACK", null));
-            // 설문 근거가 없으면 취향 유사도 상위 3곳에만 이유가 붙고 나머지는 null이다
+            // 고른 12곳은 모두 지역 후보 40곳 중 유사도 상위 30% 안이라 순위 이유가 붙는다
             assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason)
-                    .containsOnly(CourseGenerator.SIMILAR_REASON, null)
-                    .filteredOn(CourseGenerator.SIMILAR_REASON::equals).hasSize(CourseGenerator.SIMILAR_TOP);
+                    .allSatisfy(reason -> assertThat(reason).matches("내 취향과 의미가 가까운 상위 [0-9]+% 장소예요"));
         }
 
         @Test
@@ -355,14 +354,34 @@ class CourseGeneratorTest {
     @DisplayName("추천 이유")
     class Reasons {
 
-        private Request personalized(List<CourseCandidate> list, TasteEvidence evidence) {
+        @Test
+        @DisplayName("유사도 순위 백분율: 10% 이하는 1% 단위, 그 위는 5% 단위로 올린다")
+        void similarityPercents() {
             Map<Long, float[]> vectors = new HashMap<>();
-            for (CourseCandidate c : list) {
-                double angle = Math.toRadians(c.attractionId());
-                vectors.put(c.attractionId(), new float[]{(float) Math.cos(angle), (float) Math.sin(angle)});
+            List<Long> ids = new ArrayList<>();
+            for (long i = 1; i <= 40; i++) {
+                double angle = Math.toRadians(i * 2);
+                vectors.put(i, new float[]{(float) Math.cos(angle), (float) Math.sin(angle)});
+                ids.add(i);
             }
-            return new Request("경주시", 1, "PACKED", Transport.CAR, list, new float[]{1, 0}, vectors, List.of(), false,
-                    evidence);
+            Map<Long, Integer> percents = CourseGenerator.similarityPercents(ids, new float[]{1, 0}, vectors);
+            assertThat(percents.get(1L)).isEqualTo(3);    // 1/40 = 2.5% → 3
+            assertThat(percents.get(4L)).isEqualTo(10);   // 4/40 = 10%
+            assertThat(percents.get(5L)).isEqualTo(15);   // 12.5% → 15
+            assertThat(percents.get(12L)).isEqualTo(30);
+            assertThat(percents.get(40L)).isEqualTo(100);
+            assertThat(CourseGenerator.similarityReason(3)).isEqualTo("내 취향과 의미가 가까운 상위 3% 장소예요");
+            assertThat(CourseGenerator.similarityPercents(ids, null, vectors)).isEmpty();
+        }
+
+        /** 순위 모델 점수로만 개인화한다(관광지 벡터 없음 → 유사도 순위 이유 없이 설문 근거만 본다). */
+        private Request personalized(List<CourseCandidate> list, TasteEvidence evidence) {
+            Map<Long, Double> scores = new HashMap<>();
+            for (CourseCandidate c : list) {
+                scores.put(c.attractionId(), -c.attractionId().doubleValue());
+            }
+            return new Request("경주시", 1, "PACKED", Transport.CAR, list, new float[]{1, 0}, Map.of(), List.of(), false,
+                    evidence, scores);
         }
 
         private List<CourseCandidate> sameCategory(int count, AttractionCategory category) {
@@ -383,7 +402,7 @@ class CourseGeneratorTest {
             List<String> reasons = attractions(result.days().get(0)).stream().map(AttractionItem::reason).toList();
             assertThat(reasons).hasSize(6);
             assertThat(reasons).filteredOn(TasteEvidence.NATURE_STYLE::equals).hasSize(CourseGenerator.MAX_SAME_REASON);
-            assertThat(reasons).containsOnly(TasteEvidence.NATURE_STYLE, CourseGenerator.SIMILAR_REASON, null);
+            assertThat(reasons).containsOnly(TasteEvidence.NATURE_STYLE, null);
         }
 
         @Test
@@ -406,8 +425,7 @@ class CourseGeneratorTest {
             Result result = generator.generate(personalized(sameCategory(30, AttractionCategory.ETC), evidence),
                     new Random(3));
 
-            assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason)
-                    .containsOnly(CourseGenerator.SIMILAR_REASON, null);
+            assertThat(attractions(result.days().get(0))).extracting(AttractionItem::reason).containsOnly((String) null);
         }
 
         @Test
