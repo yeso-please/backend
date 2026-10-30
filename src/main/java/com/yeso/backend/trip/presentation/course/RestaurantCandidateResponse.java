@@ -21,12 +21,16 @@ public record RestaurantCandidateResponse(
         String imageUrl,
         String representativeMenu,
         List<String> evidenceLabels,
-        List<RestaurantSnapshot.Source> sources) {
+        List<RestaurantSnapshot.Source> sources, List<String> reasons) {
+
+    public static RestaurantCandidateResponse of(String token, RestaurantSnapshot s, Integer distance, List<String> reasons) {
+        return new RestaurantCandidateResponse(token,s.provider(),s.externalId(),s.name(),s.category(),s.address(),s.roadAddress(),s.lat(),s.lng(),distance,s.phone(),s.placeUrl(),s.imageUrl(),s.representativeMenu(),s.evidenceLabels(),s.sources(),reasons);
+    }
 
     public static RestaurantCandidateResponse of(String selectionToken, RestaurantSnapshot s, Integer distanceMeters) {
         return new RestaurantCandidateResponse(
                 selectionToken, s.provider(), s.externalId(), s.name(), s.category(), s.address(), s.roadAddress(),
                 s.lat(), s.lng(), distanceMeters, s.phone(), s.placeUrl(), s.imageUrl(), s.representativeMenu(),
-                s.evidenceLabels(), s.sources());
+                s.evidenceLabels(), s.sources(), s.reasons());
     }
 }
