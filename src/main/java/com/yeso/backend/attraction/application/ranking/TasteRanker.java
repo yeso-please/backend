@@ -78,11 +78,23 @@ public class TasteRanker {
     private record RequesterScores(Map<Long, Double> scores, Instant expiresAt) {
     }
 
+    /** 여행기 피드백 가중치 λ. 0이면 끈다(ai reports/diary_feedback_v1.md에서 고른 값). */
+    private final double diaryFeedbackWeight;
+    private static final double DIARY_PRIOR_K = 5.0;
+    /** 여행기 피드백을 적용할 회원 비율(무작위 배정, 0~1). 나머지는 대조군으로 노출 기록에만 남는다. */
+    private final double diaryTreatmentShare;
+    /** 추천 가능 관광지 전체의 중분류(lclsSystm2) 비율. 메타를 미리 읽은 뒤 채운다. */
+    private volatile Map<String, Double> categoryPrior = Map.of();
+
     public TasteRanker(@Value("${ranker.model-path:}") String modelPath,
                        @Value("${embedding.model-version:}") String embeddingModelVersion,
+                       @Value("${ranker.diary-feedback.weight:0.1}") double diaryFeedbackWeight,
+                       @Value("${ranker.diary-feedback.treatment-share:0.5}") double diaryTreatmentShare,
                        CourseMaterialService courseMaterialService, AttractionQueryRepository attractionQueryRepository) {
         this.courseMaterialService = courseMaterialService;
         this.attractionQueryRepository = attractionQueryRepository;
+        this.diaryFeedbackWeight = diaryFeedbackWeight;
+        this.diaryTreatmentShare = diaryTreatmentShare;
         this.model = load(modelPath, embeddingModelVersion);
     }
 
@@ -123,14 +135,51 @@ public class TasteRanker {
         Thread.ofVirtual().name("ranker-meta-preload").start(() -> {
             try {
                 long started = System.nanoTime();
-                attractionQueryRepository.findAllRecommendableRankingMeta()
-                        .forEach(row -> metaCache.put(row.attractionId(), row));
+                List<RankingMetaRow> rows = attractionQueryRepository.findAllRecommendableRankingMeta();
+                rows.forEach(row -> metaCache.put(row.attractionId(), row));
+                Map<String, Double> prior = new HashMap<>();
+                rows.forEach(row -> {
+                    if (row.lclsSystm2() != null && !row.lclsSystm2().isEmpty()) {
+                        prior.merge(row.lclsSystm2(), 1.0 / rows.size(), Double::sum);
+                    }
+                });
+                categoryPrior = Map.copyOf(prior);
                 log.info("ranker meta preloaded: {} attractions in {} ms", metaCache.size(),
                         (System.nanoTime() - started) / 1_000_000);
             } catch (RuntimeException e) {
                 log.warn("ranker meta preload failed (loaded on demand instead): {}", e.toString());
             }
         });
+    }
+
+    /**
+     * 회원 ID로 정해지는 고정 무작위 배정. 같은 회원은 항상 같은 쪽이고, 해시가 실험 버전마다 달라
+     * 다음 실험과 배정이 겹치지 않는다.
+     */
+    public boolean diaryFeedbackTreated(Long userId) {
+        long h = userId * 0x9E3779B97F4A7C15L ^ DiaryFeedback.VERSION.hashCode();
+        h ^= h >>> 31;
+        return Math.floorMod(h, 10_000) < Math.round(diaryTreatmentShare * 10_000);
+    }
+
+    public boolean diaryFeedbackEnabled() {
+        return model != null && diaryFeedbackWeight > 0;
+    }
+
+    /**
+     * 발행한 여행기로 순위 점수를 조정한다({@link DiaryFeedback}). 꺼져 있거나 반영할 여행기가 없으면 그대로 돌려준다.
+     * 결과는 지역 후보 안에서 표준화된 값이라 원래 점수와 크기가 다르다(코스 생성은 0~1로 다시 늘인다).
+     */
+    public Map<Long, Double> applyDiaryFeedback(Map<Long, Double> scores, List<DiaryFeedback.Trip> trips) {
+        if (!diaryFeedbackEnabled() || scores.isEmpty() || trips.isEmpty()) {
+            return scores;
+        }
+        java.util.Set<Long> ids = new java.util.HashSet<>(scores.keySet());
+        trips.forEach(trip -> ids.addAll(trip.attractionIds()));
+        Map<Long, float[]> vectors = courseMaterialService.findAttractionVectors(ids);
+        Map<Long, String> categoryOf = new HashMap<>();
+        meta(ids).forEach((id, row) -> categoryOf.put(id, row.lclsSystm2()));
+        return DiaryFeedback.adjust(scores, trips, vectors, categoryOf, categoryPrior, diaryFeedbackWeight, DIARY_PRIOR_K);
     }
 
     public boolean enabled() {

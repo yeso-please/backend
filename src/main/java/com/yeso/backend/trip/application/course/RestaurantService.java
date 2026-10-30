@@ -37,6 +37,7 @@ public class RestaurantService {
     static final String KAKAO_PROVIDER = "KAKAO";
     static final String KAKAO_EVIDENCE_LABEL = "카카오맵 검색 결과";
 
+    private final com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository mealRestaurants;
     private final TripService tripService;
     private final CourseItemRepository courseItemRepository;
     private final KakaoLocalClient kakaoLocalClient;
@@ -47,7 +48,8 @@ public class RestaurantService {
     public RestaurantService(
             TripService tripService, CourseItemRepository courseItemRepository, KakaoLocalClient kakaoLocalClient,
             RestaurantSelectionTokenService selectionTokenService, RestaurantQueryService restaurantQueryService,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, com.yeso.backend.trip.infrastructure.CourseMealRestaurantRepository mealRestaurants) {
+        this.mealRestaurants = mealRestaurants;
         this.tripService = tripService;
         this.courseItemRepository = courseItemRepository;
         this.kakaoLocalClient = kakaoLocalClient;
@@ -63,14 +65,29 @@ public class RestaurantService {
         OriginAndCandidates found = readOnlyTransaction.execute(status -> {
             RestaurantOriginResponse origin = resolveOrigin(userId, tripId, itemId);
             String sigCd = tripService.requireParticipantTrip(userId, tripId).getRegion().getSigCd();
-            List<Candidate> candidates = restaurantQueryService.findTourApi(
-                    sigCd, origin.lat(), origin.lng(), radiusMeters);
-            return new OriginAndCandidates(origin, candidates);
+            List<Candidate> candidates = restaurantQueryService.loadTourApi(sigCd)
+                    .nearest(origin.lat(), origin.lng(), radiusMeters, Integer.MAX_VALUE);
+            List<CourseItem> items = courseItemRepository.findByTripPlanIdOrderByDayIndexAscOrderIndexAsc(tripId);
+            CourseItem slot = items.stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
+            Attraction previous = null, next = null;
+            for (CourseItem i : items) {
+                if (i.getDayIndex() != slot.getDayIndex() || i.isMeal()) continue;
+                if (i.getOrderIndex() < slot.getOrderIndex()) previous = i.getAttraction();
+                else if (i.getOrderIndex() > slot.getOrderIndex() && next == null) next = i.getAttraction();
+            }
+            var others = mealRestaurants.findByCourseItemIdIn(items.stream()
+                    .filter(i -> i.isMeal() && i.getDayIndex() == slot.getDayIndex() && i != slot)
+                    .map(CourseItem::getId).toList()).stream()
+                    .map(m -> new RestaurantScorer.OtherMeal(m.getCourseItem().getMealType() == com.yeso.backend.trip.domain.MealType.LUNCH ? "점심" : "저녁", m.getCategory())).toList();
+            var context = new RestaurantScorer.Context(
+                    new RestaurantScorer.Point(origin.lat(), origin.lng(), previous == null ? null : previous.getName(), previous == null ? null : restaurantQueryService.attractionAddress(previous.getId())),
+                    next == null ? null : new RestaurantScorer.Point(next.getLat(), next.getLng(), next.getName(), null), previous != null, others);
+            return new OriginAndCandidates(origin, RestaurantScorer.rank(candidates, context).stream().limit(20).toList());
         });
         List<RestaurantCandidateResponse> tourApi = found.candidates().stream().map(candidate -> {
-            RestaurantSnapshot snapshot = tourApiSnapshot(candidate);
+            RestaurantSnapshot snapshot = tourApiSnapshot(candidate.candidate());
             return RestaurantCandidateResponse.of(
-                    selectionTokenService.issue(tripId, itemId, snapshot), snapshot, candidate.distanceMeters());
+                    selectionTokenService.issue(tripId, itemId, snapshot), snapshot, candidate.candidate().distanceMeters(), candidate.reasons());
         }).toList();
         return new RestaurantRecommendationsResponse(itemId, found.origin(), List.of(), List.of(
                 new Section("TOUR_API", "한국관광공사 등록 음식점", tourApi),
@@ -90,7 +107,7 @@ public class RestaurantService {
                         candidate.fetchedAt())));
     }
 
-    private record OriginAndCandidates(RestaurantOriginResponse origin, List<Candidate> candidates) {
+    private record OriginAndCandidates(RestaurantOriginResponse origin, List<RestaurantScorer.Ranked> candidates) {
     }
 
     /** 5-6 카카오 Local 음식점 거리순 검색. {@code keyword}가 null이면 주변 음식점 전체다. */

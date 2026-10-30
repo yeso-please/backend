@@ -26,6 +26,12 @@ public class RestaurantQueryRepository {
                       String sourceName, String sourceUrl, LocalDateTime fetchedAt) {
     }
 
+    public String attractionAddress(Long id) {
+        return jdbc.query("select addr from %s.attractions where id = :id".formatted(schema),
+                new MapSqlParameterSource("id", id), (rs,n) -> rs.getString("addr"))
+                .stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+    }
+
     public List<Row> findTourApi(String sigCd) {
         return jdbc.query("""
                 select distinct on (r.id) r.id, s.external_id, r.name, r.category, r.address,

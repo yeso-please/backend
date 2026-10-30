@@ -1,80 +1,31 @@
 package com.yeso.backend.trip.application.course;
-
 import com.yeso.backend.attraction.application.region.RestaurantQueryService.Candidate;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Set;
-import java.util.random.RandomGenerator;
-import java.util.stream.IntStream;
-
+import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
-
 class MealRestaurantPickerTest {
-
-    private final MealRestaurantPicker picker = new MealRestaurantPicker();
-
-    /** 거리가 가까운 순으로 r1, r2, … 를 만든다. */
-    private static List<Candidate> candidates(int count) {
-        return IntStream.rangeClosed(1, count)
-                .mapToObj(i -> new Candidate("r" + i, "식당" + i, null, null, null, null, 0, 0, null, null, null,
-                        null, null, null, i * 100))
-                .toList();
-    }
-
-    /** {@code nextInt(bound)}가 항상 {@code value}(bound 안으로 줄여서)를 돌려주는 난수. */
-    private static RandomGenerator fixed(int value) {
-        return new RandomGenerator() {
-            @Override
-            public long nextLong() {
-                return value;
-            }
-
-            @Override
-            public int nextInt(int bound) {
-                return Math.min(value, bound - 1);
-            }
-        };
-    }
-
-    @Test
-    @DisplayName("가까운 순 상위 10개 중에서만 고른다")
-    void picksOnlyFromNearestTen() {
-        List<Candidate> picked = IntStream.range(0, 11)
-                .mapToObj(i -> picker.pick(candidates(30), Set.of(), fixed(i)).orElseThrow())
-                .toList();
-
-        assertThat(picked).extracting(Candidate::externalId)
-                .containsOnly("r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10");
-    }
-
-    @Test
-    @DisplayName("난수가 같으면 같은 식당이 나온다")
-    void sameRandomGivesSameRestaurant() {
-        assertThat(picker.pick(candidates(30), Set.of(), fixed(3)).orElseThrow().externalId()).isEqualTo("r4");
-        assertThat(picker.pick(candidates(30), Set.of(), fixed(3)).orElseThrow().externalId()).isEqualTo("r4");
-    }
-
-    @Test
-    @DisplayName("이미 배정한 식당은 빼고 그다음 가까운 식당까지 상위 10개를 채운다")
-    void skipsAlreadyPickedAndRefillsTopTen() {
-        Set<String> used = Set.of("r1", "r2");
-
-        assertThat(picker.pick(candidates(30), used, fixed(0)).orElseThrow().externalId()).isEqualTo("r3");
-        assertThat(picker.pick(candidates(30), used, fixed(9)).orElseThrow().externalId()).isEqualTo("r12");
-    }
-
-    @Test
-    @DisplayName("후보가 10개보다 적으면 있는 것 중에서 고른다")
-    void fewerThanTenCandidates() {
-        assertThat(picker.pick(candidates(3), Set.of(), fixed(99)).orElseThrow().externalId()).isEqualTo("r3");
-    }
-
-    @Test
-    @DisplayName("후보가 없거나 모두 이미 배정됐으면 비어 있다")
-    void emptyWhenNothingLeft() {
-        assertThat(picker.pick(List.of(), Set.of(), fixed(0))).isEmpty();
-        assertThat(picker.pick(candidates(2), Set.of("r1", "r2"), fixed(0))).isEmpty();
+    static Candidate c(String id,String category,double lat,double lng,String photo){return new Candidate(id,id,category,"강릉시 중앙동",null,null,lat,lng,null,photo,null,null,null,null,100);}
+    static RestaurantScorer.Point p(double x,double y){return new RestaurantScorer.Point(x,y,"경포대","강릉시 중앙동");}
+    static RestaurantScorer.Context ctx(RestaurantScorer.Point next){return new RestaurantScorer.Context(p(0,0),next,true,List.of());}
+    @Test void routeBeatsCloserOffRoute(){var x=ctx(p(0,.04));assertThat(RestaurantScorer.score(c("route",null,0,.02,null),x)).isGreaterThan(RestaurantScorer.score(c("near",null,.005,0,null),x));}
+    @Test void photoAndVariety(){var a=c("a","A05020300",0,0,null);var b=c("b","A05020300",0,0,"photo");assertThat(RestaurantScorer.score(b,ctx(null))-RestaurantScorer.score(a,ctx(null))).isEqualTo(.5);var x=new RestaurantScorer.Context(p(0,0),null,true,List.of(new RestaurantScorer.OtherMeal("점심","A05020100")));assertThat(RestaurantScorer.score(a,x)).isEqualTo(.3);}
+    @Test void lastMealUsesOriginDistance(){var a=c("a",null,0,.01,null);assertThat(RestaurantScorer.detour(a,ctx(null))).isEqualTo(RestaurantScorer.meters(p(0,0),RestaurantScorer.point(a)));}
+    @Test void cafeFilterAndFallback(){var cafe=c("c",RestaurantScorer.CAFE,0,0,null);var meal=c("m","A05020100",0,0,null);assertThat(RestaurantScorer.rank(List.of(cafe,meal),ctx(null))).extracting(r->r.candidate().externalId()).containsExactly("m");assertThat(RestaurantScorer.rank(List.of(cafe),ctx(null))).hasSize(1);}
+    @Test void topFiveAndDeterminism(){var pool=new ArrayList<Candidate>();for(int i=0;i<10;i++)pool.add(c("r"+i,"A05020100",0,i*.001,null));var picker=new MealRestaurantPicker();var first=picker.pick(pool,Set.of(),new SplittableRandom(42),ctx(null));assertThat(first).isEqualTo(picker.pick(pool,Set.of(),new SplittableRandom(42),ctx(null)));for(int i=0;i<100;i++)assertThat(picker.pick(pool,Set.of(),new SplittableRandom(i),ctx(null)).orElseThrow().externalId()).isIn("r0","r1","r2","r3","r4");}
+    @Test void excludesUsedBeforeCafeFallback(){var meal=c("m","A05020100",0,0,null);var cafe=c("c",RestaurantScorer.CAFE,0,0,null);assertThat(new MealRestaurantPicker().pick(List.of(meal,cafe),Set.of("m"),new SplittableRandom(1),ctx(null)).orElseThrow()).isEqualTo(cafe);}
+    @Test void reasonsPriorityAndLimit(){var x=ctx(p(0,.02));assertThat(RestaurantScorer.reasons(c("a","A05020100",0,0,null),x)).containsExactly("다음 장소 가는 길이에요 · 0m만 돌아가요","경포대에서 걸어서 0분");}
+    @Test void fallbackReasons(){var x=new RestaurantScorer.Context(p(0,0),null,false,List.of());assertThat(RestaurantScorer.reasons(c("a",null,0,.1,null),x)).containsExactly("한국관광공사에 등록된 음식점이에요");}
+    @Test void reasonBoundariesAndUnknownCategory() {
+        double degree = 180 / (Math.PI * 6371000);
+        for (double meters : new double[]{799.99,800.01}) {
+            var c=c("r",null,meters/2*degree,0,null);
+            assertThat(RestaurantScorer.reasons(c,ctx(p(0,0))).stream().anyMatch(r->r.startsWith("다음 장소"))).isEqualTo(meters<800);
+        }
+        for (double meters : new double[]{999.99,1000.01}) {
+            var c=c("r",null,meters*degree,0,null);
+            assertThat(RestaurantScorer.reasons(c,ctx(null)).stream().anyMatch(r->r.contains("걸어서"))).isEqualTo(meters<1000);
+        }
+        var x=new RestaurantScorer.Context(p(0,0),null,true,List.of(new RestaurantScorer.OtherMeal("점심","unknown")));
+        assertThat(RestaurantScorer.reasons(c("r","A05020300",0,.1,null),x)).containsExactly("경포대 근처 같은 동네(중앙동)예요","한국관광공사에 등록된 음식점이에요");
     }
 }

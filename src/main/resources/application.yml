@@ -76,6 +76,11 @@ auth:
 # ai scripts/lgbm_ranker.py가 내보낸 ranker.json 경로. 비어 있거나 파일이 없거나 E5 버전이 다르면 꺼지고 코사인 유사도를 쓴다.
 ranker:
   model-path: ${RANKER_MODEL_PATH:}
+  # 발행한 여행기를 코스 추천에 반영(docs/design/recommendation.md §5). weight 0이면 끈다.
+  # 오프라인에서 이득이 확인되지 않아 회원 절반만 무작위로 적용하고, 노출 기록의 ranker_version으로 두 집단을 비교한다.
+  diary-feedback:
+    weight: ${RANKER_DIARY_FEEDBACK_WEIGHT:0.1}
+    treatment-share: ${RANKER_DIARY_FEEDBACK_TREATMENT_SHARE:0.5}
 
 embedding:
   base-url: ${EMBEDDING_SERVICE_BASE_URL:}
