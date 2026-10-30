@@ -184,7 +184,10 @@ public class CourseService {
                 if (item instanceof AttractionItem attraction) {
                     previousAttraction = attraction.attraction();
                 } else {
-                    mealAssigner.assign(saved, previousAttraction, requester, now);
+                    CourseCandidate next = day.items().stream().skip(order + 1L)
+                            .filter(i -> i instanceof AttractionItem).map(i -> ((AttractionItem) i).attraction())
+                            .findFirst().orElse(null);
+                    mealAssigner.assign(saved, previousAttraction, next, requester, now);
                 }
                 order++;
             }
@@ -256,7 +259,8 @@ public class CourseService {
 
     /**
      * 식사 슬롯마다 TourAPI 식당을 자동 배정한다(5-1). 지역 식당은 생성당 한 번만 읽고, 기준점은 5-5와 같다
-     * (그날 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 코스에서 같은 식당은 한 번만 쓴다.
+     * (그날 식사 앞 마지막 관광지, 없으면 지역 중심). 다음 관광지까지의 우회·검증 사진·당일 분류를 점수화해 상위 5개에서 가중 추첨한다.
+     * 같은 코스에서 같은 식당은 한 번만 쓴다.
      */
     private final class MealAssigner {
         private final Region region;
@@ -264,13 +268,14 @@ public class CourseService {
         private final MealRestaurantPicker picker = new MealRestaurantPicker();
         private final RandomGenerator random = new SplittableRandom();
         private final Set<String> used = new HashSet<>();
+        private final java.util.Map<Integer, java.util.List<RestaurantScorer.OtherMeal>> otherMeals = new java.util.HashMap<>();
 
         MealAssigner(Region region, RegionRestaurants restaurants) {
             this.region = region;
             this.restaurants = restaurants;
         }
 
-        void assign(CourseItem meal, CourseCandidate previousAttraction, User requester, LocalDateTime now) {
+        void assign(CourseItem meal, CourseCandidate previousAttraction, CourseCandidate nextAttraction, User requester, LocalDateTime now) {
             double lat;
             double lng;
             if (previousAttraction != null) {
@@ -283,7 +288,13 @@ public class CourseService {
                 return;
             }
             List<Candidate> nearest = restaurants.nearest(lat, lng, MEAL_RESTAURANT_RADIUS_METERS, Integer.MAX_VALUE);
-            picker.pick(nearest, used, random).ifPresent(candidate -> {
+            var context = new RestaurantScorer.Context(
+                    new RestaurantScorer.Point(lat, lng, null, null),
+                    nextAttraction == null ? null : new RestaurantScorer.Point(nextAttraction.lat(), nextAttraction.lng(), null, null),
+                    previousAttraction != null, otherMeals.getOrDefault(meal.getDayIndex(), List.of()));
+            picker.pick(nearest, used, random, context).ifPresent(candidate -> {
+                otherMeals.computeIfAbsent(meal.getDayIndex(), k -> new java.util.ArrayList<>())
+                        .add(new RestaurantScorer.OtherMeal(meal.getMealType() == com.yeso.backend.trip.domain.MealType.LUNCH ? "점심" : "저녁", candidate.category()));
                 used.add(candidate.externalId());
                 courseMealRestaurantRepository.save(CourseMealRestaurant.of(
                         meal, RestaurantService.tourApiSnapshot(candidate), requester, now));

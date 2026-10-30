@@ -1101,12 +1101,14 @@ guest session(`gs_` token, `Authorization: Bearer gs_…`)과 초대·공유의 
   "placeUrl": null,
   "imageUrl": "https://…",
   "representativeMenu": "순두부찌개",
+  "reasons": [],
   "evidenceLabels": ["한국관광공사 등록 음식점"],
   "sources": [{"name": "한국관광공사 TourAPI", "url": "https://…", "fetchedAt": "2026-09-30T00:00:00"}]
 }
 ```
 
 - `provider`: `TOUR_API` \| `FARM_RESTAURANT`(농가맛집) \| `MODEL_RESTAURANT`(모범·향토음식점) \| `GOOD_PRICE`(착한가격업소) \| `KAKAO`
+- `reasons`: `string[]`, 최대 2개. 5-5는 동선·거리·분류·주소 등으로 계산한 사실 기반 이유이며 5-2는 현재 빈 배열이다. 토큰 payload에는 포함하지 않는다.
 - `representativeMenu`는 원천이 제공한 경우에만 채운다. 카카오 결과는 항상 `null`이며 맛·평점·인기·대표성 문구를 만들지 않는다.
 
 **`warnings[].code`**
@@ -1184,7 +1186,7 @@ POST /api/courses/{tripId}/generate
 - 바꾼 밀도에 지역의 후보가 모자라도(7-1 기준 추첨 불가여도) 거부하지 않는다. 들어가는 만큼 배치하고 `DENSITY_TARGET_NOT_MET`을 붙인다. `422 COURSE_INSUFFICIENT_CANDIDATES`는 폴백까지 거쳐도 **하루 최소 1곳**을 채우지 못하는 날이 있을 때만이다.
 - 폴백: 취향 벡터 → `PERSONALIZED`, 없으면 같은 지역 TourAPI 공식 코스 → `TOUR_OFFICIAL`, 부족하면 규칙 코스 → `RULE_BASED`. 모두 실패하면 422.
 - **같은 조건으로 다시 생성해도 다른 코스가 나온다.** 점수 상위 후보(필요한 관광지 수의 3배) 안에서 무작위로 고른다. 점수가 높을수록 뽑힐 확률이 높고, 직전 코스에 있던 곳도 다시 나올 수 있다. 랜덤 여행이 서비스 컨셉이다(2026-09-27).
-- 식당 자동 배정: 식사 슬롯마다 **TourAPI 음식점** 중 하나를 자동으로 채운다. 기준점은 5-5와 같다(그날 그 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 지역의 반경 5,000m 안 식당을 기준점에서 가까운 순으로 정렬해 **이미 이 코스에 배정한 식당을 뺀 상위 10개 중 무작위 1개**를 고른다. 취향은 반영하지 않는다(식당에는 임베딩이 없고 설문에 음식 취향 문항이 없다). 후보가 없으면 배정하지 않고 `restaurant: null`("미정")로 둔다. 같은 코스에서 같은 식당을 두 번 배정하지 않는다. 사용자는 5-3 `SET_RESTAURANT`로 바꾸거나 `CLEAR_RESTAURANT`로 해제한다. 관광지 순서 변경·교체 같은 편집은 식당을 다시 뽑지 않고, 재생성하면 새로 뽑는다.
+- 식당 자동 배정: 식사 슬롯마다 **TourAPI 음식점** 중 하나를 자동으로 채운다. 기준점은 5-5와 같다(그날 그 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 지역의 반경 5,000m 안 식당 중 이미 이 코스에 배정한 식당을 제외하고 아래 동선·사진·분류 점수로 정렬해 **점수 상위 5개 중 exp(score) 가중 무작위 1개**를 고른다. 취향은 반영하지 않는다(식당에는 임베딩이 없고 설문에 음식 취향 문항이 없다). 후보가 없으면 배정하지 않고 `restaurant: null`("미정")로 둔다. 같은 코스에서 같은 식당을 두 번 배정하지 않는다. 사용자는 5-3 `SET_RESTAURANT`로 바꾸거나 `CLEAR_RESTAURANT`로 해제한다. 관광지 순서 변경·교체 같은 편집은 식당을 다시 뽑지 않고, 재생성하면 새로 뽑는다.
 - 제목은 장소·순서가 정해진 뒤 만든다. 먼저 규칙 제목(`RULE`)으로 저장한 뒤, **생성 트랜잭션이 끝나면 ai `POST /explanations`로 제목·소개글·장소별 이유를 받아 붙인다**(2026-10-16 D16). 관광지 공개 데이터(이름·분류·설명)만 보내고 설문 답은 보내지 않는다. ai가 없거나 실패·timeout(기본 15초)이면 규칙 문장 그대로이고 코스 생성은 성공한다. 문장을 붙여도 **여행 버전은 올리지 않는다** — 응답의 `version`으로 바로 편집할 수 있다. 문장이 도착하기 전에 다른 참여자가 코스를 바꿨으면 문장을 버린다. 설정: `ai-text.enabled`(기본 `true`), `ai-text.timeout-millis`, ai 서버 주소는 `embedding.base-url`.
 
 **Response `201 Created`** — `Course` (`version`은 요청의 `version` + 1)
@@ -1358,7 +1360,7 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 
 검색 기준점은 그날 순서에서 그 식사보다 앞에 있는 관광지 중 **가장 가까운(마지막) 관광지**다. 사이에 다른 식사가 있으면 건너뛴다. 그날 식사 앞에 관광지가 없으면 지역 중심 좌표를 쓴다.
 
-코스 생성(5-1)이 식사 슬롯에 자동 배정하는 식당도 이 추천과 같은 후보·기준점에서 고른다(거리순 상위 10 중 무작위). 사용자는 이 추천이나 5-6으로 다른 식당을 고를 수 있다.
+코스 생성(5-1)이 식사 슬롯에 자동 배정하는 식당도 이 추천과 같은 후보·기준점에서 고른다(점수 상위 5 중 가중 무작위). 사용자는 이 추천이나 5-6으로 다른 식당을 고를 수 있다.
 
 **후보 조건**
 
@@ -1375,7 +1377,7 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
   "regionFoodThemes": [{"name": "경주 찰보리빵", "sources": [{"name": "경주시청", "url": "https://…"}]}],
   "sections": [
     {"source": "TOUR_API", "label": "한국관광공사 등록 음식점", "items": [
-      {"selectionToken": "rs_eyJ...", "distanceMeters": 420, "...": "RestaurantSnapshot 필드"}
+      {"selectionToken": "rs_eyJ...", "distanceMeters": 420, "reasons": ["한국관광공사에 등록된 음식점이에요"], "...": "RestaurantSnapshot 필드"}
     ]},
     {"source": "FARM_RESTAURANT", "label": "농촌진흥청 농가맛집", "items": []},
     {"source": "MODEL_RESTAURANT", "label": "지자체 모범·향토음식점", "items": []},
@@ -1386,7 +1388,7 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 
 - `origin.type`: `PREVIOUS_ATTRACTION` \| `REGION_CENTER`
 - `regionFoodThemes`는 사람이 승인하고 출처가 있는 지역 음식·특산물만. MVP에는 이 데이터를 만드는 작업이 없으므로 빈 배열 `[]`일 수 있다(프론트는 빈 배열이면 영역을 숨긴다).
-- 섹션 순서가 우선순위다. TourAPI 음식점이 1순위, 공공 지정 식당이 보완이다. 각 섹션은 거리순, 최대 20개. 결과가 없는 섹션도 빈 배열로 준다.
+- 섹션 순서가 우선순위다. TourAPI 음식점이 1순위, 공공 지정 식당이 보완이다. TOUR_API는 아래 식당 추천 점수 내림차순(동점: 거리, externalId), 최대 20개. 결과가 없는 섹션도 빈 배열로 준다.
 - **MVP 범위**: MVP에서 채우는 섹션은 `TOUR_API`(TourAPI 음식점)뿐이다. 공공 지정 식당 섹션(`FARM_RESTAURANT`, `MODEL_RESTAURANT`, `GOOD_PRICE`)은 추가 기능이며 MVP에서는 항상 빈 배열이다(응답 모양은 같다).
 - 모든 섹션이 비어 있으면 프론트는 같은 `itemId`로 5-6(카카오 검색)을 자동으로 호출해 보여준다.
 - `selectionToken`(`rs_…`)은 **식당 스냅샷 전체**를 담아 서버 비밀키로 서명한 값이다. 서버에 저장하지 않는다.
@@ -1406,6 +1408,14 @@ GET /api/courses/{tripId}/restaurants/recommendations?itemId=m-31&radius=5000
 | 없는 항목 | 404 | `COURSE_ITEM_NOT_FOUND` |
 
 ---
+
+### 식당 추천 점수와 이유 (2026-10-30)
+- 5-1 자동 배정과 5-5 목록은 같은 시군구·반경 내 전체 TourAPI 후보에 같은 점수를 계산한다. 카페·전통찻집(A05020900)은 제외하되 식사 후보가 없으면 다시 포함한다. 자동 배정은 코스 중복을 먼저 제외한다.
+- detour = 직전(없으면 지역 중심)→식당 + 식당→다음 관광지 − 직전→다음 관광지의 하버사인 거리(m). 다음이 없으면 기준점→식당 거리다.
+- score = -detour/1000 + 검증된 사진 0.5 + 같은 날 다른 식사와 분류가 다르면 0.3. 순서는 점수 내림차순, 기준점 거리, externalId다.
+- 자동 배정은 상위 5개에서 exp(score) 가중 추첨, 목록은 정렬 후 최대 20개. distanceMeters는 기존 기준점 거리다.
+- 5-5 항목의 reasons: string[]는 최대 2개. 동선(다음 관광지 있고 detour≤800m, 50m 반올림), 도보(직전 관광지에서 직선≤1000m, ceil(거리×1.3/67)분), 다른 식사와 다른 분류, 같은 읍면동, 관광공사 등록 순이다. 맛·인기·평점·대표 메뉴는 생성하지 않는다.
+- 5-2 restaurant.reasons는 현재 빈 배열이며 현재 순서 재계산은 후속 단계다. reasons는 저장·selectionToken payload에 포함하지 않는다. 카카오 검색은 변경하지 않는다.
 
 ### 5-6. 식당 검색
 

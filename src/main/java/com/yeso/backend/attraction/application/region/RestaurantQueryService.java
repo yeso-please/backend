@@ -22,6 +22,8 @@ public class RestaurantQueryService {
                             LocalDateTime fetchedAt, int distanceMeters) {
     }
 
+    public String attractionAddress(Long id) { return repository.attractionAddress(id); }
+
     public List<Candidate> findTourApi(String sigCd, double originLat, double originLng, int radiusMeters) {
         return loadTourApi(sigCd).nearest(originLat, originLng, radiusMeters, 20);
     }

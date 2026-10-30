@@ -65,6 +65,25 @@ class RestaurantIntegrationTest extends IntegrationTest {
     @Autowired
     private TransactionTemplate transactionTemplate;
 
+    @Test
+    void recommendationsRankAndExplainTourApiWithoutCafes() throws Exception {
+        Member member = fixtures.onboardedMember();
+        Course course = tripWithCourse(member);
+        for (int i = 0; i < 3; i++) {
+            Long id = jdbcTemplate.queryForObject("insert into app.restaurants(region_id,name,category,address,lat,lng,image_url,image_validation_status) values ('47130',?,?, '경주시 황남동',?,?,?,?) returning id", Long.class,
+                    "식당" + i, i == 0 ? "A05020900" : "A05020100", FIRST_LAT, FIRST_LNG,
+                    i == 2 ? "https://example.com/photo.jpg" : null, i == 2 ? "VALID" : "SOURCE_EMPTY");
+            jdbcTemplate.update("insert into app.restaurant_sources(restaurant_id,provider,external_id,content_type_id,source_name,fetched_at) values (?,'TOUR_API',?,39,'한국관광공사',current_timestamp)", id, "r" + i);
+        }
+        mockMvc.perform(get("/api/courses/{tripId}/restaurants/recommendations", course.tripId())
+                        .header("Authorization", "Bearer " + member.accessToken()).param("itemId", course.day0Lunch()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sections[0].items.length()").value(2))
+                .andExpect(jsonPath("$.sections[0].items[0].externalId").value("r2"))
+                .andExpect(jsonPath("$.sections[0].items[0].reasons.length()").value(2))
+                .andExpect(jsonPath("$.sections[0].items[0].reasons[0]").value("다음 장소 가는 길이에요 · 0m만 돌아가요"));
+    }
+
     @BeforeEach
     void insertRegion() {
         jdbcTemplate.update("insert into app.regions (sig_cd, province, city, lat, lng) values ('47130', '경상북도', '경주시', ?, ?)",
