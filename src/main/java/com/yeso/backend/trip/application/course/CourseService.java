@@ -1,7 +1,9 @@
 package com.yeso.backend.trip.application.course;
 
 import com.yeso.backend.trip.application.RecommendationImpressionLogger;
+import com.yeso.backend.attraction.application.ranking.DiaryFeedback;
 import com.yeso.backend.attraction.application.ranking.TasteRanker;
+import com.yeso.backend.trip.infrastructure.DiaryTasteSignalRepository;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.ApprovedSummary;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
@@ -106,6 +108,7 @@ public class CourseService {
     private final EntityManager entityManager;
     private final RecommendationImpressionLogger impressionLogger;
     private final TasteRanker tasteRanker;
+    private final DiaryTasteSignalRepository diaryTasteSignalRepository;
     private final Clock clock;
 
     // ---------- 5-1 ----------
@@ -148,6 +151,13 @@ public class CourseService {
                                 new TasteRanker.Survey(answers.travelStyles(), answers.travelMotives()), requesterVector,
                                 candidates.stream().map(CourseCandidate::attractionId).toList()))
                         .orElse(Map.of());
+        List<DiaryFeedback.Trip> diaryTrips = rankerScores.isEmpty() || !tasteRanker.diaryFeedbackEnabled()
+                ? List.of() : diaryFeedbackTrips(userId);
+        // 오프라인에서 이득이 확인되지 않아(ai reports/diary_feedback_v1.md) 회원을 무작위로 나눠 반영 여부를 비교한다.
+        boolean diaryTreated = !diaryTrips.isEmpty() && tasteRanker.diaryFeedbackTreated(userId);
+        if (diaryTreated) {
+            rankerScores = tasteRanker.applyDiaryFeedback(rankerScores, diaryTrips);
+        }
 
         Result result = courseGenerator.generate(new CourseGeneration.Request(
                 region.getCity(), trip.getNights() + 1, density, trip.getTransport(), candidates,
@@ -196,13 +206,35 @@ public class CourseService {
             trip.setCourseFirstGeneratedAt(now);
         }
         entityManager.flush(); // 여행 버전을 올린 값으로 응답한다
-        recordImpression(userId, tripId, result, rankerScores.isEmpty() ? null : tasteRanker.version().orElse(null));
+        String rankerVersion = rankerScores.isEmpty() ? null : tasteRanker.version()
+                .map(v -> diaryTrips.isEmpty() ? v
+                        : v + "+" + DiaryFeedback.VERSION + (diaryTreated ? "" : "-control") + "(n=" + diaryTrips.size() + ")")
+                .orElse(null);
+        recordImpression(userId, tripId, result, rankerVersion);
 
         List<Warning> densityWarnings = result.warnings().stream()
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
                 .toList();
         return view(trip, Viewer.participant(userId), densityWarnings);
     }
+
+    /** 최근 발행한 여행기 최대 {@value #MAX_DIARY_TRIPS}개와 그 여행의 최종 코스 관광지(§5 여행기 피드백). */
+    private List<DiaryFeedback.Trip> diaryFeedbackTrips(Long userId) {
+        Map<Long, Short> satisfaction = new java.util.LinkedHashMap<>();
+        Map<Long, List<Long>> places = new java.util.LinkedHashMap<>();
+        for (DiaryTasteSignalRepository.FeedbackRow row : diaryTasteSignalRepository.findFeedbackRows(userId)) {
+            if (!places.containsKey(row.getDiaryId()) && places.size() == MAX_DIARY_TRIPS) {
+                continue;
+            }
+            satisfaction.putIfAbsent(row.getDiaryId(), row.getSatisfaction());
+            places.computeIfAbsent(row.getDiaryId(), id -> new java.util.ArrayList<>()).add(row.getAttractionId());
+        }
+        return places.entrySet().stream()
+                .map(e -> new DiaryFeedback.Trip(satisfaction.get(e.getKey()), List.copyOf(e.getValue())))
+                .toList();
+    }
+
+    private static final int MAX_DIARY_TRIPS = 10;
 
     /** 추첨 후보와 뽑힐 확률을 노출 기록으로 남긴다(docs/design/recommendation.md §9). 커밋 후 별도로 쓴다. */
     private void recordImpression(Long userId, Long tripId, Result result, String rankerVersion) {
