@@ -93,7 +93,8 @@ public class CourseAlternativesService {
                             .thenComparing(CourseCandidate::attractionId))
                     .limit(limit)
                     .toList();
-            Set<Long> similarTop = topBySimilarity(ranked, taste, vectors);
+            Map<Long, Integer> similarPercent = CourseGenerator.similarityPercents(
+                    candidates.stream().map(CourseCandidate::attractionId).toList(), taste, vectors);
             List<Item> items = ranked.stream()
                     .map(candidate -> {
                         Integer travel = previous == null ? null : TravelTimeEstimator.minutes(previous.lat(),
@@ -101,7 +102,7 @@ public class CourseAlternativesService {
                         return new Item(candidate.attractionId(), candidate.name(), type.name(),
                                 candidate.thumbnailUrl(), candidate.lat(), candidate.lng(), candidate.stayMinutes(),
                                 travel, reason(candidate, targetCategory, evidence, travel,
-                                        similarTop.contains(candidate.attractionId())));
+                                        similarPercent.get(candidate.attractionId())));
                     })
                     .toList();
             groups.add(new Group(type.name(), label(type), items));
@@ -109,37 +110,22 @@ public class CourseAlternativesService {
         return new AlternativeCoursesResponse(itemId, groups);
     }
 
-    /** 후보 중 취향 유사도 상위 {@link CourseGenerator#SIMILAR_TOP}곳. 취향 벡터가 없으면 빈 집합. */
-    private static Set<Long> topBySimilarity(List<CourseCandidate> ranked, float[] taste, Map<Long, float[]> vectors) {
-        if (taste == null) {
-            return Set.of();
-        }
-        return ranked.stream()
-                .filter(candidate -> vectors.containsKey(candidate.attractionId()))
-                .sorted(Comparator.comparingDouble((CourseCandidate candidate) ->
-                        cosine(taste, vectors.get(candidate.attractionId()))).reversed()
-                        .thenComparing(CourseCandidate::attractionId))
-                .limit(CourseGenerator.SIMILAR_TOP)
-                .map(CourseCandidate::attractionId)
-                .collect(Collectors.toSet());
-    }
-
     /**
-     * 교체·추가 후보의 추천 이유(docs/api/trip.md 추천 이유 5-4). 같은 유형 → 설문 근거 → 동선 → 취향 유사도 순으로
+     * 교체·추가 후보의 추천 이유(docs/api/trip.md 추천 이유 5-4). 같은 유형 → 취향 유사도 순위(상위 30% 안) → 설문 근거 → 동선 순으로
      * 최대 2개를 " · "로 잇는다. 근거가 없으면 null.
      */
     static String reason(CourseCandidate candidate, AttractionCategory targetCategory, TasteEvidence evidence,
-                         Integer travelMinutes, boolean similarTop) {
+                         Integer travelMinutes, Integer similarPercent) {
         List<String> parts = new ArrayList<>();
         if (targetCategory != null && targetCategory == candidate.category() && targetCategory != AttractionCategory.ETC) {
             parts.add("바꾸려는 곳과 같은 " + label(targetCategory) + " 장소예요");
         }
+        if (similarPercent != null && similarPercent <= CourseGenerator.SIMILAR_MAX_PERCENT) {
+            parts.add(CourseGenerator.similarityReason(similarPercent));
+        }
         evidence.reasonsFor(candidate.category()).stream().findFirst().ifPresent(parts::add);
         if (travelMinutes != null) {
             parts.add("앞 장소에서 약 " + travelMinutes + "분이에요");
-        }
-        if (similarTop) {
-            parts.add(CourseGenerator.SIMILAR_REASON);
         }
         return parts.isEmpty() ? null : String.join(" · ", parts.subList(0, Math.min(2, parts.size())));
     }

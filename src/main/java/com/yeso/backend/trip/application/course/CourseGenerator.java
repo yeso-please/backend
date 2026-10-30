@@ -22,6 +22,7 @@ import com.yeso.backend.trip.domain.TravelTimeEstimator;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -59,8 +60,37 @@ public class CourseGenerator {
 
     /** 설문 근거가 없을 때 유사도 이유를 붙이는 코스 안 상위 장소 수. */
     static final int SIMILAR_TOP = 3;
+    /** 취향 유사도 순위 이유를 붙이는 기준: 지역 후보 중 상위 이 비율(%) 안. */
+    static final int SIMILAR_MAX_PERCENT = 30;
 
     static final String SIMILAR_REASON = "내 취향과 비슷한 장소예요";
+
+    /** "내 취향과 의미가 가까운 상위 {N}% 장소예요" (docs/api/trip.md 추천 이유). */
+    static String similarityReason(int percent) {
+        return "내 취향과 의미가 가까운 상위 " + percent + "% 장소예요";
+    }
+
+    /**
+     * 지역 후보 전체에서 요청자 취향 벡터와의 E5 코사인 순위를 백분율로(1이 가장 가까움). 10% 이하는 1% 단위,
+     * 그 위는 5% 단위로 올린다. 취향 벡터가 없으면 빈 값.
+     */
+    static Map<Long, Integer> similarityPercents(Collection<Long> candidateIds, float[] taste, Map<Long, float[]> vectors) {
+        if (taste == null || vectors == null || vectors.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ranked = candidateIds.stream()
+                .filter(id -> vectors.get(id) != null && vectors.get(id).length == taste.length)
+                .sorted(Comparator.comparingDouble((Long id) -> cosine(taste, vectors.get(id))).reversed()
+                        .thenComparing(Comparator.naturalOrder()))
+                .toList();
+        Map<Long, Integer> out = new HashMap<>();
+        for (int i = 0; i < ranked.size(); i++) {
+            double raw = 100.0 * (i + 1) / ranked.size();
+            int percent = raw <= 10 ? (int) Math.ceil(raw) : (int) Math.ceil(raw / 5) * 5;
+            out.put(ranked.get(i), Math.max(1, percent));
+        }
+        return out;
+    }
 
     /** 제목 테마(조사 포함). 예: "경주, 역사를 따라 걷는 2일". */
     private static final Map<AttractionCategory, String> TITLE_THEMES = new EnumMap<>(Map.of(
@@ -99,7 +129,9 @@ public class CourseGenerator {
         if (mode == RecommendationMode.TOUR_OFFICIAL || mode == RecommendationMode.RULE_BASED) {
             warnings.add(new Warning("PERSONALIZATION_FALLBACK", null));
         }
-        Reasons reasons = new Reasons(mode, official, officialIds, request.evidence(), topBySimilarity(selected, tasteScores));
+        Reasons reasons = new Reasons(mode, official, officialIds, request.evidence(),
+                similarityPercents(request.candidates().stream().map(CourseCandidate::attractionId).toList(),
+                        request.requesterVector(), request.attractionVectors()));
         for (int dayIndex = 0; dayIndex < dayGroups.size(); dayIndex++) {
             List<CourseCandidate> ordered = orderByNearest(dayGroups.get(dayIndex));
             days.add(new Day(dayIndex, buildItems(ordered, request, reasons)));
@@ -330,20 +362,6 @@ public class CourseGenerator {
         return items;
     }
 
-    /** 취향 반영 모드에서 고른 장소 중 취향 유사도 상위 {@link #SIMILAR_TOP}곳. 점수가 없으면 빈 집합. */
-    private static Set<Long> topBySimilarity(List<CourseCandidate> selected, Map<Long, Double> tasteScores) {
-        if (tasteScores.isEmpty()) {
-            return Set.of();
-        }
-        return selected.stream()
-                .filter(c -> tasteScores.containsKey(c.attractionId()))
-                .sorted(Comparator.comparingDouble((CourseCandidate c) -> tasteScores.get(c.attractionId())).reversed()
-                        .thenComparing(CourseCandidate::attractionId))
-                .limit(SIMILAR_TOP)
-                .map(CourseCandidate::attractionId)
-                .collect(Collectors.toSet());
-    }
-
     /**
      * 추천 이유를 코스 순서대로 정한다(docs/api/trip.md 추천 이유). 근거가 없으면 null.
      * 같은 문장은 코스 안에서 {@link #MAX_SAME_REASON}번까지만 쓰므로 순서대로 호출한다.
@@ -353,16 +371,16 @@ public class CourseGenerator {
         private final OfficialCourse official;
         private final Set<Long> officialIds;
         private final TasteEvidence evidence;
-        private final Set<Long> similarTop;
+        private final Map<Long, Integer> similarPercent;
         private final Map<String, Integer> used = new HashMap<>();
 
         Reasons(RecommendationMode mode, OfficialCourse official, Set<Long> officialIds, TasteEvidence evidence,
-                Set<Long> similarTop) {
+                Map<Long, Integer> similarPercent) {
             this.mode = mode;
             this.official = official;
             this.officialIds = officialIds;
             this.evidence = evidence;
-            this.similarTop = similarTop;
+            this.similarPercent = similarPercent;
         }
 
         String next(CourseCandidate candidate) {
@@ -372,13 +390,17 @@ public class CourseGenerator {
             if (mode != RecommendationMode.PERSONALIZED) {
                 return null;
             }
+            Integer percent = similarPercent.get(candidate.attractionId());
+            if (percent != null && percent <= SIMILAR_MAX_PERCENT) {
+                return similarityReason(percent);
+            }
             for (String reason : evidence.reasonsFor(candidate.category())) {
                 if (used.getOrDefault(reason, 0) < MAX_SAME_REASON) {
                     used.merge(reason, 1, Integer::sum);
                     return reason;
                 }
             }
-            return similarTop.contains(candidate.attractionId()) ? SIMILAR_REASON : null;
+            return null;
         }
     }
 
