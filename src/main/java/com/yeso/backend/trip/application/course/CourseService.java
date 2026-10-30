@@ -1,7 +1,9 @@
 package com.yeso.backend.trip.application.course;
 
 import com.yeso.backend.trip.application.RecommendationImpressionLogger;
+import com.yeso.backend.attraction.application.ranking.DiaryFeedback;
 import com.yeso.backend.attraction.application.ranking.TasteRanker;
+import com.yeso.backend.trip.infrastructure.DiaryTasteSignalRepository;
 import com.yeso.backend.attraction.application.region.CourseMaterialService;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.ApprovedSummary;
 import com.yeso.backend.attraction.application.region.CourseMaterialService.AttractionView;
@@ -106,6 +108,7 @@ public class CourseService {
     private final EntityManager entityManager;
     private final RecommendationImpressionLogger impressionLogger;
     private final TasteRanker tasteRanker;
+    private final DiaryTasteSignalRepository diaryTasteSignalRepository;
     private final Clock clock;
 
     // ---------- 5-1 ----------
@@ -148,6 +151,13 @@ public class CourseService {
                                 new TasteRanker.Survey(answers.travelStyles(), answers.travelMotives()), requesterVector,
                                 candidates.stream().map(CourseCandidate::attractionId).toList()))
                         .orElse(Map.of());
+        List<DiaryFeedback.Trip> diaryTrips = rankerScores.isEmpty() || !tasteRanker.diaryFeedbackEnabled()
+                ? List.of() : diaryFeedbackTrips(userId);
+        // 오프라인에서 이득이 확인되지 않아(ai reports/diary_feedback_v1.md) 회원을 무작위로 나눠 반영 여부를 비교한다.
+        boolean diaryTreated = !diaryTrips.isEmpty() && tasteRanker.diaryFeedbackTreated(userId);
+        if (diaryTreated) {
+            rankerScores = tasteRanker.applyDiaryFeedback(rankerScores, diaryTrips);
+        }
 
         Result result = courseGenerator.generate(new CourseGeneration.Request(
                 region.getCity(), trip.getNights() + 1, density, trip.getTransport(), candidates,
@@ -174,7 +184,10 @@ public class CourseService {
                 if (item instanceof AttractionItem attraction) {
                     previousAttraction = attraction.attraction();
                 } else {
-                    mealAssigner.assign(saved, previousAttraction, requester, now);
+                    CourseCandidate next = day.items().stream().skip(order + 1L)
+                            .filter(i -> i instanceof AttractionItem).map(i -> ((AttractionItem) i).attraction())
+                            .findFirst().orElse(null);
+                    mealAssigner.assign(saved, previousAttraction, next, requester, now);
                 }
                 order++;
             }
@@ -196,13 +209,35 @@ public class CourseService {
             trip.setCourseFirstGeneratedAt(now);
         }
         entityManager.flush(); // 여행 버전을 올린 값으로 응답한다
-        recordImpression(userId, tripId, result, rankerScores.isEmpty() ? null : tasteRanker.version().orElse(null));
+        String rankerVersion = rankerScores.isEmpty() ? null : tasteRanker.version()
+                .map(v -> diaryTrips.isEmpty() ? v
+                        : v + "+" + DiaryFeedback.VERSION + (diaryTreated ? "" : "-control") + "(n=" + diaryTrips.size() + ")")
+                .orElse(null);
+        recordImpression(userId, tripId, result, rankerVersion);
 
         List<Warning> densityWarnings = result.warnings().stream()
                 .filter(warning -> warning.code().equals("DENSITY_TARGET_NOT_MET"))
                 .toList();
         return view(trip, Viewer.participant(userId), densityWarnings);
     }
+
+    /** 최근 발행한 여행기 최대 {@value #MAX_DIARY_TRIPS}개와 그 여행의 최종 코스 관광지(§5 여행기 피드백). */
+    private List<DiaryFeedback.Trip> diaryFeedbackTrips(Long userId) {
+        Map<Long, Short> satisfaction = new java.util.LinkedHashMap<>();
+        Map<Long, List<Long>> places = new java.util.LinkedHashMap<>();
+        for (DiaryTasteSignalRepository.FeedbackRow row : diaryTasteSignalRepository.findFeedbackRows(userId)) {
+            if (!places.containsKey(row.getDiaryId()) && places.size() == MAX_DIARY_TRIPS) {
+                continue;
+            }
+            satisfaction.putIfAbsent(row.getDiaryId(), row.getSatisfaction());
+            places.computeIfAbsent(row.getDiaryId(), id -> new java.util.ArrayList<>()).add(row.getAttractionId());
+        }
+        return places.entrySet().stream()
+                .map(e -> new DiaryFeedback.Trip(satisfaction.get(e.getKey()), List.copyOf(e.getValue())))
+                .toList();
+    }
+
+    private static final int MAX_DIARY_TRIPS = 10;
 
     /** 추첨 후보와 뽑힐 확률을 노출 기록으로 남긴다(docs/design/recommendation.md §9). 커밋 후 별도로 쓴다. */
     private void recordImpression(Long userId, Long tripId, Result result, String rankerVersion) {
@@ -224,7 +259,8 @@ public class CourseService {
 
     /**
      * 식사 슬롯마다 TourAPI 식당을 자동 배정한다(5-1). 지역 식당은 생성당 한 번만 읽고, 기준점은 5-5와 같다
-     * (그날 식사 앞 마지막 관광지, 없으면 지역 중심). 같은 코스에서 같은 식당은 한 번만 쓴다.
+     * (그날 식사 앞 마지막 관광지, 없으면 지역 중심). 다음 관광지까지의 우회·검증 사진·당일 분류를 점수화해 상위 5개에서 가중 추첨한다.
+     * 같은 코스에서 같은 식당은 한 번만 쓴다.
      */
     private final class MealAssigner {
         private final Region region;
@@ -232,13 +268,14 @@ public class CourseService {
         private final MealRestaurantPicker picker = new MealRestaurantPicker();
         private final RandomGenerator random = new SplittableRandom();
         private final Set<String> used = new HashSet<>();
+        private final java.util.Map<Integer, java.util.List<RestaurantScorer.OtherMeal>> otherMeals = new java.util.HashMap<>();
 
         MealAssigner(Region region, RegionRestaurants restaurants) {
             this.region = region;
             this.restaurants = restaurants;
         }
 
-        void assign(CourseItem meal, CourseCandidate previousAttraction, User requester, LocalDateTime now) {
+        void assign(CourseItem meal, CourseCandidate previousAttraction, CourseCandidate nextAttraction, User requester, LocalDateTime now) {
             double lat;
             double lng;
             if (previousAttraction != null) {
@@ -251,7 +288,13 @@ public class CourseService {
                 return;
             }
             List<Candidate> nearest = restaurants.nearest(lat, lng, MEAL_RESTAURANT_RADIUS_METERS, Integer.MAX_VALUE);
-            picker.pick(nearest, used, random).ifPresent(candidate -> {
+            var context = new RestaurantScorer.Context(
+                    new RestaurantScorer.Point(lat, lng, null, null),
+                    nextAttraction == null ? null : new RestaurantScorer.Point(nextAttraction.lat(), nextAttraction.lng(), null, null),
+                    previousAttraction != null, otherMeals.getOrDefault(meal.getDayIndex(), List.of()));
+            picker.pick(nearest, used, random, context).ifPresent(candidate -> {
+                otherMeals.computeIfAbsent(meal.getDayIndex(), k -> new java.util.ArrayList<>())
+                        .add(new RestaurantScorer.OtherMeal(meal.getMealType() == com.yeso.backend.trip.domain.MealType.LUNCH ? "점심" : "저녁", candidate.category()));
                 used.add(candidate.externalId());
                 courseMealRestaurantRepository.save(CourseMealRestaurant.of(
                         meal, RestaurantService.tourApiSnapshot(candidate), requester, now));

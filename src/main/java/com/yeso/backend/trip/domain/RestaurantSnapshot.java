@@ -23,9 +23,14 @@ public record RestaurantSnapshot(
         String imageUrl,
         String representativeMenu,
         List<String> evidenceLabels,
-        List<Source> sources) {
+        List<Source> sources, List<String> reasons) {
+
+    public RestaurantSnapshot(String provider, String externalId, String name, String category, String address, String roadAddress, Double lat, Double lng, String phone, String placeUrl, String imageUrl, String representativeMenu, List<String> evidenceLabels, List<Source> sources) {
+        this(provider, externalId, name, category, address, roadAddress, lat, lng, phone, placeUrl, imageUrl, representativeMenu, evidenceLabels, sources, List.of());
+    }
 
     public RestaurantSnapshot {
+        reasons = reasons == null ? List.of() : List.copyOf(reasons);
         evidenceLabels = evidenceLabels == null ? List.of() : List.copyOf(evidenceLabels);
         sources = sources == null ? List.of() : List.copyOf(sources);
     }
