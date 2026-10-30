@@ -1249,7 +1249,9 @@ PATCH /api/courses/{tripId}/schedule
     {"op": "REMOVE", "itemId": "a-105", "note": "너무 멀어요"},
     {"op": "RESTORE", "removalId": 7, "dayIndex": 0, "position": 3},
     {"op": "SET_RESTAURANT", "itemId": "m-31", "selectionToken": "rs_eyJ..."},
-    {"op": "CLEAR_RESTAURANT", "itemId": "m-32"}
+    {"op": "CLEAR_RESTAURANT", "itemId": "m-32"},
+    {"op": "REMOVE", "itemId": "m-33"},
+    {"op": "ADD_MEAL", "dayIndex": 1, "meal": "LUNCH", "position": 2}
   ]
 }
 ```
@@ -1258,21 +1260,22 @@ PATCH /api/courses/{tripId}/schedule
 |---|---|---|
 | `ADD` | `dayIndex`, `position?`, `attractionId` | 관광지 추가. `position`은 그날 목록(관광지·식사 포함)에서의 위치(0부터), 생략하면 맨 뒤 |
 | `REPLACE` | `itemId`, `attractionId`, `note?` | 관광지 교체. `note`는 선택 사유(1~100자) |
-| `REMOVE` | `itemId`, `note?` | 관광지 삭제. 식사는 삭제할 수 없다. 제외 기록(`changes.removed`)에 남는다 |
+| `REMOVE` | `itemId`, `note?` | 관광지 삭제는 제외 기록(`changes.removed`)에 남는다. **식사 항목도 뺄 수 있다**(2026-10-30): 고른 식당과 함께 지우고 제외 기록은 남기지 않으며 `note`를 받지 않는다 |
+| `ADD_MEAL` | `dayIndex`, `meal`, `position?` | 뺀 식사를 다시 넣는다. `meal`은 `LUNCH` \| `DINNER`. 그날 같은 끼니가 이미 있으면 400. `position` 생략 시 맨 뒤. 식당은 미정(`restaurant: null`)으로 시작한다 |
 | `RESTORE` | `removalId`, `dayIndex?`, `position?` | 제외한 관광지를 다시 넣는다(D11-4). `dayIndex`를 생략하면 지웠던 날, `position`을 생략하면 그날 맨 뒤. 넣는 조건은 `ADD`와 같다(같은 지역의 추천 가능 관광지, 코스에 없음). 기준 장소였으면 다시 `BASE`, 그 밖에는 `ADDED` |
 | `MOVE` | `itemId`, `dayIndex`, `position` | 관광지는 다른 순서·날짜로, 식사는 같은 날 안에서 다른 순서로 이동. 날마다 점심·저녁은 하나씩이라 식사를 다른 날로 옮길 수 없다 |
 | `SET_RESTAURANT` | `itemId`(식사), `selectionToken` | 5-5·5-6 결과의 식당을 식사 슬롯에 지정·교체. 토큰은 받은 그대로 body에 넣는다(1~2KB, query string 금지). 서버는 서명·만료·`tripId`·`itemId`를 검증하고 토큰 안의 스냅샷을 저장한다 |
 | `CLEAR_RESTAURANT` | `itemId`(식사) | 식당 선택 해제 |
 
 - `operations`는 1~20개, 앞에서부터 차례로 적용한 결과를 검증한다.
-- `note`는 `REMOVE`·`REPLACE`에만 쓴다(1~100자). 다른 op에 보내거나 비어 있거나 길면 `400 COURSE_INVALID_OPERATION`이다. `removalId`는 `RESTORE`에만 쓴다.
+- `note`는 관광지 `REMOVE`·`REPLACE`에만 쓴다(1~100자). 다른 op나 식사 `REMOVE`에 보내거나 비어 있거나 길면 `400 COURSE_INVALID_OPERATION`이다. `removalId`는 `RESTORE`에만, `meal`은 `ADD_MEAL`에만 쓴다.
 - 추가·교체·삭제·되살리기는 요청자를 변경 기록에 남긴다([변경 기록](#변경-기록)).
-- `MOVE`는 관광지·식사 항목 모두에, `REMOVE`·`REPLACE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 식사 `itemId`에 `REMOVE`·`REPLACE`를 보내는 등 다른 타입이나 범위 밖 `dayIndex`·`position`, 식사를 다른 날로 옮기는 `MOVE`는 `400 COURSE_INVALID_OPERATION`이다. 식사를 추가하는 operation은 없다.
+- `MOVE`·`REMOVE`는 관광지·식사 항목 모두에, `REPLACE`는 관광지 항목에만, `SET_RESTAURANT`·`CLEAR_RESTAURANT`는 식사 항목에만 쓴다. 식사 `itemId`에 `REPLACE`를 보내는 등 다른 타입이나 범위 밖 `dayIndex`·`position`, 식사를 다른 날로 옮기는 `MOVE`는 `400 COURSE_INVALID_OPERATION`이다. 식사는 `ADD_MEAL`로만 넣고, 날마다 점심·저녁은 각각 최대 하나다. 같은 요청에서 식사를 `REMOVE`한 뒤 같은 끼니를 `ADD_MEAL`할 수 있다.
 - `REPLACE`는 `itemId`를 유지하고 장소만 바꾼다. `ADD`는 새 `itemId`를 만든다.
 - 추가·교체 대상은 같은 지역의 추천 가능 관광지여야 하고 이미 일정에 없어야 한다.
 - 적용 뒤 서버가 이동시간(참고용)만 다시 계산한다. 식사 위치는 사용자가 정한 순서 그대로 두고 옮기지 않는다.
 - 개수·시간 검사는 없다. `ADD`로 밀도 목표보다 많이 넣어도 된다(밀도는 자동 생성의 목표일 뿐이다).
-- 관광지가 0곳인 날도 허용한다. 식당을 고르지 않은 식사 슬롯은 화면에서 "미정"으로 보인다. 식사를 건너뛰거나 삭제하는 operation은 없다.
+- 관광지가 0곳인 날도 허용한다. 식당을 고르지 않은 식사 슬롯은 화면에서 "미정"으로 보인다. 식사를 뺀 날은 그 끼니 항목이 없다(점심·저녁 중 하나만 있거나 둘 다 없을 수 있다).
 - 일정에 이미 있는 추천 불가 장소(`ATTRACTION_NO_LONGER_RECOMMENDABLE`)는 다른 편집을 막지 않는다. 추천 가능 여부는 `ADD`·`REPLACE`로 새로 넣는 장소에만 검사한다.
 - 날짜·지역·밀도는 이 API로 바꾸지 않는다. 밀도는 재생성(5-1), 지역은 3-7(`replaceCourse`)이다. 코스에는 시각이 없다.
 

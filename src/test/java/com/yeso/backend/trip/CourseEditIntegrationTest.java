@@ -249,6 +249,71 @@ class CourseEditIntegrationTest extends IntegrationTest {
         }
 
         @Test
+        @DisplayName("식사를 빼면 그 끼니와 고른 식당이 사라지고, ADD_MEAL로 식당 미정 상태로 다시 넣는다")
+        void removeAndAddMeal() throws Exception {
+            Long tripId = trip();
+            MvcResult first = generate(tripId);
+            List<String> lunches = read(first, "$.days[0].items[?(@.meal == 'LUNCH')].itemId");
+            String lunch = lunches.get(0);
+            MvcResult removed = edit(tripId, """
+                    {"version":1,"operations":[{"op":"REMOVE","itemId":"%s"}]}
+                    """.formatted(lunch));
+            assertThat(removed.getResponse().getStatus()).isEqualTo(200);
+            List<String> meals = read(removed, "$.days[0].items[?(@.type == 'MEAL')].meal");
+            assertThat(meals).containsExactly("DINNER");
+            List<Object> removals = read(removed, "$.changes.removed");
+            assertThat(removals).isEmpty();
+            assertThat(jdbc.queryForObject("select count(*) from app.course_meal_restaurants where course_item_id = ?",
+                    Integer.class, Long.valueOf(lunch.substring(2)))).isZero();
+
+            MvcResult added = edit(tripId, """
+                    {"version":2,"operations":[{"op":"ADD_MEAL","dayIndex":0,"meal":"LUNCH","position":1}]}
+                    """);
+            assertThat(added.getResponse().getStatus()).isEqualTo(200);
+            assertThat((String) read(added, "$.days[0].items[1].meal")).isEqualTo("LUNCH");
+            assertThat((Object) read(added, "$.days[0].items[1].restaurant")).isNull();
+        }
+
+        @Test
+        @DisplayName("같은 요청에서 식사를 빼고 같은 끼니를 다시 넣을 수 있다")
+        void removeThenAddSameMealInOneRequest() throws Exception {
+            Long tripId = trip();
+            MvcResult first = generate(tripId);
+            String meal = read(first, "$.days[0].items[2].itemId");
+            String type = read(first, "$.days[0].items[2].meal");
+            MvcResult result = edit(tripId, """
+                    {"version":1,"operations":[{"op":"REMOVE","itemId":"%s"},{"op":"ADD_MEAL","dayIndex":0,"meal":"%s","position":0}]}
+                    """.formatted(meal, type));
+            assertThat(result.getResponse().getStatus()).isEqualTo(200);
+            assertThat((String) read(result, "$.days[0].items[0].meal")).isEqualTo(type);
+        }
+
+        @Test
+        @DisplayName("이미 있는 끼니를 넣거나, 끼니 값이 틀리거나, 식사 삭제에 사유를 붙이면 400 COURSE_INVALID_OPERATION다")
+        void mealAddRules() throws Exception {
+            Long tripId = trip();
+            MvcResult first = generate(tripId);
+            String meal = read(first, "$.days[0].items[2].itemId");
+            for (String operation : List.of(
+                    """
+                    {"op":"ADD_MEAL","dayIndex":0,"meal":"LUNCH"}""",
+                    """
+                    {"op":"ADD_MEAL","dayIndex":0,"meal":"BRUNCH"}""",
+                    """
+                    {"op":"ADD_MEAL","meal":"LUNCH"}""",
+                    """
+                    {"op":"ADD_MEAL","dayIndex":99,"meal":"LUNCH"}""",
+                    """
+                    {"op":"REMOVE","itemId":"%s","note":"따로 먹어요"}""".formatted(meal),
+                    """
+                    {"op":"MOVE","itemId":"%s","dayIndex":0,"position":0,"meal":"LUNCH"}""".formatted(meal))) {
+                MvcResult result = edit(tripId, "{\"version\":1,\"operations\":[" + operation + "]}");
+                assertThat(result.getResponse().getStatus()).as(operation).isEqualTo(400);
+                assertThat(code(result)).as(operation).isEqualTo("COURSE_INVALID_OPERATION");
+            }
+        }
+
+        @Test
         @DisplayName("식사는 같은 날 안에서 순서를 옮길 수 있고, 뒤 관광지의 이동시간은 식사를 건너뛴다")
         void moveMealWithinDay() throws Exception {
             Long tripId = trip();
@@ -370,9 +435,9 @@ class CourseEditIntegrationTest extends IntegrationTest {
             MvcResult result = edit(tripId, """
                     {"version":1,"operations":[
                       {"op":"ADD","dayIndex":0,"attractionId":%d},
-                      {"op":"REMOVE","itemId":"%s"}
+                      {"op":"REPLACE","itemId":"%s","attractionId":%d}
                     ]}
-                    """.formatted(extra, meal));
+                    """.formatted(extra, meal, extra));
             assertThat(result.getResponse().getStatus()).isEqualTo(400);
             assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.code"))
                     .isEqualTo("COURSE_INVALID_OPERATION");

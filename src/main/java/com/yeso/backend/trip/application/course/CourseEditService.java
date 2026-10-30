@@ -16,6 +16,7 @@ import com.yeso.backend.trip.domain.CourseMealRestaurant;
 import com.yeso.backend.trip.domain.CourseNotFoundException;
 import com.yeso.backend.trip.domain.CourseRemoval;
 import com.yeso.backend.trip.domain.CourseRemovalNotFoundException;
+import com.yeso.backend.trip.domain.MealType;
 import com.yeso.backend.trip.domain.RestaurantSnapshot;
 import com.yeso.backend.trip.domain.TripNotFoundException;
 import com.yeso.backend.trip.domain.TripPlan;
@@ -43,6 +44,7 @@ import java.util.Map;
 /**
  * 5-3 일정 편집. 여행 행 잠금과 한 트랜잭션으로 모든 operation을 순서대로 적용한다.
  * 관광지 추가·교체·삭제·되살리기는 기준점 대비 변경 기록(D11)을 남긴다.
+ * 식사는 빼고({@code REMOVE}) 다시 넣을({@code ADD_MEAL}) 수 있고, 변경 기록은 남기지 않는다(2026-10-30).
  */
 @Service
 @RequiredArgsConstructor
@@ -100,6 +102,7 @@ public class CourseEditService {
                 case "ADD" -> add(trip, days, operation, editor);
                 case "REPLACE" -> replace(trip, days, operation, editor);
                 case "REMOVE" -> remove(trip, days, operation, editor);
+                case "ADD_MEAL" -> addMeal(trip, days, operation);
                 case "RESTORE" -> restore(trip, days, operation, editor);
                 case "MOVE" -> move(days, operation);
                 case "SET_RESTAURANT" -> setRestaurant(userId, tripId, days, operation);
@@ -156,15 +159,44 @@ public class CourseEditService {
                 editor.user(), editor.user().getNickname(), attractionName(item.getAttractionId()), op.note(), editor.at());
     }
 
-    /** 지운 관광지는 제외 기록으로 남긴다(기준점 항목·추가한 항목 모두, D11·Q6). */
+    /** 지운 관광지는 제외 기록으로 남긴다(기준점 항목·추가한 항목 모두, D11·Q6). 식사는 고른 식당과 함께 지운다. */
     private void remove(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op, Editor editor) {
         CourseItem item = item(days, op.itemId());
-        requireAttraction(item);
+        if (item.isMeal()) {
+            if (op.note() != null) {
+                throw invalid();
+            }
+            days.get(item.getDayIndex()).remove(item);
+            restaurantRepository.deleteById(item.getId());
+            courseItemRepository.delete(item);
+            // 같은 요청의 ADD_MEAL이 같은 끼니를 넣을 수 있게 삭제를 먼저 반영한다(uq_course_item_meal_per_day).
+            entityManager.flush();
+            return;
+        }
         days.get(item.getDayIndex()).remove(item);
         removalRepository.save(new CourseRemoval(trip.getId(), item.getAttractionId(), attractionName(item.getAttractionId()),
                 item.getDayIndex(), item.getOrigin() == null ? CourseItemOrigin.BASE : item.getOrigin(),
                 editor.user(), editor.user().getNickname(), op.note(), editor.at()));
         courseItemRepository.delete(item);
+    }
+
+    /** 뺀 식사를 다시 넣는다. 날마다 점심·저녁은 하나씩이라 이미 있는 끼니면 거부한다. 식당은 "미정"으로 시작한다. */
+    private void addMeal(TripPlan trip, Map<Integer, List<CourseItem>> days, Operation op) {
+        MealType meal;
+        try {
+            meal = MealType.valueOf(op.meal());
+        } catch (IllegalArgumentException e) {
+            throw invalid();
+        }
+        List<CourseItem> target = day(days, op.dayIndex());
+        if (target.stream().anyMatch(item -> item.isMeal() && item.getMealType() == meal)) {
+            throw invalid();
+        }
+        int position = op.position() == null ? target.size() : op.position();
+        requirePosition(position, target.size());
+        CourseItem item = CourseItem.meal(trip, op.dayIndex(), position, meal);
+        courseItemRepository.save(item);
+        target.add(position, item);
     }
 
     /**
@@ -287,6 +319,9 @@ public class CourseEditService {
             if (op.removalId() != null && !op.op().equals("RESTORE")) {
                 throw invalid();
             }
+            if (op.meal() != null && !op.op().equals("ADD_MEAL")) {
+                throw invalid();
+            }
             boolean valid = switch (op.op()) {
                 case "ADD" -> op.itemId() == null && op.dayIndex() != null && op.attractionId() != null
                         && op.selectionToken() == null;
@@ -298,6 +333,8 @@ public class CourseEditService {
                         && op.attractionId() == null && op.selectionToken() == null;
                 case "SET_RESTAURANT" -> op.itemId() != null && op.selectionToken() != null
                         && op.dayIndex() == null && op.position() == null && op.attractionId() == null;
+                case "ADD_MEAL" -> op.meal() != null && op.dayIndex() != null && op.itemId() == null
+                        && op.attractionId() == null && op.selectionToken() == null;
                 case "RESTORE" -> op.removalId() != null && op.itemId() == null && op.attractionId() == null
                         && op.selectionToken() == null && (op.position() == null || op.dayIndex() != null);
                 default -> false;
