@@ -3,6 +3,12 @@ spring:
     import: "optional:file:./config/application-secret.yaml"
   application:
     name: yeso-backend
+  # 여행기 사진(6-2)은 장당 10MB까지 받는다. 기본값(1MB)이면 휴대폰 사진 대부분이 Tomcat에서 막힌다.
+  # 한 요청에 여러 장을 올리므로 요청 전체는 100MB까지. 장수 제한(30장)은 서비스가 검사한다.
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
   jpa:
     hibernate:
       ddl-auto: validate

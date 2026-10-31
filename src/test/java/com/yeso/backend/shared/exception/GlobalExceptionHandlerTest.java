@@ -30,6 +30,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("업로드 크기를 넘으면 500이 아니라 400 DIARY_PHOTO_INVALID다")
+    void uploadTooLarge_isBadRequest() {
+        var response = handler.handleUploadTooLarge(
+                new org.springframework.web.multipart.MaxUploadSizeExceededException(10L * 1024 * 1024),
+                request("/api/diaries/1/photos"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).extracting(ApiErrorResponse::code).isEqualTo("DIARY_PHOTO_INVALID");
+    }
+
+    @Test
     @DisplayName("재시도 시간이 있는 도메인 예외면 Retry-After 헤더(초)를 싣는다")
     void domainException_withRetryAfter_setsRetryAfterHeader() {
         DomainException exception = new TestDomainException(ErrorCode.COURSE_KAKAO_LOCAL_RATE_LIMITED, "호출 한도") {
