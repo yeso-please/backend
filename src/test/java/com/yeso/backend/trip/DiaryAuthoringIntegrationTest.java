@@ -27,6 +27,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class DiaryAuthoringIntegrationTest extends IntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    org.springframework.boot.servlet.autoconfigure.MultipartProperties multipartProperties;
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("사진 업로드 한도는 장당 10MB(6-2)다 — 기본값 1MB면 휴대폰 사진이 Tomcat에서 막힌다")
+    void multipartLimitsMatchPhotoRule() {
+        org.assertj.core.api.Assertions.assertThat(multipartProperties.getMaxFileSize().toBytes())
+                .isEqualTo(com.yeso.backend.trip.application.diary.DiaryPhotoProcessor.MAX_FILE_SIZE);
+        org.assertj.core.api.Assertions.assertThat(multipartProperties.getMaxRequestSize().toMegabytes()).isGreaterThanOrEqualTo(100);
+    }
+
     @Nested
     @DisplayName("여행기 초안")
     class Create {

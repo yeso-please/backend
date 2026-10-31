@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -62,6 +63,17 @@ public class GlobalExceptionHandler {
         log.warn("Invalid request: {}", exception.getMessage());
         return ResponseEntity.badRequest()
                 .body(ApiErrorResponse.of(ErrorCode.INVALID_REQUEST, "요청 형식이 올바르지 않습니다.", request.getRequestURI()));
+    }
+
+    /** 업로드 크기 초과(장당 10MB·요청 100MB)는 서버 오류가 아니라 사진 오류다(6-2). */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(
+            MaxUploadSizeExceededException exception, HttpServletRequest request
+    ) {
+        log.warn("Upload too large: {}", exception.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(
+                        ErrorCode.DIARY_PHOTO_INVALID, "사진은 한 장에 10MB까지 올릴 수 있습니다.", request.getRequestURI()));
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
